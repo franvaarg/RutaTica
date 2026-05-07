@@ -15,30 +15,10 @@ export async function GET(request: NextRequest) {
 
     const searchTerm = query.toLowerCase().trim()
 
-    // Buscar rutas que coincidan con origen, destino o número de ruta
-    const routes = await db.busRoute.findMany({
+    // Obtener todas las rutas activas (SQLite no soporta mode: insensitive)
+    const allRoutes = await db.busRoute.findMany({
       where: {
         isActive: true,
-        OR: [
-          {
-            origin: {
-              contains: searchTerm,
-              mode: 'insensitive',
-            },
-          },
-          {
-            destination: {
-              contains: searchTerm,
-              mode: 'insensitive',
-            },
-          },
-          {
-            routeNumber: {
-              contains: searchTerm,
-              mode: 'insensitive',
-            },
-          },
-        ],
       },
       include: {
         company: {
@@ -76,6 +56,14 @@ export async function GET(request: NextRequest) {
         createdAt: 'desc',
       },
     })
+
+    // Filtrar en JavaScript para búsqueda case-insensitive
+    const routes = allRoutes.filter(
+      (route) =>
+        route.origin.toLowerCase().includes(searchTerm) ||
+        route.destination.toLowerCase().includes(searchTerm) ||
+        route.routeNumber.toLowerCase().includes(searchTerm)
+    )
 
     // Transformar los resultados al formato esperado
     const formattedRoutes = routes.map((route) => {
