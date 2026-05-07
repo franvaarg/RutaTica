@@ -1,11 +1,12 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { MapPin, Bus, Navigation, Clock, DollarSign, ArrowRight, Loader2 } from 'lucide-react'
+import { MapPin, Bus, Navigation, Clock, DollarSign, ArrowRight, Loader2, Map } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import BusMap from '@/components/map'
 
 interface PlanatedRoute {
   id: string
@@ -311,6 +312,26 @@ export default function BusPlannerApp() {
             )}
           </CardContent>
         </Card>
+
+        {/* Map Card */}
+        {currentLocation && (
+          <Card className="mb-6 border-2 border-primary/20">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Map className="w-5 h-5 text-primary" />
+                Mapa
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <BusMap
+                center={[currentLocation.latitude, currentLocation.longitude]}
+                zoom={14}
+                userLocation={[currentLocation.latitude, currentLocation.longitude]}
+                nearestStop={nearestStop}
+              />
+            </CardContent>
+          </Card>
+        )}
 
         {/* Destination Input */}
         <Card className="mb-6">
