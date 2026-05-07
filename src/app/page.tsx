@@ -49,11 +49,13 @@ interface NearestStop {
 
 export default function BusPlannerApp() {
   const [currentLocation, setCurrentLocation] = useState<Location | null>(null)
+  const [currentAddress, setCurrentAddress] = useState<string>('')
   const [nearestStop, setNearestStop] = useState<NearestStop | null>(null)
   const [destination, setDestination] = useState('')
   const [plannedRoutes, setPlannedRoutes] = useState<PlanatedRoute[]>([])
   const [hasPlanned, setHasPlanned] = useState(false)
   const [loadingLocation, setLoadingLocation] = useState(false)
+  const [loadingAddress, setLoadingAddress] = useState(false)
   const [planning, setPlanning] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -62,13 +64,46 @@ export default function BusPlannerApp() {
     getCurrentLocation()
   }, [])
 
+  // Función para obtener dirección desde coordenadas usando OpenStreetMap
+  const getAddressFromCoordinates = async (lat: number, lon: number): Promise<string> => {
+    try {
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&accept-language=es`
+      )
+      const data = await response.json()
+
+      if (data && data.display_name) {
+        return data.display_name
+      }
+
+      // Si no hay dirección completa, intentar construir una con los datos disponibles
+      if (data.address) {
+        const parts = []
+        if (data.address.road) parts.push(data.address.road)
+        if (data.address.suburb) parts.push(data.address.suburb)
+        if (data.address.city || data.address.town || data.address.village) {
+          parts.push(data.address.city || data.address.town || data.address.village)
+        }
+        if (data.address.country) parts.push(data.address.country)
+        return parts.join(', ')
+      }
+
+      return ''
+    } catch (error) {
+      console.error('Error al obtener dirección:', error)
+      return ''
+    }
+  }
+
   const getCurrentLocation = async () => {
     setLoadingLocation(true)
+    setLoadingAddress(true)
     setError(null)
     try {
       if (!navigator.geolocation) {
         setError('La geolocalización no está soportada en tu navegador')
         setLoadingLocation(false)
+        setLoadingAddress(false)
         return
       }
 
@@ -87,6 +122,10 @@ export default function BusPlannerApp() {
       const { latitude, longitude } = position.coords
       setCurrentLocation({ latitude, longitude })
 
+      // Obtener la dirección usando OpenStreetMap API
+      const address = await getAddressFromCoordinates(latitude, longitude)
+      setCurrentAddress(address)
+
       // Buscar la parada más cercana
       await findNearestStop(latitude, longitude)
     } catch (error) {
@@ -94,6 +133,7 @@ export default function BusPlannerApp() {
       setError('No se pudo obtener tu ubicación. Por favor activa el GPS y permite el acceso.')
     } finally {
       setLoadingLocation(false)
+      setLoadingAddress(false)
     }
   }
 
@@ -203,19 +243,37 @@ export default function BusPlannerApp() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {loadingLocation ? (
+            {loadingLocation || loadingAddress ? (
               <div className="flex items-center gap-2 text-muted-foreground">
                 <Loader2 className="w-5 h-5 animate-spin" />
-                <span>Obteniendo tu ubicación...</span>
+                <span>
+                  {loadingLocation ? 'Obteniendo tu ubicación...' : 'Obteniendo tu dirección...'}
+                </span>
               </div>
             ) : currentLocation ? (
-              <div className="space-y-2">
+              <div className="space-y-3">
+                {/* Dirección */}
+                {currentAddress && (
+                  <div className="bg-primary/5 rounded-lg p-3 border border-primary/10">
+                    <div className="flex items-start gap-2">
+                      <MapPin className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
+                      <div className="flex-1">
+                        <p className="text-sm text-muted-foreground mb-1">Tu ubicación:</p>
+                        <p className="font-medium text-sm leading-relaxed">{currentAddress}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Coordenadas */}
                 <div className="flex items-center gap-2 text-sm">
                   <MapPin className="w-4 h-4 text-green-600" />
                   <span className="font-mono text-xs">
                     {currentLocation.latitude.toFixed(4)}, {currentLocation.longitude.toFixed(4)}
                   </span>
                 </div>
+
+                {/* Parada más cercana */}
                 {nearestStop && (
                   <div className="flex items-center gap-2 text-sm">
                     <Navigation className="w-4 h-4 text-primary" />
@@ -228,6 +286,7 @@ export default function BusPlannerApp() {
                     </Badge>
                   </div>
                 )}
+
                 <Button
                   onClick={getCurrentLocation}
                   variant="outline"
@@ -432,8 +491,11 @@ export default function BusPlannerApp() {
 
       {/* Footer */}
       <footer className="bg-muted/50 border-t mt-auto py-4">
-        <div className="container mx-auto px-4 text-center text-sm text-muted-foreground">
+        <div className="container mx-auto px-4 text-center text-sm text-muted-foreground space-y-1">
           <p>© 2025 BusApp - Planificador de Rutas de Autobuses</p>
+          <p className="text-xs">
+            Datos de ubicación por <a href="https://www.openstreetmap.org" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">OpenStreetMap</a> contributors
+          </p>
         </div>
       </footer>
     </div>
