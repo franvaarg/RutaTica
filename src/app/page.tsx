@@ -1,115 +1,157 @@
 'use client'
 
-import { useState } from 'react'
-import { Search, MapPin, Bus, DollarSign, Building2 } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { MapPin, Bus, Navigation, Clock, DollarSign, ArrowRight, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
 
-interface BusRoute {
+interface PlanatedRoute {
   id: string
   company: string
-  companyId: string
-  companyPhone?: string | null
-  companyEmail?: string | null
-  companyWebsite?: string | null
-  route: string
+  routeNumber: string
   origin: string
   destination: string
   price: number
   currency: string
-  distance?: string | null
-  duration?: string | null
-  seatTypes?: Array<{
-    type: string
-    price: number
-    currency: string
+  distanceKm?: number | null
+  durationMin?: number | null
+  boardingStop: {
+    name: string
+    city: string | null
+  }
+  destinationStop: {
+    name: string
+    city: string | null
+  } | null
+  nearbyStops: Array<{
+    name: string
+    city: string | null
+    distance: number
   }>
 }
 
-export default function BusPricesApp() {
-  const [searchTerm, setSearchTerm] = useState('')
-  const [filteredRoutes, setFilteredRoutes] = useState<BusRoute[]>([])
-  const [hasSearched, setHasSearched] = useState(false)
-  const [currentLocation, setCurrentLocation] = useState<string | null>(null)
-  const [loadingLocation, setLoadingLocation] = useState(false)
-  const [searching, setSearching] = useState(false)
+interface Location {
+  latitude: number
+  longitude: number
+}
 
-  const handleSearch = async () => {
-    if (!searchTerm.trim()) return
-
-    setSearching(true)
-    try {
-      const response = await fetch(`/api/routes/search?q=${encodeURIComponent(searchTerm)}`)
-      const data = await response.json()
-
-      if (data.success) {
-        setFilteredRoutes(data.routes)
-        setHasSearched(true)
-      } else {
-        console.error('Error en la búsqueda:', data.error)
-        alert(data.error || 'Error al buscar rutas')
-        setFilteredRoutes([])
-        setHasSearched(true)
-      }
-    } catch (error) {
-      console.error('Error al buscar rutas:', error)
-      alert('Error de conexión. Por favor intenta de nuevo.')
-      setFilteredRoutes([])
-      setHasSearched(true)
-    } finally {
-      setSearching(false)
-    }
+interface NearestStop {
+  name: string
+  city: string | null
+  distance: number
+  coordinates: {
+    latitude: number
+    longitude: number
   }
+}
 
-  const handleLocationSearch = async () => {
+export default function BusPlannerApp() {
+  const [currentLocation, setCurrentLocation] = useState<Location | null>(null)
+  const [nearestStop, setNearestStop] = useState<NearestStop | null>(null)
+  const [destination, setDestination] = useState('')
+  const [plannedRoutes, setPlannedRoutes] = useState<PlanatedRoute[]>([])
+  const [hasPlanned, setHasPlanned] = useState(false)
+  const [loadingLocation, setLoadingLocation] = useState(false)
+  const [planning, setPlanning] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  // Obtener ubicación al cargar
+  useEffect(() => {
+    getCurrentLocation()
+  }, [])
+
+  const getCurrentLocation = async () => {
     setLoadingLocation(true)
+    setError(null)
     try {
       if (!navigator.geolocation) {
-        alert('La geolocalización no está soportada en tu navegador')
+        setError('La geolocalización no está soportada en tu navegador')
         setLoadingLocation(false)
         return
       }
 
       const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-        navigator.geolocation.getCurrentPosition(resolve, reject, {
-          enableHighAccuracy: true,
-          timeout: 10000,
-          maximumAge: 0,
-        })
+        navigator.geolocation.getCurrentPosition(
+          resolve,
+          reject,
+          {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 0,
+          }
+        )
       })
 
       const { latitude, longitude } = position.coords
-      setCurrentLocation(`Lat: ${latitude.toFixed(4)}, Lon: ${longitude.toFixed(4)}`)
+      setCurrentLocation({ latitude, longitude })
 
-      // Llamar a la API de rutas cercanas
-      const response = await fetch(`/api/routes/nearby?lat=${latitude}&lon=${longitude}`)
-      const data = await response.json()
-
-      if (data.success) {
-        setFilteredRoutes(data.routes)
-        setHasSearched(true)
-      } else {
-        console.error('Error en la búsqueda:', data.error)
-        alert(data.error || 'Error al buscar rutas cercanas')
-        setFilteredRoutes([])
-        setHasSearched(true)
-      }
+      // Buscar la parada más cercana
+      await findNearestStop(latitude, longitude)
     } catch (error) {
       console.error('Error al obtener ubicación:', error)
-      alert('No se pudo obtener tu ubicación. Por favor activa el GPS y permite el acceso a la ubicación.')
-      setFilteredRoutes([])
-      setHasSearched(true)
+      setError('No se pudo obtener tu ubicación. Por favor activa el GPS y permite el acceso.')
     } finally {
       setLoadingLocation(false)
     }
   }
 
+  const findNearestStop = async (lat: number, lon: number) => {
+    try {
+      const response = await fetch(
+        `/api/routes/nearby?lat=${lat}&lon=${lon}`
+      )
+      const data = await response.json()
+
+      if (data.success) {
+        // Obtener la parada más cercana de la respuesta
+        if (data.routes && data.routes.length > 0) {
+          // La API nearby no devuelve paradas directamente, necesitamos llamar a la API de planificación
+        }
+      }
+    } catch (error) {
+      console.error('Error al buscar parada cercana:', error)
+    }
+  }
+
+  const handlePlanRoute = async () => {
+    if (!destination.trim() || !currentLocation) {
+      setError('Por favor ingresa un destino y espera a obtener tu ubicación')
+      return
+    }
+
+    setPlanning(true)
+    setError(null)
+
+    try {
+      const response = await fetch(
+        `/api/routes/plan?lat=${currentLocation.latitude}&lon=${currentLocation.longitude}&destination=${encodeURIComponent(destination)}`
+      )
+      const data = await response.json()
+
+      if (data.success) {
+        setPlannedRoutes(data.routes)
+        setNearestStop(data.nearestStop)
+        setHasPlanned(true)
+
+        if (data.routes.length === 0) {
+          setError('No se encontraron rutas hacia ese destino. Intenta con otro destino.')
+        }
+      } else {
+        setError(data.error || 'Error al planificar la ruta')
+      }
+    } catch (error) {
+      console.error('Error al planificar ruta:', error)
+      setError('Error de conexión. Por favor intenta de nuevo.')
+    } finally {
+      setPlanning(false)
+    }
+  }
+
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
-      handleSearch()
+      handlePlanRoute()
     }
   }
 
@@ -121,6 +163,20 @@ export default function BusPricesApp() {
     }).format(price)
   }
 
+  const formatDistance = (km: number | null | undefined) => {
+    if (!km) return null
+    return `${km} km`
+  }
+
+  const formatDuration = (min: number | null | undefined) => {
+    if (!min) return null
+    const hours = Math.floor(min / 60)
+    const mins = min % 60
+    if (hours === 0) return `${mins} min`
+    if (mins === 0) return `${hours} h`
+    return `${hours} h ${mins} min`
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-zinc-50 to-zinc-100 dark:from-zinc-950 dark:to-zinc-900 flex flex-col">
       {/* Header */}
@@ -128,160 +184,217 @@ export default function BusPricesApp() {
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-center gap-2">
             <Bus className="w-8 h-8" />
-            <h1 className="text-2xl font-bold">Precios de Autobuses</h1>
+            <h1 className="text-2xl font-bold">Planificador de Rutas</h1>
           </div>
           <p className="text-center text-sm text-primary-foreground/80 mt-1">
-            Consulta precios de pasajes en tiempo real
+            Encuentra las rutas de autobuses para llegar a tu destino
           </p>
         </div>
       </header>
 
       {/* Main Content */}
       <main className="flex-1 container mx-auto px-4 py-6 max-w-2xl">
-        <Tabs defaultValue="search" className="w-full">
-          <TabsList className="grid w-full grid-cols-2 mb-6">
-            <TabsTrigger value="search">Buscar por Lugar</TabsTrigger>
-            <TabsTrigger value="location">Mi Ubicación</TabsTrigger>
-          </TabsList>
-
-          {/* Search by Place Tab */}
-          <TabsContent value="search" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Search className="w-5 h-5" />
-                  Buscar Destino
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <Input
-                  type="text"
-                  placeholder="Escribe el nombre del destino..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  onKeyPress={handleKeyPress}
-                  className="text-lg"
-                />
-                <Button
-                  onClick={handleSearch}
-                  disabled={searching || !searchTerm.trim()}
-                  className="w-full"
-                  size="lg"
-                >
-                  {searching ? (
-                    <>
-                      <Bus className="w-4 h-4 mr-2 animate-spin" />
-                      Buscando...
-                    </>
-                  ) : (
-                    <>
-                      <Search className="w-4 h-4 mr-2" />
-                      Buscar Precios
-                    </>
-                  )}
-                </Button>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Location Tab */}
-          <TabsContent value="location" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <MapPin className="w-5 h-5" />
-                  Usar Mi Ubicación
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <p className="text-sm text-muted-foreground">
-                  Usaremos tu ubicación GPS para encontrar las rutas de autobuses disponibles cerca de ti.
-                </p>
-                <Button
-                  onClick={handleLocationSearch}
-                  disabled={loadingLocation}
-                  className="w-full"
-                  size="lg"
-                >
-                  <MapPin className="w-4 h-4 mr-2" />
-                  {loadingLocation ? 'Obteniendo ubicación...' : 'Buscar Cerca de Mí'}
-                </Button>
-                {currentLocation && (
-                  <p className="text-sm text-muted-foreground text-center">
-                    Ubicación: {currentLocation}
-                  </p>
+        {/* Location Card */}
+        <Card className="mb-6 border-2 border-primary/20">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <MapPin className="w-5 h-5 text-primary" />
+              Tu Ubicación Actual
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {loadingLocation ? (
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Loader2 className="w-5 h-5 animate-spin" />
+                <span>Obteniendo tu ubicación...</span>
+              </div>
+            ) : currentLocation ? (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-sm">
+                  <MapPin className="w-4 h-4 text-green-600" />
+                  <span className="font-mono text-xs">
+                    {currentLocation.latitude.toFixed(4)}, {currentLocation.longitude.toFixed(4)}
+                  </span>
+                </div>
+                {nearestStop && (
+                  <div className="flex items-center gap-2 text-sm">
+                    <Navigation className="w-4 h-4 text-primary" />
+                    <span>
+                      Parada más cercana: <strong>{nearestStop.name}</strong>
+                      {nearestStop.city && ` (${nearestStop.city})`}
+                    </span>
+                    <Badge variant="secondary" className="ml-auto">
+                      {nearestStop.distance.toFixed(1)} km
+                    </Badge>
+                  </div>
                 )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
+                <Button
+                  onClick={getCurrentLocation}
+                  variant="outline"
+                  size="sm"
+                  className="mt-2"
+                >
+                  <MapPin className="w-4 h-4 mr-1" />
+                  Actualizar ubicación
+                </Button>
+              </div>
+            ) : (
+              <div className="text-center py-4">
+                <MapPin className="w-12 h-12 mx-auto text-muted-foreground mb-2" />
+                <p className="text-muted-foreground mb-2">
+                  {error || 'No se pudo obtener tu ubicación'}
+                </p>
+                <Button onClick={getCurrentLocation} variant="outline">
+                  <MapPin className="w-4 h-4 mr-1" />
+                  Activar GPS
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
-        {/* Results */}
-        {hasSearched && (
-          <div className="space-y-4 mt-6">
-            <div className="flex items-center justify-between">
-              <h2 className="text-xl font-semibold">
-                {filteredRoutes.length === 0
-                  ? 'No se encontraron rutas'
-                  : `${filteredRoutes.length} Ruta${filteredRoutes.length !== 1 ? 's' : ''} Encontrada${filteredRoutes.length !== 1 ? 's' : ''}`}
-              </h2>
-            </div>
+        {/* Destination Input */}
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Navigation className="w-5 h-5 text-primary" />
+              ¿Hacia dónde quieres ir?
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <Input
+              type="text"
+              placeholder="Escribe el nombre del destino (ej: Liberia, Puntarenas, Limón...)"
+              value={destination}
+              onChange={(e) => setDestination(e.target.value)}
+              onKeyPress={handleKeyPress}
+              disabled={!currentLocation}
+              className="text-lg"
+            />
+            <Button
+              onClick={handlePlanRoute}
+              disabled={!currentLocation || !destination.trim() || planning}
+              className="w-full"
+              size="lg"
+            >
+              {planning ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Calculando ruta...
+                </>
+              ) : (
+                <>
+                  <Navigation className="w-4 h-4 mr-2" />
+                  Buscar Ruta
+                </>
+              )}
+            </Button>
+          </CardContent>
+        </Card>
 
-            {filteredRoutes.length === 0 ? (
+        {/* Error Message */}
+        {error && !hasPlanned && (
+          <Card className="mb-6 border-destructive/50 bg-destructive/5">
+            <CardContent className="p-4 text-center text-destructive">
+              {error}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Planned Routes */}
+        {hasPlanned && (
+          <div className="space-y-4">
+            <h2 className="text-xl font-semibold flex items-center gap-2">
+              <Bus className="w-5 h-5" />
+              Rutas Encontradas
+              {plannedRoutes.length > 0 && (
+                <Badge variant="secondary">{plannedRoutes.length}</Badge>
+              )}
+            </h2>
+
+            {plannedRoutes.length === 0 ? (
               <Card className="p-8 text-center">
                 <Bus className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
                 <p className="text-muted-foreground">
-                  No encontramos rutas que coincidan con tu búsqueda.
-                  Intenta con otro nombre de destino.
+                  No se encontraron rutas disponibles hacia "{destination}".
+                  Intenta con otro destino más cercano o verifica que el nombre sea correcto.
                 </p>
               </Card>
             ) : (
               <div className="space-y-4">
-                {filteredRoutes.map((route) => (
-                  <Card key={route.id} className="hover:shadow-md transition-shadow">
+                {plannedRoutes.map((route) => (
+                  <Card key={route.id} className="hover:shadow-md transition-shadow border-primary/20">
                     <CardContent className="p-6">
                       <div className="space-y-4">
-                        {/* Company Name */}
-                        <div className="flex items-center gap-2">
-                          <Building2 className="w-5 h-5 text-muted-foreground" />
-                          <span className="font-semibold text-lg">{route.company}</span>
-                          <Badge variant="secondary">{route.route}</Badge>
+                        {/* Route Header */}
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Bus className="w-5 h-5 text-primary" />
+                            <span className="font-bold text-lg">{route.routeNumber}</span>
+                            <Badge variant="outline">{route.company}</Badge>
+                          </div>
+                          <div className="flex items-center gap-1 text-green-600 dark:text-green-400 font-bold text-lg">
+                            <DollarSign className="w-5 h-5" />
+                            {formatPrice(route.price)}
+                          </div>
                         </div>
 
-                        {/* Route Info */}
-                        <div className="flex items-center gap-3 text-sm">
-                          <span className="font-medium">{route.origin}</span>
-                          <MapPin className="w-4 h-4 text-primary" />
-                          <span className="font-medium">{route.destination}</span>
+                        {/* Route Path */}
+                        <div className="bg-muted/50 rounded-lg p-4 space-y-3">
+                          {/* Boarding */}
+                          <div className="flex items-start gap-3">
+                            <div className="flex flex-col items-center">
+                              <div className="w-3 h-3 rounded-full bg-primary" />
+                              <div className="w-0.5 h-8 bg-primary/30" />
+                            </div>
+                            <div className="flex-1">
+                              <p className="text-xs text-muted-foreground mb-1">Sube en:</p>
+                              <p className="font-semibold">{route.boardingStop.name}</p>
+                              {route.boardingStop.city && (
+                                <p className="text-sm text-muted-foreground">{route.boardingStop.city}</p>
+                              )}
+                              <p className="text-xs text-primary mt-1">
+                                {route.nearbyStops[0]?.distance.toFixed(1)} km de tu ubicación
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Arrow */}
+                          <div className="flex items-center justify-center">
+                            <ArrowRight className="w-6 h-6 text-primary" />
+                          </div>
+
+                          {/* Destination */}
+                          <div className="flex items-start gap-3">
+                            <div>
+                              <div className="w-3 h-3 rounded-full bg-green-600" />
+                            </div>
+                            <div className="flex-1">
+                              <p className="text-xs text-muted-foreground mb-1">Baja en:</p>
+                              <p className="font-semibold">
+                                {route.destinationStop?.name || route.destination}
+                              </p>
+                              {route.destinationStop?.city && (
+                                <p className="text-sm text-muted-foreground">{route.destinationStop.city}</p>
+                              )}
+                            </div>
+                          </div>
                         </div>
 
-                        {/* Details */}
+                        {/* Route Details */}
                         <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
-                          {route.distance && (
+                          {formatDistance(route.distanceKm) && (
                             <div className="flex items-center gap-1">
                               <MapPin className="w-4 h-4" />
-                              {route.distance}
+                              {formatDistance(route.distanceKm)}
                             </div>
                           )}
-                          {route.duration && (
+                          {formatDuration(route.durationMin) && (
                             <div className="flex items-center gap-1">
-                              <Bus className="w-4 h-4" />
-                              {route.duration}
+                              <Clock className="w-4 h-4" />
+                              {formatDuration(route.durationMin)}
                             </div>
                           )}
-                        </div>
-
-                        {/* Price */}
-                        <div className="flex items-center justify-between pt-2 border-t">
-                          <div className="flex items-center gap-2">
-                            <DollarSign className="w-5 h-5 text-green-600 dark:text-green-400" />
-                            <span className="text-2xl font-bold text-green-600 dark:text-green-400">
-                              {formatPrice(route.price)}
-                            </span>
-                          </div>
-                          <Button size="sm">
-                            Ver Detalles
-                          </Button>
                         </div>
                       </div>
                     </CardContent>
@@ -292,51 +405,26 @@ export default function BusPricesApp() {
           </div>
         )}
 
-        {/* Initial Welcome State */}
-        {!hasSearched && (
-          <div className="mt-8 space-y-4">
-            <Card className="p-6 text-center bg-gradient-to-br from-primary/5 to-primary/10 dark:from-primary/10 dark:to-primary/20">
-              <Bus className="w-16 h-16 mx-auto text-primary mb-4" />
-              <h3 className="text-xl font-semibold mb-2">Bienvenido a BusApp</h3>
-              <p className="text-muted-foreground">
-                Busca precios de autobuses por nombre del lugar o usa tu ubicación actual
-                para encontrar rutas cercanas.
-              </p>
-            </Card>
-
-            {/* Featured Destinations */}
-            <div className="space-y-3">
-              <h3 className="font-semibold text-lg">Destinos Populares</h3>
-              <div className="grid grid-cols-2 gap-3">
-                {['Liberia', 'Puntarenas', 'Limón', 'Alajuela'].map((dest) => (
-                  <Button
-                    key={dest}
-                    variant="outline"
-                    onClick={async () => {
-                      setSearchTerm(dest)
-                      setSearching(true)
-                      try {
-                        const response = await fetch(`/api/routes/search?q=${encodeURIComponent(dest)}`)
-                        const data = await response.json()
-                        if (data.success) {
-                          setFilteredRoutes(data.routes)
-                          setHasSearched(true)
-                        }
-                      } catch (error) {
-                        console.error('Error al buscar:', error)
-                        alert('Error al buscar rutas')
-                      } finally {
-                        setSearching(false)
-                      }
-                    }}
-                    disabled={searching}
-                    className="h-auto py-3 flex flex-col items-center gap-1"
-                  >
-                    <MapPin className="w-5 h-5" />
-                    <span>{dest}</span>
-                  </Button>
-                ))}
-              </div>
+        {/* Popular Destinations */}
+        {!hasPlanned && !error && (
+          <div className="space-y-3">
+            <h3 className="font-semibold text-lg">Destinos Populares</h3>
+            <div className="grid grid-cols-2 gap-3">
+              {['Liberia', 'Puntarenas', 'Limón', 'Alajuela', 'Ciudad Quesada', 'Guápiles'].map((dest) => (
+                <Button
+                  key={dest}
+                  variant="outline"
+                  onClick={() => {
+                    setDestination(dest)
+                    handlePlanRoute()
+                  }}
+                  disabled={!currentLocation || planning}
+                  className="h-auto py-3 flex flex-col items-center gap-1"
+                >
+                  <MapPin className="w-5 h-5" />
+                  <span>{dest}</span>
+                </Button>
+              ))}
             </div>
           </div>
         )}
@@ -345,7 +433,7 @@ export default function BusPricesApp() {
       {/* Footer */}
       <footer className="bg-muted/50 border-t mt-auto py-4">
         <div className="container mx-auto px-4 text-center text-sm text-muted-foreground">
-          <p>© 2025 BusApp - Precios de Autobuses</p>
+          <p>© 2025 BusApp - Planificador de Rutas de Autobuses</p>
         </div>
       </footer>
     </div>

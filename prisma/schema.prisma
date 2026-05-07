@@ -58,6 +58,31 @@ model BusRoute {
   updatedAt   DateTime     @updatedAt
   company     BusCompany   @relation(fields: [companyId], references: [id])
   prices      RoutePrice[]
+  stops       RouteStop[]
+}
+
+model Stop {
+  id          String      @id @default(cuid())
+  name        String
+  latitude    Float
+  longitude   Float
+  city        String?
+  isActive    Boolean     @default(true)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  routes      RouteStop[]
+}
+
+model RouteStop {
+  id        String   @id @default(cuid())
+  routeId   String
+  stopId    String
+  sequence  Int      // Orden de la parada en la ruta
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  route     BusRoute @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  stop      Stop     @relation(fields: [stopId], references: [id], onDelete: Cascade)
 }
 
 model RoutePrice {
