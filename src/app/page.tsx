@@ -219,22 +219,33 @@ export default function BusPlannerApp() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-zinc-50 to-zinc-100 dark:from-zinc-950 dark:to-zinc-900 flex flex-col">
-      {/* Header */}
-      <header className="bg-primary text-primary-foreground sticky top-0 z-50 shadow-lg">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-center gap-2">
-            <Bus className="w-8 h-8" />
-            <h1 className="text-2xl font-bold">Planificador de Rutas</h1>
+    <div className="min-h-screen bg-white flex flex-col font-poppins">
+      {/* Header - RutaTica Branding */}
+      <header className="bg-rutatica-red text-white sticky top-0 z-50 shadow-lg">
+        <div className="container mx-auto px-4 py-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              {/* Logo circular con colores de Costa Rica */}
+              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-rutatica-blue via-rutatica-red to-rutatica-yellow flex items-center justify-center shadow-md">
+                <Bus className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <h1 className="text-xl font-bold leading-tight">RutaTica</h1>
+                <p className="text-[10px] text-white/90">Toda Costa Rica en una APP</p>
+              </div>
+            </div>
           </div>
-          <p className="text-center text-sm text-primary-foreground/80 mt-1">
-            Encuentra las rutas de autobuses para llegar a tu destino
-          </p>
         </div>
       </header>
 
+      {/* Welcome Section */}
+      <div className="container mx-auto px-4 py-4 max-w-2xl">
+        <h2 className="text-2xl font-bold text-rutatica-darkBlue">¿A dónde vamos hoy?</h2>
+        <p className="text-sm text-gray-600 mt-1">Encuentra la mejor ruta para tu viaje</p>
+      </div>
+
       {/* Main Content */}
-      <main className="flex-1 container mx-auto px-4 py-6 max-w-2xl">
+      <main className="flex-1 container mx-auto px-4 py-3 max-w-2xl">
         {/* Location Card */}
         <Card className="mb-6 border-2 border-primary/20">
           <CardHeader>
@@ -511,11 +522,11 @@ export default function BusPlannerApp() {
       </main>
 
       {/* Footer */}
-      <footer className="bg-muted/50 border-t mt-auto py-4">
-        <div className="container mx-auto px-4 text-center text-sm text-muted-foreground space-y-1">
-          <p>© 2025 BusApp - Planificador de Rutas de Autobuses</p>
-          <p className="text-xs">
-            Datos de ubicación por <a href="https://www.openstreetmap.org" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">OpenStreetMap</a> contributors
+      <footer className="bg-rutatica-darkBlue text-white border-t mt-auto py-3">
+        <div className="container mx-auto px-4 text-center text-xs text-white/80 space-y-0.5">
+          <p className="font-semibold text-white">RutaTica - Moviendo Costa Rica</p>
+          <p className="text-[10px] text-white/60">
+            Conectando a las personas, un viaje a la vez
           </p>
         </div>
       </footer>
