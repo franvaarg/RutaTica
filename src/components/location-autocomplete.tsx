@@ -198,9 +198,9 @@ export default function LocationAutocomplete({
           placeholder={placeholder}
           disabled={disabled}
           autoComplete="off"
-          className="flex h-10 w-full min-w-0 rounded-lg border-2 border-red-100 bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 focus-visible:border-red-500 disabled:cursor-not-allowed disabled:opacity-50 pl-10 pr-10"
+          className="flex h-10 w-full min-w-0 rounded-lg border border-[#E5E7EB] bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:border-[#0052B4] disabled:cursor-not-allowed disabled:opacity-50 pl-10 pr-10"
         />
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#9CA3AF] pointer-events-none" />
         {selectedLocation && inputValue && (
           <Button
             type="button"
@@ -216,11 +216,11 @@ export default function LocationAutocomplete({
 
       {/* Lista de sugerencias */}
       {showSuggestions && (
-        <div className="absolute z-50 w-full mt-1 bg-popover text-popover-foreground rounded-lg border-2 border-red-100 shadow-lg max-h-64 overflow-y-auto">
+        <div className="absolute z-50 w-full mt-1 bg-white text-popover-foreground rounded-lg border border-[#E5E7EB] shadow-md max-h-64 overflow-y-auto">
           {loading ? (
             <div className="flex items-center justify-center py-4">
-              <div className="w-4 h-4 border-2 border-red-500 border-t-transparent rounded-full animate-spin"></div>
-              <span className="ml-2 text-xs text-muted-foreground">Buscando...</span>
+              <div className="w-4 h-4 border-2 border-[#E31837] border-t-transparent rounded-full animate-spin"></div>
+              <span className="ml-2 text-xs text-[#6B7280]">Buscando...</span>
             </div>
           ) : error ? (
             <div className="p-4">
@@ -228,11 +228,11 @@ export default function LocationAutocomplete({
                 <div className={`w-6 h-6 mb-2 rounded-full flex items-center justify-center ${error.fromCache ? 'bg-orange-100 text-orange-600' : 'bg-red-100 text-red-600'}`}>
                   ⚠️
                 </div>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-xs text-[#6B7280]">
                   {error.message}
                 </p>
                 {error.fromCache && (
-                  <p className="text-[10px] text-muted-foreground mt-1">
+                  <p className="text-[10px] text-[#6B7280] mt-1">
                     Los resultados son de búsqueda anterior
                   </p>
                 )}
@@ -241,11 +241,11 @@ export default function LocationAutocomplete({
           ) : suggestions.length === 0 && inputValue.length >= 2 ? (
             <div className="p-4">
               <div className="flex flex-col items-center text-center">
-                <Search className="w-6 h-6 text-muted-foreground mb-2" />
-                <p className="text-xs text-muted-foreground">
+                <Search className="w-6 h-6 text-[#9CA3AF] mb-2" />
+                <p className="text-xs text-[#6B7280]">
                   No se encontraron resultados para "{inputValue}"
                 </p>
-                <p className="text-[10px] text-muted-foreground mt-1">
+                <p className="text-[10px] text-[#6B7280] mt-1">
                   Intenta con otro nombre de barrio o localidad
                 </p>
               </div>
@@ -256,17 +256,17 @@ export default function LocationAutocomplete({
                 <button
                   key={suggestion.id}
                   onClick={() => handleSelect(suggestion)}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md hover:bg-red-50 hover:text-red-700 focus:bg-red-50 focus:text-red-700 cursor-pointer outline-none transition-colors"
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md hover:bg-blue-50 hover:text-[#0052B4] focus:bg-blue-50 focus:text-[#0052B4] cursor-pointer outline-none transition-colors"
                   onMouseEnter={(e) => e.currentTarget.focus()}
                 >
                   {getIcon(suggestion.type)}
                   <div className="flex flex-col text-left flex-1">
-                    <span className="font-medium">{suggestion.name}</span>
-                    <span className="text-xs text-gray-500 truncate">
+                    <span className="font-medium text-[#374151]">{suggestion.name}</span>
+                    <span className="text-xs text-[#6B7280] truncate">
                       {suggestion.displayName}
                     </span>
                   </div>
-                  <span className="text-xs text-gray-400 capitalize whitespace-nowrap">
+                  <span className="text-xs text-[#9CA3AF] capitalize whitespace-nowrap">
                     {suggestion.type}
                   </span>
                 </button>
