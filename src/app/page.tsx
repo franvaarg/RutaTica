@@ -1,12 +1,15 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { MapPin, Bus, Navigation, Clock, DollarSign, ArrowRight, Loader2, Map } from 'lucide-react'
+import { MapPin, Bus, Navigation, Clock, DollarSign, ArrowRight, Loader2, Map, Home, Star, Bell, Menu, Search, Heart, User, Wallet } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Switch } from '@/components/ui/switch'
+import { Label } from '@/components/ui/label'
 import BusMap from '@/components/map'
+import LocationAutocomplete from '@/components/location-autocomplete'
 
 interface PlanatedRoute {
   id: string
@@ -21,10 +24,18 @@ interface PlanatedRoute {
   boardingStop: {
     name: string
     city: string | null
+    coordinates?: {
+      latitude: number
+      longitude: number
+    }
   }
   destinationStop: {
     name: string
     city: string | null
+    coordinates?: {
+      latitude: number
+      longitude: number
+    } | null
   } | null
   nearbyStops: Array<{
     name: string
@@ -48,53 +59,109 @@ interface NearestStop {
   }
 }
 
+interface SelectedLocation {
+  name: string
+  lat: number
+  lon: number
+  displayName?: string
+}
+
 export default function BusPlannerApp() {
   const [currentLocation, setCurrentLocation] = useState<Location | null>(null)
   const [currentAddress, setCurrentAddress] = useState<string>('')
   const [nearestStop, setNearestStop] = useState<NearestStop | null>(null)
   const [destination, setDestination] = useState('')
+  const [selectedDestination, setSelectedDestination] = useState<SelectedLocation | null>(null)
   const [plannedRoutes, setPlannedRoutes] = useState<PlanatedRoute[]>([])
+  const [selectedRoute, setSelectedRoute] = useState<PlanatedRoute | null>(null)
   const [hasPlanned, setHasPlanned] = useState(false)
   const [loadingLocation, setLoadingLocation] = useState(false)
   const [loadingAddress, setLoadingAddress] = useState(false)
   const [planning, setPlanning] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [showFullAddress, setShowFullAddress] = useState(true)
+  const [addressData, setAddressData] = useState<any>(null)
 
-  // Obtener ubicación al cargar
   useEffect(() => {
     getCurrentLocation()
   }, [])
 
-  // Función para obtener dirección desde coordenadas usando OpenStreetMap
   const getAddressFromCoordinates = async (lat: number, lon: number): Promise<string> => {
     try {
       const response = await fetch(
         `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&accept-language=es`
       )
       const data = await response.json()
-
-      if (data && data.display_name) {
-        return data.display_name
-      }
-
-      // Si no hay dirección completa, intentar construir una con los datos disponibles
-      if (data.address) {
-        const parts = []
-        if (data.address.road) parts.push(data.address.road)
-        if (data.address.suburb) parts.push(data.address.suburb)
-        if (data.address.city || data.address.town || data.address.village) {
-          parts.push(data.address.city || data.address.town || data.address.village)
-        }
-        if (data.address.country) parts.push(data.address.country)
-        return parts.join(', ')
-      }
-
-      return ''
+      setAddressData(data)
+      return formatAddress(data, showFullAddress)
     } catch (error) {
       console.error('Error al obtener dirección:', error)
       return ''
     }
   }
+
+  const formatAddress = (data: any, useFullAddress: boolean): string => {
+    if (!data || !data.address) return ''
+    const addr = data.address
+    const parts: string[] = []
+
+    if (useFullAddress) {
+      if (addr.road) {
+        if (addr.house_number) {
+          parts.push(`${addr.road} ${addr.house_number}`)
+        } else {
+          parts.push(addr.road)
+        }
+      }
+      if (addr.neighbourhood) parts.push(addr.neighbourhood)
+      else if (addr.suburb) parts.push(addr.suburb)
+      if (addr.village) {
+        parts.push(addr.village)
+      } else if (addr.town) {
+        parts.push(addr.town)
+      } else if (addr.city) {
+        parts.push(addr.city)
+      }
+      if (addr.city && !parts.includes(addr.city)) {
+        parts.push(addr.city)
+      } else if (addr.town && !parts.includes(addr.town)) {
+        parts.push(addr.town)
+      } else if (addr.city_district) {
+        parts.push(addr.city_district)
+      }
+      if (addr.county) {
+        parts.push(addr.county)
+      }
+      if (addr.state) {
+        parts.push(addr.state)
+      }
+    } else {
+      if (addr.road) {
+        if (addr.house_number) {
+          parts.push(`${addr.road} ${addr.house_number}`)
+        } else {
+          parts.push(addr.road)
+        }
+      }
+      if (addr.neighbourhood) parts.push(addr.neighbourhood)
+      else if (addr.suburb) parts.push(addr.suburb)
+      if (addr.village) {
+        parts.push(addr.village)
+      } else if (addr.town) {
+        parts.push(addr.town)
+      } else if (addr.city) {
+        parts.push(addr.city)
+      }
+    }
+
+    return parts.join(', ')
+  }
+
+  useEffect(() => {
+    if (addressData) {
+      setCurrentAddress(formatAddress(addressData, showFullAddress))
+    }
+  }, [showFullAddress])
 
   const getCurrentLocation = async () => {
     setLoadingLocation(true)
@@ -122,12 +189,8 @@ export default function BusPlannerApp() {
 
       const { latitude, longitude } = position.coords
       setCurrentLocation({ latitude, longitude })
-
-      // Obtener la dirección usando OpenStreetMap API
       const address = await getAddressFromCoordinates(latitude, longitude)
       setCurrentAddress(address)
-
-      // Buscar la parada más cercana
       await findNearestStop(latitude, longitude)
     } catch (error) {
       console.error('Error al obtener ubicación:', error)
@@ -144,16 +207,23 @@ export default function BusPlannerApp() {
         `/api/routes/nearby?lat=${lat}&lon=${lon}`
       )
       const data = await response.json()
-
       if (data.success) {
-        // Obtener la parada más cercana de la respuesta
         if (data.routes && data.routes.length > 0) {
-          // La API nearby no devuelve paradas directamente, necesitamos llamar a la API de planificación
         }
       }
     } catch (error) {
       console.error('Error al buscar parada cercana:', error)
     }
+  }
+
+  const handleDestinationSelect = (location: any) => {
+    setSelectedDestination({
+      name: location.name,
+      lat: location.lat,
+      lon: location.lon,
+      displayName: location.displayName || location.name,
+    })
+    setDestination(location.name)
   }
 
   const handlePlanRoute = async () => {
@@ -164,6 +234,7 @@ export default function BusPlannerApp() {
 
     setPlanning(true)
     setError(null)
+    setSelectedRoute(null)
 
     try {
       const response = await fetch(
@@ -176,6 +247,10 @@ export default function BusPlannerApp() {
         setNearestStop(data.nearestStop)
         setHasPlanned(true)
 
+        if (data.routes.length > 0) {
+          setSelectedRoute(data.routes[0])
+        }
+
         if (data.routes.length === 0) {
           setError('No se encontraron rutas hacia ese destino. Intenta con otro destino.')
         }
@@ -187,12 +262,6 @@ export default function BusPlannerApp() {
       setError('Error de conexión. Por favor intenta de nuevo.')
     } finally {
       setPlanning(false)
-    }
-  }
-
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      handlePlanRoute()
     }
   }
 
@@ -219,163 +288,199 @@ export default function BusPlannerApp() {
   }
 
   return (
-    <div className="min-h-screen bg-white flex flex-col font-poppins">
-      {/* Header - RutaTica Branding */}
-      <header className="bg-rutatica-red text-white sticky top-0 z-50 shadow-lg">
-        <div className="container mx-auto px-4 py-3">
+    <div className="min-h-screen bg-gradient-to-b from-red-50 to-white dark:from-gray-900 dark:to-gray-800 flex flex-col pb-20">
+      {/* Header RutaTica Style */}
+      <header className="bg-gradient-to-r from-red-600 to-red-500 text-white shadow-lg">
+        <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              {/* Logo circular con colores de Costa Rica */}
-              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-rutatica-blue via-rutatica-red to-rutatica-yellow flex items-center justify-center shadow-md">
-                <Bus className="w-6 h-6 text-white" />
+              <div className="flex items-center justify-center w-10 h-10 bg-white rounded-full shadow-md">
+                <Bus className="w-6 h-6 text-red-600" />
               </div>
               <div>
-                <h1 className="text-xl font-bold leading-tight">RutaTica</h1>
-                <p className="text-[10px] text-white/90">Toda Costa Rica en una APP</p>
+                <h1 className="text-xl font-bold">RutaTica</h1>
+                <p className="text-xs text-red-100">Toda Costa Rica en una APP</p>
               </div>
             </div>
+            <Button variant="ghost" size="icon" className="text-white hover:bg-white/20">
+              <Bell className="w-5 h-5" />
+            </Button>
+          </div>
+          <div className="mt-4">
+            <h2 className="text-2xl font-bold mb-1">¿A dónde vamos hoy?</h2>
           </div>
         </div>
       </header>
 
-      {/* Welcome Section */}
-      <div className="container mx-auto px-4 py-4 max-w-2xl">
-        <h2 className="text-2xl font-bold text-rutatica-darkBlue">¿A dónde vamos hoy?</h2>
-        <p className="text-sm text-gray-600 mt-1">Encuentra la mejor ruta para tu viaje</p>
-      </div>
-
       {/* Main Content */}
-      <main className="flex-1 container mx-auto px-4 py-3 max-w-2xl">
-        {/* Location Card */}
-        <Card className="mb-6 border-2 border-primary/20">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <MapPin className="w-5 h-5 text-primary" />
-              Tu Ubicación Actual
+      <main className="flex-1 container mx-auto px-4 py-4 max-w-lg">
+        {/* Search Bar */}
+        <Card className="mb-4 shadow-md border-2 border-red-100">
+          <CardContent className="p-3">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+              <Input
+                placeholder="Buscar destino..."
+                className="pl-10 h-11 border-2 border-red-100 focus:border-red-500 text-base"
+                value={destination}
+                onChange={(e) => setDestination(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handlePlanRoute()}
+              />
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Quick Access Buttons */}
+        {!hasPlanned && (
+          <div className="grid grid-cols-2 gap-3 mb-4">
+            <Card className="shadow-md hover:shadow-lg transition-shadow cursor-pointer border-2 border-red-100 hover:border-red-300">
+              <CardContent className="p-4 flex flex-col items-center justify-center text-center">
+                <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mb-2">
+                  <Bus className="w-6 h-6 text-red-600" />
+                </div>
+                <span className="font-semibold text-sm text-gray-800">Rutas</span>
+              </CardContent>
+            </Card>
+
+            <Card className="shadow-md hover:shadow-lg transition-shadow cursor-pointer border-2 border-yellow-100 hover:border-yellow-300">
+              <CardContent className="p-4 flex flex-col items-center justify-center text-center">
+                <div className="w-12 h-12 bg-yellow-100 rounded-full flex items-center justify-center mb-2">
+                  <Clock className="w-6 h-6 text-yellow-600" />
+                </div>
+                <span className="font-semibold text-sm text-gray-800">Horarios</span>
+              </CardContent>
+            </Card>
+
+            <Card className="shadow-md hover:shadow-lg transition-shadow cursor-pointer border-2 border-blue-100 hover:border-blue-300">
+              <CardContent className="p-4 flex flex-col items-center justify-center text-center">
+                <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mb-2">
+                  <MapPin className="w-6 h-6 text-blue-600" />
+                </div>
+                <span className="font-semibold text-sm text-gray-800">Cercanos</span>
+              </CardContent>
+            </Card>
+
+            <Card className="shadow-md hover:shadow-lg transition-shadow cursor-pointer border-2 border-green-100 hover:border-green-300">
+              <CardContent className="p-4 flex flex-col items-center justify-center text-center">
+                <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mb-2">
+                  <Heart className="w-6 h-6 text-green-600" />
+                </div>
+                <span className="font-semibold text-sm text-gray-800">Favoritos</span>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* Route Planning Section */}
+        <Card className="mb-4 shadow-lg border-2 border-red-100">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base font-bold text-red-600">
+              <Navigation className="w-5 h-5" />
+              Planificar Ruta
             </CardTitle>
           </CardHeader>
-          <CardContent>
-            {loadingLocation || loadingAddress ? (
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <Loader2 className="w-5 h-5 animate-spin" />
-                <span>
-                  {loadingLocation ? 'Obteniendo tu ubicación...' : 'Obteniendo tu dirección...'}
-                </span>
+          <CardContent className="space-y-4">
+            {/* Origen */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <div className="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center">
+                  <MapPin className="w-3.5 h-3.5 text-white" />
+                </div>
+                <span className="font-semibold text-sm">Origen</span>
               </div>
-            ) : currentLocation ? (
-              <div className="space-y-3">
-                {/* Dirección */}
-                {currentAddress && (
-                  <div className="bg-primary/5 rounded-lg p-3 border border-primary/10">
-                    <div className="flex items-start gap-2">
-                      <MapPin className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
-                      <div className="flex-1">
-                        <p className="text-sm text-muted-foreground mb-1">Tu ubicación:</p>
-                        <p className="font-medium text-sm leading-relaxed">{currentAddress}</p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Coordenadas */}
-                <div className="flex items-center gap-2 text-sm">
-                  <MapPin className="w-4 h-4 text-green-600" />
-                  <span className="font-mono text-xs">
-                    {currentLocation.latitude.toFixed(4)}, {currentLocation.longitude.toFixed(4)}
+              {loadingLocation || loadingAddress ? (
+                <div className="flex items-center gap-2 text-muted-foreground p-3 bg-blue-50 rounded-lg border border-blue-100">
+                  <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
+                  <span className="text-sm">
+                    {loadingLocation ? 'Obteniendo ubicación...' : 'Obteniendo dirección...'}
                   </span>
                 </div>
-
-                {/* Parada más cercana */}
-                {nearestStop && (
-                  <div className="flex items-center gap-2 text-sm">
-                    <Navigation className="w-4 h-4 text-primary" />
-                    <span>
-                      Parada más cercana: <strong>{nearestStop.name}</strong>
-                      {nearestStop.city && ` (${nearestStop.city})`}
-                    </span>
-                    <Badge variant="secondary" className="ml-auto">
-                      {nearestStop.distance.toFixed(1)} km
-                    </Badge>
+              ) : currentLocation ? (
+                <div className="space-y-2">
+                  <div className="bg-blue-50 rounded-lg p-3 border border-blue-100">
+                    <p className="text-sm leading-relaxed text-gray-800">{currentAddress}</p>
                   </div>
-                )}
 
+                  <div className="flex items-center justify-between gap-2">
+                    <Label htmlFor="address-toggle" className="text-xs cursor-pointer text-gray-600">
+                      Dirección {showFullAddress ? 'completa' : 'corta'}
+                    </Label>
+                    <Switch
+                      id="address-toggle"
+                      checked={showFullAddress}
+                      onCheckedChange={setShowFullAddress}
+                      className="scale-90"
+                    />
+                  </div>
+
+                  {nearestStop && (
+                    <div className="flex items-center gap-2 text-xs text-gray-600 bg-green-50 p-2 rounded-lg">
+                      <Bus className="w-3.5 h-3.5 text-green-600" />
+                      <span>
+                        Parada: <span className="font-semibold text-green-700">{nearestStop.name}</span>
+                      </span>
+                      <Badge variant="secondary" className="ml-auto text-xs bg-green-100 text-green-700 border-green-200">
+                        {nearestStop.distance.toFixed(1)} km
+                      </Badge>
+                    </div>
+                  )}
+                </div>
+              ) : (
                 <Button
                   onClick={getCurrentLocation}
                   variant="outline"
                   size="sm"
-                  className="mt-2"
+                  className="w-full h-10 text-sm border-2 border-blue-200 text-blue-600 hover:bg-blue-50 hover:border-blue-300"
                 >
-                  <MapPin className="w-4 h-4 mr-1" />
-                  Actualizar ubicación
-                </Button>
-              </div>
-            ) : (
-              <div className="text-center py-4">
-                <MapPin className="w-12 h-12 mx-auto text-muted-foreground mb-2" />
-                <p className="text-muted-foreground mb-2">
-                  {error || 'No se pudo obtener tu ubicación'}
-                </p>
-                <Button onClick={getCurrentLocation} variant="outline">
-                  <MapPin className="w-4 h-4 mr-1" />
+                  <MapPin className="w-4 h-4 mr-2" />
                   Activar GPS
                 </Button>
+              )}
+            </div>
+
+            {/* Separator */}
+            <div className="relative py-2">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t-2 border-dashed border-gray-200"></div>
               </div>
-            )}
-          </CardContent>
-        </Card>
+              <div className="relative flex justify-center">
+                <div className="bg-white px-3">
+                  <ArrowRight className="w-6 h-6 text-gray-400" />
+                </div>
+              </div>
+            </div>
 
-        {/* Map Card */}
-        {currentLocation && (
-          <Card className="mb-6 border-2 border-primary/20">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Map className="w-5 h-5 text-primary" />
-                Mapa
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <BusMap
-                center={[currentLocation.latitude, currentLocation.longitude]}
-                zoom={14}
-                userLocation={[currentLocation.latitude, currentLocation.longitude]}
-                nearestStop={nearestStop}
+            {/* Destino */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <div className="w-6 h-6 bg-red-500 rounded-full flex items-center justify-center">
+                  <Navigation className="w-3.5 h-3.5 text-white" />
+                </div>
+                <span className="font-semibold text-sm">Destino</span>
+              </div>
+              <LocationAutocomplete
+                value={destination}
+                onChange={setDestination}
+                onSelect={handleDestinationSelect}
+                placeholder="Escribe el destino..."
+                disabled={!currentLocation || planning}
               />
-            </CardContent>
-          </Card>
-        )}
+            </div>
 
-        {/* Destination Input */}
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Navigation className="w-5 h-5 text-primary" />
-              ¿Hacia dónde quieres ir?
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <Input
-              type="text"
-              placeholder="Escribe el nombre del destino (ej: Liberia, Puntarenas, Limón...)"
-              value={destination}
-              onChange={(e) => setDestination(e.target.value)}
-              onKeyPress={handleKeyPress}
-              disabled={!currentLocation}
-              className="text-lg"
-            />
+            {/* Buscar Ruta Button */}
             <Button
               onClick={handlePlanRoute}
               disabled={!currentLocation || !destination.trim() || planning}
-              className="w-full"
-              size="lg"
+              className="w-full h-12 text-base font-semibold bg-gradient-to-r from-red-600 to-red-500 hover:from-red-700 hover:to-red-600 shadow-md"
             >
               {planning ? (
                 <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  <Loader2 className="w-5 h-5 mr-2 animate-spin" />
                   Calculando ruta...
                 </>
               ) : (
                 <>
-                  <Navigation className="w-4 h-4 mr-2" />
+                  <Navigation className="w-5 h-5 mr-2" />
                   Buscar Ruta
                 </>
               )}
@@ -383,10 +488,35 @@ export default function BusPlannerApp() {
           </CardContent>
         </Card>
 
+        {/* Map Card */}
+        {currentLocation && (
+          <Card className="mb-4 shadow-lg border-2 border-red-100">
+            <CardHeader className="py-3 px-4 bg-red-50">
+              <CardTitle className="flex items-center gap-2 text-sm font-bold text-red-700">
+                <Map className="w-4 h-4" />
+                Mapa
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-2">
+              <div className="w-full h-[50vh] min-h-[300px] max-h-[450px] rounded-lg overflow-hidden border-2 border-red-100">
+                <BusMap
+                  center={[currentLocation.latitude, currentLocation.longitude]}
+                  zoom={14}
+                  userLocation={[currentLocation.latitude, currentLocation.longitude]}
+                  nearestStop={nearestStop}
+                  plannedRoutes={plannedRoutes}
+                  selectedRoute={selectedRoute}
+                  destinationCoordinates={selectedDestination}
+                />
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Error Message */}
         {error && !hasPlanned && (
-          <Card className="mb-6 border-destructive/50 bg-destructive/5">
-            <CardContent className="p-4 text-center text-destructive">
+          <Card className="mb-4 border-2 border-red-200 bg-red-50">
+            <CardContent className="p-4 text-center text-red-700">
               {error}
             </CardContent>
           </Card>
@@ -395,56 +525,72 @@ export default function BusPlannerApp() {
         {/* Planned Routes */}
         {hasPlanned && (
           <div className="space-y-4">
-            <h2 className="text-xl font-semibold flex items-center gap-2">
-              <Bus className="w-5 h-5" />
+            <h2 className="text-xl font-bold flex items-center gap-2 text-gray-800">
+              <Bus className="w-5 h-5 text-red-600" />
               Rutas Encontradas
               {plannedRoutes.length > 0 && (
-                <Badge variant="secondary">{plannedRoutes.length}</Badge>
+                <Badge className="bg-red-600 text-white border-none">{plannedRoutes.length}</Badge>
               )}
             </h2>
 
             {plannedRoutes.length === 0 ? (
-              <Card className="p-8 text-center">
-                <Bus className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
-                <p className="text-muted-foreground">
+              <Card className="p-6 text-center shadow-md border-2 border-gray-200">
+                <Bus className="w-16 h-16 mx-auto text-gray-400 mb-4" />
+                <p className="text-gray-600 text-sm">
                   No se encontraron rutas disponibles hacia "{destination}".
                   Intenta con otro destino más cercano o verifica que el nombre sea correcto.
                 </p>
               </Card>
             ) : (
-              <div className="space-y-4">
+              <div className="space-y-3">
                 {plannedRoutes.map((route) => (
-                  <Card key={route.id} className="hover:shadow-md transition-shadow border-primary/20">
-                    <CardContent className="p-6">
-                      <div className="space-y-4">
+                  <Card
+                    key={route.id}
+                    className={`hover:shadow-lg transition-all cursor-pointer shadow-md ${
+                      selectedRoute?.id === route.id
+                        ? 'ring-2 ring-red-500 shadow-lg border-2 border-red-300'
+                        : 'border-2 border-gray-200 hover:border-red-200'
+                    }`}
+                    onClick={() => setSelectedRoute(route)}
+                  >
+                    <CardContent className="p-4">
+                      <div className="space-y-3">
                         {/* Route Header */}
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
-                            <Bus className="w-5 h-5 text-primary" />
-                            <span className="font-bold text-lg">{route.routeNumber}</span>
-                            <Badge variant="outline">{route.company}</Badge>
+                            <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
+                              <Bus className="w-5 h-5 text-red-600" />
+                            </div>
+                            <div>
+                              <span className="font-bold text-lg text-gray-800">{route.routeNumber}</span>
+                              <Badge variant="outline" className="ml-2 text-xs border-blue-200 text-blue-600">
+                                {route.company}
+                              </Badge>
+                            </div>
                           </div>
-                          <div className="flex items-center gap-1 text-green-600 dark:text-green-400 font-bold text-lg">
-                            <DollarSign className="w-5 h-5" />
-                            {formatPrice(route.price)}
+                          <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-1 text-red-600 font-bold text-lg">
+                              <DollarSign className="w-5 h-5" />
+                              {formatPrice(route.price)}
+                            </div>
                           </div>
                         </div>
 
                         {/* Route Path */}
-                        <div className="bg-muted/50 rounded-lg p-4 space-y-3">
+                        <div className="bg-gradient-to-r from-blue-50 to-red-50 rounded-lg p-3 space-y-2">
                           {/* Boarding */}
-                          <div className="flex items-start gap-3">
+                          <div className="flex items-start gap-2">
                             <div className="flex flex-col items-center">
-                              <div className="w-3 h-3 rounded-full bg-primary" />
-                              <div className="w-0.5 h-8 bg-primary/30" />
+                              <div className="w-3 h-3 rounded-full bg-blue-500" />
+                              <div className="w-0.5 h-8 bg-blue-200" />
                             </div>
                             <div className="flex-1">
-                              <p className="text-xs text-muted-foreground mb-1">Sube en:</p>
-                              <p className="font-semibold">{route.boardingStop.name}</p>
+                              <p className="text-xs text-gray-500 mb-1">Sube en:</p>
+                              <p className="font-semibold text-sm text-gray-800">{route.boardingStop.name}</p>
                               {route.boardingStop.city && (
-                                <p className="text-sm text-muted-foreground">{route.boardingStop.city}</p>
+                                <p className="text-xs text-gray-600">{route.boardingStop.city}</p>
                               )}
-                              <p className="text-xs text-primary mt-1">
+                              <p className="text-xs text-blue-600 mt-1 font-medium">
                                 {route.nearbyStops[0]?.distance.toFixed(1)} km de tu ubicación
                               </p>
                             </div>
@@ -452,37 +598,37 @@ export default function BusPlannerApp() {
 
                           {/* Arrow */}
                           <div className="flex items-center justify-center">
-                            <ArrowRight className="w-6 h-6 text-primary" />
+                            <ArrowRight className="w-5 h-5 text-gray-400" />
                           </div>
 
                           {/* Destination */}
-                          <div className="flex items-start gap-3">
+                          <div className="flex items-start gap-2">
                             <div>
-                              <div className="w-3 h-3 rounded-full bg-green-600" />
+                              <div className="w-3 h-3 rounded-full bg-red-500" />
                             </div>
                             <div className="flex-1">
-                              <p className="text-xs text-muted-foreground mb-1">Baja en:</p>
-                              <p className="font-semibold">
+                              <p className="text-xs text-gray-500 mb-1">Baja en:</p>
+                              <p className="font-semibold text-sm text-gray-800">
                                 {route.destinationStop?.name || route.destination}
                               </p>
                               {route.destinationStop?.city && (
-                                <p className="text-sm text-muted-foreground">{route.destinationStop.city}</p>
+                                <p className="text-xs text-gray-600">{route.destinationStop.city}</p>
                               )}
                             </div>
                           </div>
                         </div>
 
                         {/* Route Details */}
-                        <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
+                        <div className="flex flex-wrap gap-3 text-xs text-gray-600">
                           {formatDistance(route.distanceKm) && (
                             <div className="flex items-center gap-1">
-                              <MapPin className="w-4 h-4" />
+                              <MapPin className="w-4 h-4 text-blue-500" />
                               {formatDistance(route.distanceKm)}
                             </div>
                           )}
                           {formatDuration(route.durationMin) && (
                             <div className="flex items-center gap-1">
-                              <Clock className="w-4 h-4" />
+                              <Clock className="w-4 h-4 text-yellow-500" />
                               {formatDuration(route.durationMin)}
                             </div>
                           )}
@@ -497,9 +643,9 @@ export default function BusPlannerApp() {
         )}
 
         {/* Popular Destinations */}
-        {!hasPlanned && !error && (
+        {!hasPlanned && !error && currentLocation && (
           <div className="space-y-3">
-            <h3 className="font-semibold text-lg">Destinos Populares</h3>
+            <h3 className="font-bold text-lg text-gray-800">Destinos Populares</h3>
             <div className="grid grid-cols-2 gap-3">
               {['Liberia', 'Puntarenas', 'Limón', 'Alajuela', 'Ciudad Quesada', 'Guápiles'].map((dest) => (
                 <Button
@@ -510,10 +656,10 @@ export default function BusPlannerApp() {
                     handlePlanRoute()
                   }}
                   disabled={!currentLocation || planning}
-                  className="h-auto py-3 flex flex-col items-center gap-1"
+                  className="h-auto py-4 flex flex-col items-center gap-2 border-2 border-red-100 hover:border-red-300 hover:bg-red-50 text-gray-700"
                 >
-                  <MapPin className="w-5 h-5" />
-                  <span>{dest}</span>
+                  <MapPin className="w-5 h-5 text-red-500" />
+                  <span className="font-semibold">{dest}</span>
                 </Button>
               ))}
             </div>
@@ -521,15 +667,31 @@ export default function BusPlannerApp() {
         )}
       </main>
 
-      {/* Footer */}
-      <footer className="bg-rutatica-darkBlue text-white border-t mt-auto py-3">
-        <div className="container mx-auto px-4 text-center text-xs text-white/80 space-y-0.5">
-          <p className="font-semibold text-white">RutaTica - Moviendo Costa Rica</p>
-          <p className="text-[10px] text-white/60">
-            Conectando a las personas, un viaje a la vez
-          </p>
+      {/* Bottom Navigation */}
+      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t-2 border-gray-200 shadow-lg z-50">
+        <div className="flex justify-around items-center py-2 px-2 max-w-lg mx-auto">
+          <Button variant="ghost" className="flex flex-col items-center gap-1 h-16 w-16 text-red-600 hover:bg-red-50">
+            <Home className="w-6 h-6" />
+            <span className="text-xs font-medium">Inicio</span>
+          </Button>
+          <Button variant="ghost" className="flex flex-col items-center gap-1 h-16 w-16 text-gray-500 hover:bg-gray-50">
+            <Bus className="w-6 h-6" />
+            <span className="text-xs font-medium">Rutas</span>
+          </Button>
+          <Button variant="ghost" className="flex flex-col items-center gap-1 h-16 w-16 text-gray-500 hover:bg-gray-50">
+            <Map className="w-6 h-6" />
+            <span className="text-xs font-medium">Mapa</span>
+          </Button>
+          <Button variant="ghost" className="flex flex-col items-center gap-1 h-16 w-16 text-gray-500 hover:bg-gray-50">
+            <Wallet className="w-6 h-6" />
+            <span className="text-xs font-medium">Pagos</span>
+          </Button>
+          <Button variant="ghost" className="flex flex-col items-center gap-1 h-16 w-16 text-gray-500 hover:bg-gray-50">
+            <User className="w-6 h-6" />
+            <span className="text-xs font-medium">Perfil</span>
+          </Button>
         </div>
-      </footer>
+      </nav>
     </div>
   )
 }
