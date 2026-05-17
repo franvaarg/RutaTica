@@ -61,19 +61,13 @@ export default function LocationAutocomplete({
 }: LocationAutocompleteProps) {
   const [suggestions, setSuggestions] = useState<LocationSuggestion[]>([])
   const [selectedLocation, setSelectedLocation] = useState<LocationSuggestion | null>(null)
-  const [inputValue, setInputValue] = useState(value)
   const [showSuggestions, setShowSuggestions] = useState(false)
   const searchTimeout = useRef<NodeJS.Timeout>()
   const inputRef = useRef<HTMLInputElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
-  // Sincronizar inputValue con value cuando cambia externamente
-  useEffect(() => {
-    setInputValue(value)
-    if (!value) {
-      setSelectedLocation(null)
-    }
-  }, [value])
+  // Usar el valor prop directamente en lugar de sincronizar con state
+  const displayValue = value || ''
 
   // Cerrar sugerencias al hacer clic fuera
   useEffect(() => {
@@ -91,7 +85,7 @@ export default function LocationAutocomplete({
 
   // Buscar sugerencias mientras el usuario escribe (usando datos en memoria)
   useEffect(() => {
-    const query = inputValue.trim()
+    const query = displayValue.trim()
 
     // Limpiar timeout anterior
     if (searchTimeout.current) {
@@ -99,8 +93,11 @@ export default function LocationAutocomplete({
     }
 
     if (query.length < 2) {
-      setSuggestions([])
-      setShowSuggestions(false)
+      // Usar setTimeout para evitar setState síncrono en effect
+      searchTimeout.current = setTimeout(() => {
+        setSuggestions([])
+        setShowSuggestions(false)
+      }, 0)
       return
     }
 
@@ -125,18 +122,16 @@ export default function LocationAutocomplete({
         clearTimeout(searchTimeout.current)
       }
     }
-  }, [inputValue])
+  }, [displayValue])
 
   const handleSelect = (location: LocationSuggestion) => {
     setSelectedLocation(location)
-    setInputValue(location.name)
     onChange(location.name)
     onSelect(location)
     setShowSuggestions(false)
   }
 
   const handleClear = () => {
-    setInputValue('')
     onChange('')
     setSelectedLocation(null)
     setSuggestions([])
@@ -169,15 +164,14 @@ export default function LocationAutocomplete({
         <input
           ref={inputRef}
           type="text"
-          value={inputValue}
+          value={displayValue}
           onChange={(e) => {
             const newValue = e.target.value
-            setInputValue(newValue)
             onChange(newValue)
           }}
           onKeyDown={handleKeyDown}
           onFocus={() => {
-            if (inputValue.length >= 2 && suggestions.length > 0) {
+            if (displayValue.length >= 2 && suggestions.length > 0) {
               setShowSuggestions(true)
             }
           }}
@@ -187,7 +181,7 @@ export default function LocationAutocomplete({
           className="flex h-10 w-full min-w-0 rounded-lg border border-[#E5E7EB] bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:border-[#0052B4] disabled:cursor-not-allowed disabled:opacity-50 pl-10 pr-10"
         />
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#9CA3AF] pointer-events-none" />
-        {selectedLocation && inputValue && (
+        {selectedLocation && displayValue && (
           <Button
             type="button"
             variant="ghost"
@@ -208,7 +202,7 @@ export default function LocationAutocomplete({
               <div className="flex flex-col items-center text-center">
                 <Search className="w-6 h-6 text-[#9CA3AF] mb-2" />
                 <p className="text-xs text-[#6B7280]">
-                  No se encontraron resultados para "{inputValue}"
+                  No se encontraron resultados para "{displayValue}"
                 </p>
                 <p className="text-[10px] text-[#6B7280] mt-1">
                   Intenta con otro nombre de ciudad o localidad
