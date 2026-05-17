@@ -1,9 +1,35 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import dynamic from 'next/dynamic'
 
-// Importar componentes de react-leaflet de forma dinámica para evitar problemas de SSR
+// Variable global para cachear la instancia de Leaflet
+let leafletInstance: any = null
+let leafletPromise: Promise<any> | null = null
+
+// Función para obtener Leaflet de forma segura (optimizada con cache de promesa)
+async function getLeaflet() {
+  if (typeof window === 'undefined') return null
+
+  // Usar cache de promesa para evitar múltiples llamadas simultáneas
+  if (!leafletPromise) {
+    leafletPromise = import('leaflet').then((L) => {
+      // Fix para iconos por defecto de Leaflet en Next.js
+      delete (L.Icon.Default.prototype as any)._getIconUrl
+      L.Icon.Default.mergeOptions({
+        iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+        iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+        shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+      })
+      leafletInstance = L
+      return L
+    })
+  }
+
+  return leafletPromise
+}
+
+// Importar componentes de react-leaflet de forma dinámica
 const MapContainer = dynamic(
   () => import('react-leaflet').then((mod) => mod.MapContainer),
   { ssr: false }
@@ -24,26 +50,6 @@ const Polyline = dynamic(
   () => import('react-leaflet').then((mod) => mod.Polyline),
   { ssr: false }
 )
-
-// Variable global para cachear la instancia de Leaflet
-let leafletInstance: any = null
-
-// Función para obtener Leaflet de forma segura
-async function getLeaflet() {
-  if (typeof window === 'undefined') return null
-  if (!leafletInstance) {
-    const L = await import('leaflet')
-    // Fix para iconos por defecto de Leaflet en Next.js
-    delete (L.Icon.Default.prototype as any)._getIconUrl
-    L.Icon.Default.mergeOptions({
-      iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
-      iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-      shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-    })
-    leafletInstance = L
-  }
-  return leafletInstance
-}
 
 interface RouteStop {
   name: string
@@ -93,10 +99,14 @@ const BusMap = ({
     let mounted = true
 
     const initLeaflet = async () => {
-      const leaflet = await getLeaflet()
-      if (mounted && leaflet) {
-        setL(leaflet)
-        setIsMounted(true)
+      try {
+        const leaflet = await getLeaflet()
+        if (mounted && leaflet) {
+          setL(leaflet)
+          setIsMounted(true)
+        }
+      } catch (error) {
+        console.error('Error al cargar Leaflet:', error)
       }
     }
 
@@ -107,69 +117,69 @@ const BusMap = ({
     }
   }, [])
 
-  // No renderizar nada hasta que el componente esté montado en el cliente
-  if (!isMounted || !L) {
-    return (
-      <div className="w-full h-full min-h-[300px] rounded-lg overflow-hidden border border-border flex items-center justify-center bg-muted">
-        <div className="text-center">
-          <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
-          <p className="text-muted-foreground text-sm">Cargando mapa...</p>
+  // Crear iconos personalizados con useMemo para evitar recreaciones
+  const userIcon = useMemo(() => {
+    if (!L) return null
+    return L.divIcon({
+      className: 'custom-user-marker',
+      html: `
+        <div class="relative flex items-center justify-center">
+          <div class="w-4 h-4 bg-[#0052B4] rounded-full border-2 border-white shadow-lg"></div>
+          <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-12 h-12 bg-blue-400/30 rounded-full animate-pulse"></div>
         </div>
-      </div>
-    )
-  }
+      `,
+      iconSize: [48, 48],
+      iconAnchor: [24, 24],
+    })
+  }, [L])
 
-  // Crear iconos personalizados
-  const userIcon = L.divIcon({
-    className: 'custom-user-marker',
-    html: `
-      <div class="relative flex items-center justify-center">
-        <div class="w-4 h-4 bg-blue-600 rounded-full border-2 border-white shadow-lg"></div>
-        <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-12 h-12 bg-blue-400/30 rounded-full animate-pulse"></div>
-      </div>
-    `,
-    iconSize: [48, 48],
-    iconAnchor: [24, 24],
-  })
-
-  const stopIcon = L.divIcon({
-    className: 'custom-stop-marker',
-    html: `
-      <div class="relative flex items-center justify-center">
-        <div class="w-8 h-8 bg-green-600 rounded-full border-2 border-white shadow-lg flex items-center justify-center">
-          <span class="text-white text-sm font-bold">🚌</span>
+  const stopIcon = useMemo(() => {
+    if (!L) return null
+    return L.divIcon({
+      className: 'custom-stop-marker',
+      html: `
+        <div class="relative flex items-center justify-center">
+          <div class="w-8 h-8 bg-[#10B981] rounded-full border-2 border-white shadow-lg flex items-center justify-center">
+            <span class="text-white text-sm font-bold">🚌</span>
+          </div>
         </div>
-      </div>
-    `,
-    iconSize: [32, 32],
-    iconAnchor: [16, 16],
-  })
+      `,
+      iconSize: [32, 32],
+      iconAnchor: [16, 16],
+    })
+  }, [L])
 
-  const boardingIcon = L.divIcon({
-    className: 'custom-boarding-marker',
-    html: `
-      <div class="relative flex items-center justify-center">
-        <div class="w-10 h-10 bg-orange-500 rounded-full border-3 border-white shadow-lg flex items-center justify-center">
-          <span class="text-white text-lg">⬆️</span>
+  const boardingIcon = useMemo(() => {
+    if (!L) return null
+    return L.divIcon({
+      className: 'custom-boarding-marker',
+      html: `
+        <div class="relative flex items-center justify-center">
+          <div class="w-10 h-10 bg-orange-500 rounded-full border-3 border-white shadow-lg flex items-center justify-center">
+            <span class="text-white text-lg">⬆️</span>
+          </div>
         </div>
-      </div>
-    `,
-    iconSize: [40, 40],
-    iconAnchor: [20, 20],
-  })
+      `,
+      iconSize: [40, 40],
+      iconAnchor: [20, 20],
+    })
+  }, [L])
 
-  const destinationIcon = L.divIcon({
-    className: 'custom-destination-marker',
-    html: `
-      <div class="relative flex items-center justify-center">
-        <div class="w-10 h-10 bg-red-500 rounded-full border-3 border-white shadow-lg flex items-center justify-center">
-          <span class="text-white text-lg">🏁</span>
+  const destinationIcon = useMemo(() => {
+    if (!L) return null
+    return L.divIcon({
+      className: 'custom-destination-marker',
+      html: `
+        <div class="relative flex items-center justify-center">
+          <div class="w-10 h-10 bg-[#E31837] rounded-full border-3 border-white shadow-lg flex items-center justify-center">
+            <span class="text-white text-lg">🏁</span>
+          </div>
         </div>
-      </div>
-    `,
-    iconSize: [40, 40],
-    iconAnchor: [20, 20],
-  })
+      `,
+      iconSize: [40, 40],
+      iconAnchor: [20, 20],
+    })
+  }, [L])
 
   // Crear polilínea para la ruta seleccionada
   const getRoutePolylines = () => {
@@ -189,7 +199,7 @@ const BusMap = ({
           userLocation,
           [selectedRoute.boardingStop.coordinates.latitude, selectedRoute.boardingStop.coordinates.longitude]
         ],
-        color: '#3b82f6', // Azul para caminar
+        color: '#0052B4', // Azul para caminar
         weight: 5,
         dashArray: '10, 10',
       })
@@ -210,13 +220,26 @@ const BusMap = ({
     return polylines
   }
 
+  // No renderizar nada hasta que el componente esté montado en el cliente
+  if (!isMounted || !L || !userIcon || !stopIcon || !boardingIcon || !destinationIcon) {
+    return (
+      <div className="w-full h-full min-h-[300px] rounded-lg overflow-hidden border border-[#E5E7EB] flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-[#E31837] border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
+          <p className="text-sm text-[#6B7280]">Cargando mapa...</p>
+        </div>
+      </div>
+    )
+  }
+
   return (
-    <div className="w-full h-full min-h-[300px] rounded-lg overflow-hidden border border-border">
+    <div className="w-full h-full min-h-[300px] rounded-lg overflow-hidden border border-[#E5E7EB]">
       <MapContainer
         center={center}
         zoom={zoom}
         className="w-full h-full"
         scrollWheelZoom={false}
+        zoomControl={true}
       >
         {/* Capa de OpenStreetMap */}
         <TileLayer
@@ -243,7 +266,7 @@ const BusMap = ({
           <Marker position={userLocation} icon={userIcon}>
             <Popup>
               <div className="text-sm p-1 min-w-32">
-                <strong className="text-blue-600">📍 Tu ubicación</strong>
+                <strong className="text-[#0052B4]">📍 Tu ubicación</strong>
               </div>
             </Popup>
           </Marker>
@@ -260,7 +283,7 @@ const BusMap = ({
                 <strong className="text-orange-600">⬆️ Sube aquí</strong>
                 <br />
                 {selectedRoute.boardingStop.name}
-                {selectedRoute.boardingStop.city && <><br /><span className="text-xs text-muted-foreground">{selectedRoute.boardingStop.city}</span></>}
+                {selectedRoute.boardingStop.city && <><br /><span className="text-xs text-[#6B7280]">{selectedRoute.boardingStop.city}</span></>}
               </div>
             </Popup>
           </Marker>
@@ -274,10 +297,10 @@ const BusMap = ({
           >
             <Popup>
               <div className="text-sm p-1 min-w-32">
-                <strong className="text-red-600">🏁 Destino</strong>
+                <strong className="text-[#E31837]">🏁 Destino</strong>
                 <br />
                 {selectedRoute.destinationStop.name}
-                {selectedRoute.destinationStop.city && <><br /><span className="text-xs text-muted-foreground">{selectedRoute.destinationStop.city}</span></>}
+                {selectedRoute.destinationStop.city && <><br /><span className="text-xs text-[#6B7280]">{selectedRoute.destinationStop.city}</span></>}
               </div>
             </Popup>
           </Marker>
@@ -291,7 +314,7 @@ const BusMap = ({
           >
             <Popup>
               <div className="text-sm p-1 min-w-32">
-                <strong className="text-green-600">🚌 Parada más cercana</strong>
+                <strong className="text-[#10B981]">🚌 Parada más cercana</strong>
                 <br />
                 {nearestStop.name}
               </div>
@@ -307,7 +330,7 @@ const BusMap = ({
           >
             <Popup>
               <div className="text-sm p-1 min-w-32">
-                <strong className="text-red-600">🎯 Destino</strong>
+                <strong className="text-[#E31837]">🎯 Destino</strong>
                 <br />
                 {destinationCoordinates.displayName || destinationCoordinates.name}
               </div>
