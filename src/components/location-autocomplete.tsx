@@ -1,8 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { Search, MapPin, Home, Building2, Check, X } from 'lucide-react'
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
+import { Search, MapPin, Home, Building2, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
 interface LocationSuggestion {
@@ -21,11 +20,6 @@ interface LocationSuggestion {
   }
 }
 
-interface SearchError {
-  message: string
-  fromCache?: boolean
-}
-
 interface LocationAutocompleteProps {
   value: string
   onChange: (value: string) => void
@@ -33,6 +27,30 @@ interface LocationAutocompleteProps {
   placeholder?: string
   disabled?: boolean
 }
+
+// Datos en memoria de ubicaciones comunes de Costa Rica
+const COSTA_RICA_LOCATIONS: LocationSuggestion[] = [
+  { id: '1', name: 'San José', displayName: 'San José - San José', type: 'ciudad', lat: 9.9281, lon: -84.0907, fullAddress: 'San José, San José, Costa Rica', locationData: { provincia: 'San José', canton: 'San José', localidad: 'San José', barrio: '' } },
+  { id: '2', name: 'Alajuela', displayName: 'Alajuela - Alajuela', type: 'ciudad', lat: 10.0163, lon: -84.2169, fullAddress: 'Alajuela, Alajuela, Costa Rica', locationData: { provincia: 'Alajuela', canton: 'Alajuela', localidad: 'Alajuela', barrio: '' } },
+  { id: '3', name: 'Cartago', displayName: 'Cartago - Cartago', type: 'ciudad', lat: 9.8652, lon: -83.9145, fullAddress: 'Cartago, Cartago, Costa Rica', locationData: { provincia: 'Cartago', canton: 'Cartago', localidad: 'Cartago', barrio: '' } },
+  { id: '4', name: 'Heredia', displayName: 'Heredia - Heredia', type: 'ciudad', lat: 10.0020, lon: -84.1170, fullAddress: 'Heredia, Heredia, Costa Rica', locationData: { provincia: 'Heredia', canton: 'Heredia', localidad: 'Heredia', barrio: '' } },
+  { id: '5', name: 'Puntarenas', displayName: 'Puntarenas - Puntarenas', type: 'ciudad', lat: 9.9779, lon: -84.8331, fullAddress: 'Puntarenas, Puntarenas, Costa Rica', locationData: { provincia: 'Puntarenas', canton: 'Puntarenas', localidad: 'Puntarenas', barrio: '' } },
+  { id: '6', name: 'Limón', displayName: 'Limón - Limón', type: 'ciudad', lat: 10.0015, lon: -83.0583, fullAddress: 'Limón, Limón, Costa Rica', locationData: { provincia: 'Limón', canton: 'Limón', localidad: 'Limón', barrio: '' } },
+  { id: '7', name: 'Liberia', displayName: 'Liberia - Guanacaste', type: 'ciudad', lat: 10.6324, lon: -85.4363, fullAddress: 'Liberia, Guanacaste, Costa Rica', locationData: { provincia: 'Guanacaste', canton: 'Liberia', localidad: 'Liberia', barrio: '' } },
+  { id: '8', name: 'San Pedro', displayName: 'San Pedro - Montes de Oca', type: 'localidad', lat: 9.9349, lon: -84.0520, fullAddress: 'San Pedro, Montes de Oca, San José, Costa Rica', locationData: { provincia: 'San José', canton: 'Montes de Oca', localidad: 'San Pedro', barrio: '' } },
+  { id: '9', name: 'Desamparados', displayName: 'Desamparados - Desamparados', type: 'ciudad', lat: 9.9023, lon: -84.0737, fullAddress: 'Desamparados, Desamparados, San José, Costa Rica', locationData: { provincia: 'San José', canton: 'Desamparados', localidad: 'Desamparados', barrio: '' } },
+  { id: '10', name: 'San Isidro', displayName: 'San Isidro - Pérez Zeledón', type: 'localidad', lat: 9.3768, lon: -83.6979, fullAddress: 'San Isidro, Pérez Zeledón, San José, Costa Rica', locationData: { provincia: 'San José', canton: 'Pérez Zeledón', localidad: 'San Isidro', barrio: '' } },
+  { id: '11', name: 'Ciudad Quesada', displayName: 'Ciudad Quesada - Alajuela', type: 'ciudad', lat: 10.3275, lon: -84.4372, fullAddress: 'Ciudad Quesada, San Carlos, Alajuela, Costa Rica', locationData: { provincia: 'Alajuela', canton: 'San Carlos', localidad: 'Ciudad Quesada', barrio: '' } },
+  { id: '12', name: 'Guápiles', displayName: 'Guápiles - Limón', type: 'ciudad', lat: 10.2149, lon: -83.7777, fullAddress: 'Guápiles, Pococí, Limón, Costa Rica', locationData: { provincia: 'Limón', canton: 'Pococí', localidad: 'Guápiles', barrio: '' } },
+  { id: '13', name: 'San Ramón', displayName: 'San Ramón - Alajuela', type: 'ciudad', lat: 10.0870, lon: -84.4798, fullAddress: 'San Ramón, San Ramón, Alajuela, Costa Rica', locationData: { provincia: 'Alajuela', canton: 'San Ramón', localidad: 'San Ramón', barrio: '' } },
+  { id: '14', name: 'Grecia', displayName: 'Grecia - Alajuela', type: 'ciudad', lat: 9.9554, lon: -84.3179, fullAddress: 'Grecia, Grecia, Alajuela, Costa Rica', locationData: { provincia: 'Alajuela', canton: 'Grecia', localidad: 'Grecia', barrio: '' } },
+  { id: '15', name: 'Orotina', displayName: 'Orotina - Alajuela', type: 'ciudad', lat: 9.9090, lon: -84.5242, fullAddress: 'Orotina, Orotina, Alajuela, Costa Rica', locationData: { provincia: 'Alajuela', canton: 'Orotina', localidad: 'Orotina', barrio: '' } },
+  { id: '16', name: 'Atenas', displayName: 'Atenas - Alajuela', type: 'ciudad', lat: 9.9815, lon: -84.3835, fullAddress: 'Atenas, Atenas, Alajuela, Costa Rica', locationData: { provincia: 'Alajuela', canton: 'Atenas', localidad: 'Atenas', barrio: '' } },
+  { id: '17', name: 'Puriscal', displayName: 'Puriscal - San José', type: 'ciudad', lat: 9.8511, lon: -84.3294, fullAddress: 'Santiago, Puriscal, San José, Costa Rica', locationData: { provincia: 'San José', canton: 'Puriscal', localidad: 'Santiago', barrio: '' } },
+  { id: '18', name: 'Escazú', displayName: 'Escazú - San José', type: 'ciudad', lat: 9.9280, lon: -84.1417, fullAddress: 'Escazú, Escazú, San José, Costa Rica', locationData: { provincia: 'San José', canton: 'Escazú', localidad: 'Escazú', barrio: '' } },
+  { id: '19', name: 'Santa Ana', displayName: 'Santa Ana - San José', type: 'ciudad', lat: 9.9333, lon: -84.1817, fullAddress: 'Santa Ana, Santa Ana, San José, Costa Rica', locationData: { provincia: 'San José', canton: 'Santa Ana', localidad: 'Santa Ana', barrio: '' } },
+  { id: '20', name: 'Alajuelita', displayName: 'Alajuelita - San José', type: 'ciudad', lat: 9.9017, lon: -84.1028, fullAddress: 'Alajuelita, Alajuelita, San José, Costa Rica', locationData: { provincia: 'San José', canton: 'Alajuelita', localidad: 'Alajuelita', barrio: '' } },
+]
 
 export default function LocationAutocomplete({
   value,
@@ -42,11 +60,9 @@ export default function LocationAutocomplete({
   disabled = false,
 }: LocationAutocompleteProps) {
   const [suggestions, setSuggestions] = useState<LocationSuggestion[]>([])
-  const [loading, setLoading] = useState(false)
   const [selectedLocation, setSelectedLocation] = useState<LocationSuggestion | null>(null)
   const [inputValue, setInputValue] = useState(value)
   const [showSuggestions, setShowSuggestions] = useState(false)
-  const [error, setError] = useState<SearchError | null>(null)
   const searchTimeout = useRef<NodeJS.Timeout>()
   const inputRef = useRef<HTMLInputElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -73,7 +89,7 @@ export default function LocationAutocomplete({
     }
   }, [])
 
-  // Buscar sugerencias mientras el usuario escribe
+  // Buscar sugerencias mientras el usuario escribe (usando datos en memoria)
   useEffect(() => {
     const query = inputValue.trim()
 
@@ -88,50 +104,20 @@ export default function LocationAutocomplete({
       return
     }
 
-    setLoading(true)
-    setError(null)
-
     // Esperar 300ms después de que el usuario deje de escribir
-    searchTimeout.current = setTimeout(async () => {
-      try {
-        const response = await fetch(
-          `/api/locations/search?q=${encodeURIComponent(query)}`
-        )
-        const data = await response.json()
+    searchTimeout.current = setTimeout(() => {
+      const searchTerm = query.toLowerCase()
 
-        if (data.success) {
-          setSuggestions(data.locations)
-          if (data.locations.length > 0) {
-            setShowSuggestions(true)
-          } else {
-            setShowSuggestions(false)
-          }
+      // Filtrar ubicaciones en memoria
+      const filtered = COSTA_RICA_LOCATIONS.filter(loc =>
+        loc.name.toLowerCase().includes(searchTerm) ||
+        loc.displayName.toLowerCase().includes(searchTerm) ||
+        loc.locationData?.provincia?.toLowerCase().includes(searchTerm) ||
+        loc.locationData?.canton?.toLowerCase().includes(searchTerm)
+      )
 
-          if (data.fromCache) {
-            setError({
-              message: 'Resultados de cache (servicio limitado)',
-              fromCache: true,
-            })
-          }
-        } else {
-          setSuggestions([])
-          setShowSuggestions(false)
-          setError({
-            message: data.error || 'Error al buscar',
-            fromCache: false,
-          })
-        }
-      } catch (error) {
-        console.error('Error al buscar ubicaciones:', error)
-        setSuggestions([])
-        setShowSuggestions(false)
-        setError({
-          message: 'Error de conexión. Verifica tu internet.',
-          fromCache: false,
-        })
-      } finally {
-        setLoading(false)
-      }
+      setSuggestions(filtered)
+      setShowSuggestions(filtered.length > 0)
     }, 300)
 
     return () => {
@@ -163,9 +149,9 @@ export default function LocationAutocomplete({
       case 'barrio':
         return <Home className="w-4 h-4 text-orange-600" />
       case 'localidad':
-        return <MapPin className="w-4 h-4 text-green-600" />
+        return <MapPin className="w-4 h-4 text-[#10B981]" />
       case 'ciudad':
-        return <Building2 className="w-4 h-4 text-blue-600" />
+        return <Building2 className="w-4 h-4 text-[#0052B4]" />
       default:
         return <MapPin className="w-4 h-4 text-gray-600" />
     }
@@ -217,28 +203,7 @@ export default function LocationAutocomplete({
       {/* Lista de sugerencias */}
       {showSuggestions && (
         <div className="absolute z-50 w-full mt-1 bg-white text-popover-foreground rounded-lg border border-[#E5E7EB] shadow-md max-h-64 overflow-y-auto">
-          {loading ? (
-            <div className="flex items-center justify-center py-4">
-              <div className="w-4 h-4 border-2 border-[#E31837] border-t-transparent rounded-full animate-spin"></div>
-              <span className="ml-2 text-xs text-[#6B7280]">Buscando...</span>
-            </div>
-          ) : error ? (
-            <div className="p-4">
-              <div className="flex flex-col items-center text-center">
-                <div className={`w-6 h-6 mb-2 rounded-full flex items-center justify-center ${error.fromCache ? 'bg-orange-100 text-orange-600' : 'bg-red-100 text-red-600'}`}>
-                  ⚠️
-                </div>
-                <p className="text-xs text-[#6B7280]">
-                  {error.message}
-                </p>
-                {error.fromCache && (
-                  <p className="text-[10px] text-[#6B7280] mt-1">
-                    Los resultados son de búsqueda anterior
-                  </p>
-                )}
-              </div>
-            </div>
-          ) : suggestions.length === 0 && inputValue.length >= 2 ? (
+          {suggestions.length === 0 ? (
             <div className="p-4">
               <div className="flex flex-col items-center text-center">
                 <Search className="w-6 h-6 text-[#9CA3AF] mb-2" />
@@ -246,7 +211,7 @@ export default function LocationAutocomplete({
                   No se encontraron resultados para "{inputValue}"
                 </p>
                 <p className="text-[10px] text-[#6B7280] mt-1">
-                  Intenta con otro nombre de barrio o localidad
+                  Intenta con otro nombre de ciudad o localidad
                 </p>
               </div>
             </div>
