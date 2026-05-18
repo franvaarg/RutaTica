@@ -135,6 +135,9 @@ export default function BusPlannerApp() {
       if (addr.state) {
         parts.push(addr.state)
       }
+      if (addr.postcode) {
+        parts.push(addr.postcode)
+      }
     } else {
       if (addr.road) {
         if (addr.house_number) {
