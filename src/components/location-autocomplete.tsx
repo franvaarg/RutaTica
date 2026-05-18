@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { Search, MapPin, Home, Building2, X } from 'lucide-react'
+import { Search, MapPin, Home, Building2, X, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
 interface LocationSuggestion {
@@ -17,6 +17,7 @@ interface LocationSuggestion {
     localidad?: string
     canton?: string
     provincia?: string
+    postcode?: string
   }
 }
 
@@ -28,7 +29,7 @@ interface LocationAutocompleteProps {
   disabled?: boolean
 }
 
-// Datos en memoria de ubicaciones comunes de Costa Rica
+// Datos en memoria de ubicaciones comunes de Costa Rica (usadas como sugerencias iniciales)
 const COSTA_RICA_LOCATIONS: LocationSuggestion[] = [
   { id: '1', name: 'San José', displayName: 'San José - San José', type: 'ciudad', lat: 9.9281, lon: -84.0907, fullAddress: 'San José, San José, Costa Rica', locationData: { provincia: 'San José', canton: 'San José', localidad: 'San José', barrio: '' } },
   { id: '2', name: 'Alajuela', displayName: 'Alajuela - Alajuela', type: 'ciudad', lat: 10.0163, lon: -84.2169, fullAddress: 'Alajuela, Alajuela, Costa Rica', locationData: { provincia: 'Alajuela', canton: 'Alajuela', localidad: 'Alajuela', barrio: '' } },
@@ -52,6 +53,52 @@ const COSTA_RICA_LOCATIONS: LocationSuggestion[] = [
   { id: '20', name: 'Alajuelita', displayName: 'Alajuelita - San José', type: 'ciudad', lat: 9.9017, lon: -84.1028, fullAddress: 'Alajuelita, Alajuelita, San José, Costa Rica', locationData: { provincia: 'San José', canton: 'Alajuelita', localidad: 'Alajuelita', barrio: '' } },
 ]
 
+// Función para buscar ubicaciones usando la API de Nominatim (OpenStreetMap)
+async function searchNominatim(query: string): Promise<LocationSuggestion[]> {
+  try {
+    const response = await fetch(
+      `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query + ', Costa Rica')}&addressdetails=1&limit=5&countrycodes=CR`
+    )
+
+    if (!response.ok) {
+      throw new Error('Error en la búsqueda')
+    }
+
+    const data = await response.json()
+
+    return data.map((item: any) => {
+      const addr = item.address
+      return {
+        id: item.place_id,
+        name: item.name || addr.village || addr.town || addr.city || addr.county || 'Ubicación',
+        displayName: item.display_name.split(',').slice(0, 3).join(','),
+        type: mapNominatimType(item.type, addr),
+        lat: parseFloat(item.lat),
+        lon: parseFloat(item.lon),
+        fullAddress: item.display_name,
+        locationData: {
+          barrio: addr.neighbourhood || addr.suburb || '',
+          localidad: addr.village || addr.town || addr.hamlet || '',
+          canton: addr.city_district || addr.county || addr.city || '',
+          provincia: addr.state || addr.province || '',
+          postcode: addr.postcode || '',
+        }
+      }
+    })
+  } catch (error) {
+    console.error('Error al buscar en Nominatim:', error)
+    return []
+  }
+}
+
+// Mapear tipos de Nominatim a nuestros tipos
+function mapNominatimType(nominatimType: string, addr: any): 'barrio' | 'localidad' | 'ciudad' | 'lugar' {
+  if (nominatimType === 'neighbourhood' || nominatimType === 'suburb') return 'barrio'
+  if (nominatimType === 'village' || nominatimType === 'hamlet' || nominatimType === 'town') return 'localidad'
+  if (nominatimType === 'city') return 'ciudad'
+  return 'lugar'
+}
+
 export default function LocationAutocomplete({
   value,
   onChange,
@@ -62,6 +109,8 @@ export default function LocationAutocomplete({
   const [suggestions, setSuggestions] = useState<LocationSuggestion[]>([])
   const [selectedLocation, setSelectedLocation] = useState<LocationSuggestion | null>(null)
   const [showSuggestions, setShowSuggestions] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [useNominatim, setUseNominatim] = useState(false) // Para alternar entre memoria y API
   const searchTimeout = useRef<NodeJS.Timeout>()
   const inputRef = useRef<HTMLInputElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -83,7 +132,7 @@ export default function LocationAutocomplete({
     }
   }, [])
 
-  // Buscar sugerencias mientras el usuario escribe (usando datos en memoria)
+  // Buscar sugerencias mientras el usuario escribe
   useEffect(() => {
     const query = displayValue.trim()
 
@@ -97,32 +146,47 @@ export default function LocationAutocomplete({
       searchTimeout.current = setTimeout(() => {
         setSuggestions([])
         setShowSuggestions(false)
+        setUseNominatim(false)
       }, 0)
       return
     }
 
-    // Esperar 300ms después de que el usuario deje de escribir
-    searchTimeout.current = setTimeout(() => {
-      const searchTerm = query.toLowerCase()
+    // Esperar 400ms después de que el usuario deje de escribir
+    searchTimeout.current = setTimeout(async () => {
+      setLoading(true)
+      let results: LocationSuggestion[] = []
 
-      // Filtrar ubicaciones en memoria
-      const filtered = COSTA_RICA_LOCATIONS.filter(loc =>
-        loc.name.toLowerCase().includes(searchTerm) ||
-        loc.displayName.toLowerCase().includes(searchTerm) ||
-        loc.locationData?.provincia?.toLowerCase().includes(searchTerm) ||
-        loc.locationData?.canton?.toLowerCase().includes(searchTerm)
+      // Primero buscar en memoria para ubicaciones comunes
+      const memoryResults = COSTA_RICA_LOCATIONS.filter(loc =>
+        loc.name.toLowerCase().includes(query.toLowerCase()) ||
+        loc.displayName.toLowerCase().includes(query.toLowerCase()) ||
+        loc.locationData?.provincia?.toLowerCase().includes(query.toLowerCase()) ||
+        loc.locationData?.canton?.toLowerCase().includes(query.toLowerCase())
       )
 
-      setSuggestions(filtered)
-      setShowSuggestions(filtered.length > 0)
-    }, 300)
+      if (memoryResults.length > 0 && !useNominatim) {
+        // Si encontramos resultados en memoria y no se ha usado Nominatim todavía
+        results = memoryResults
+      } else {
+        // Usar Nominatim si no hay resultados en memoria o si el usuario ya usó Nominatim
+        setUseNominatim(true)
+        results = await searchNominatim(query)
+      }
+
+      // Usar setTimeout para evitar setState síncrono en effect
+      setTimeout(() => {
+        setSuggestions(results)
+        setShowSuggestions(results.length > 0)
+        setLoading(false)
+      }, 0)
+    }, 400)
 
     return () => {
       if (searchTimeout.current) {
         clearTimeout(searchTimeout.current)
       }
     }
-  }, [displayValue])
+  }, [displayValue, useNominatim])
 
   const handleSelect = (location: LocationSuggestion) => {
     setSelectedLocation(location)
@@ -168,6 +232,7 @@ export default function LocationAutocomplete({
           onChange={(e) => {
             const newValue = e.target.value
             onChange(newValue)
+            setUseNominatim(false) // Reiniciar para buscar primero en memoria
           }}
           onKeyDown={handleKeyDown}
           onFocus={() => {
@@ -181,7 +246,9 @@ export default function LocationAutocomplete({
           className="flex h-10 w-full min-w-0 rounded-lg border border-[#E5E7EB] bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:border-[#0052B4] disabled:cursor-not-allowed disabled:opacity-50 pl-10 pr-10"
         />
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#9CA3AF] pointer-events-none" />
-        {selectedLocation && displayValue && (
+        {loading ? (
+          <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#0052B4] animate-spin" />
+        ) : selectedLocation && displayValue ? (
           <Button
             type="button"
             variant="ghost"
@@ -191,13 +258,18 @@ export default function LocationAutocomplete({
           >
             <X className="w-3 h-3 text-muted-foreground" />
           </Button>
-        )}
+        ) : null}
       </div>
 
       {/* Lista de sugerencias */}
       {showSuggestions && (
         <div className="absolute z-50 w-full mt-1 bg-white text-popover-foreground rounded-lg border border-[#E5E7EB] shadow-md max-h-64 overflow-y-auto">
-          {suggestions.length === 0 ? (
+          {loading ? (
+            <div className="p-4 flex flex-col items-center justify-center">
+              <Loader2 className="w-6 h-6 text-[#0052B4] animate-spin mb-2" />
+              <p className="text-xs text-[#6B7280]">Buscando en Costa Rica...</p>
+            </div>
+          ) : suggestions.length === 0 ? (
             <div className="p-4">
               <div className="flex flex-col items-center text-center">
                 <Search className="w-6 h-6 text-[#9CA3AF] mb-2" />
