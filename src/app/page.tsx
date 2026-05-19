@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { MapPin, Bus, Navigation, Clock, DollarSign, ArrowRight, Loader2, Map, Home, Star, Bell, Menu, Search, Heart, User, Wallet } from 'lucide-react'
+import { MapPin, Bus, Navigation, Clock, DollarSign, ArrowRight, Loader2, Map, Home, Star, Bell, Menu, Search, Heart, User, Wallet, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -465,6 +465,17 @@ export default function BusPlannerApp() {
     }
   }
 
+  const handleResetSearch = () => {
+    setDestination('')
+    setSelectedDestination(null)
+    setPlannedRoutes([])
+    setSelectedRoute(null)
+    setRoutePath(null)
+    setBusStops(null)
+    setHasPlanned(false)
+    setError(null)
+  }
+
   const formatPrice = (price: number) => {
     return new Intl.NumberFormat('es-CR', {
       style: 'currency',
@@ -505,12 +516,27 @@ export default function BusPlannerApp() {
                 <p className="text-xs text-gray-500">Toda Costa Rica en una APP</p>
               </div>
             </div>
-            <Button variant="ghost" size="icon" className="text-gray-600 hover:bg-gray-100">
-              <Bell className="w-5 h-5" />
-            </Button>
+            <div className="flex items-center gap-2">
+              {hasPlanned && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleResetSearch}
+                  className="text-sm border-[#E5E7EB] text-gray-600 hover:bg-red-50 hover:text-red-600 hover:border-red-200"
+                >
+                  <X className="w-4 h-4 mr-1" />
+                  Reiniciar
+                </Button>
+              )}
+              <Button variant="ghost" size="icon" className="text-gray-600 hover:bg-gray-100">
+                <Bell className="w-5 h-5" />
+              </Button>
+            </div>
           </div>
-          <div className="mt-3">
-            <h2 className="text-lg font-semibold text-[#333333]">¿A dónde vamos hoy?</h2>
+          <div className="mt-3 flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-[#333333]">
+              {hasPlanned ? `Ruta a ${destination}` : '¿A dónde vamos hoy?'}
+            </h2>
           </div>
         </div>
       </header>
@@ -524,11 +550,21 @@ export default function BusPlannerApp() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#9CA3AF]" />
               <Input
                 placeholder="Buscar destino"
-                className="pl-10 h-10 border border-[#E5E7EB] focus:border-[#0052B4] text-sm"
+                className="pl-10 pr-10 h-10 border border-[#E5E7EB] focus:border-[#0052B4] text-sm"
                 value={destination}
                 onChange={(e) => setDestination(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handlePlanRoute()}
               />
+              {destination && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setDestination('')}
+                  className="absolute right-10 top-1/2 -translate-y-1/2 h-6 w-6 text-[#9CA3AF] hover:text-gray-600"
+                >
+                  <X className="w-4 h-4" />
+                </Button>
+              )}
               <Button variant="ghost" size="icon" className="absolute right-2 top-1/2 -translate-y-1/2 h-8 w-8 text-[#9CA3AF] hover:text-[#0052B4]">
                 <MapPin className="w-5 h-5" />
               </Button>
@@ -738,13 +774,24 @@ export default function BusPlannerApp() {
         {/* Planned Routes */}
         {hasPlanned && (
           <div className="space-y-4">
-            <h2 className="text-xl font-bold flex items-center gap-2 text-gray-800">
-              <Bus className="w-5 h-5 text-red-600" />
-              Rutas Encontradas
-              {plannedRoutes.length > 0 && (
-                <Badge className="bg-red-600 text-white border-none">{plannedRoutes.length}</Badge>
-              )}
-            </h2>
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-bold flex items-center gap-2 text-gray-800">
+                <Bus className="w-5 h-5 text-red-600" />
+                Rutas Encontradas
+                {plannedRoutes.length > 0 && (
+                  <Badge className="bg-red-600 text-white border-none">{plannedRoutes.length}</Badge>
+                )}
+              </h2>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleResetSearch}
+                className="text-sm border-[#E5E7EB] text-gray-600 hover:bg-red-50 hover:text-red-600 hover:border-red-200"
+              >
+                <X className="w-4 h-4 mr-1" />
+                Reiniciar búsqueda
+              </Button>
+            </div>
 
             {plannedRoutes.length === 0 ? (
               <Card className="p-6 text-center shadow-sm border border-[#E5E7EB]">
