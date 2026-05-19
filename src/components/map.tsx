@@ -86,6 +86,12 @@ interface BusMapProps {
     bus?: [number, number][]
     direct?: [number, number][]
   } | null
+  busStops?: Array<{
+    id: string
+    name: string
+    lat: number
+    lon: number
+  }> | null
 }
 
 const BusMap = ({
@@ -97,6 +103,7 @@ const BusMap = ({
   selectedRoute,
   destinationCoordinates,
   routePath,
+  busStops,
 }: BusMapProps) => {
   const [isMounted, setIsMounted] = useState(false)
   const [L, setL] = useState<any>(null)
@@ -164,13 +171,15 @@ const BusMap = ({
       className: 'custom-stop-marker',
       html: `
         <div class="relative flex items-center justify-center">
-          <div class="w-8 h-8 bg-[#10B981] rounded-full border-2 border-white shadow-lg flex items-center justify-center">
-            <span class="text-white text-sm font-bold">🚌</span>
+          <div class="w-7 h-7 bg-[#10B981] rounded-full border-2 border-white shadow-lg flex items-center justify-center">
+            <svg viewBox="0 0 24 24" class="w-4 h-4 text-white" fill="currentColor">
+              <path d="M4 16c0 .88.39 1.67 1 2.22V20c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h8v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1.78c.61-.55 1-1.34 1-2.22V6c0-3.5-3.58-4-8-4s-8 .5-8 4v10zm3.5 1c-.83 0-1.5-.67-1.5-1.5S6.67 14 7.5 14s1.5.67 1.5 1.5S8.33 17 7.5 17zm9 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm1.5-6H6V6h12v5z"/>
+            </svg>
           </div>
         </div>
       `,
-      iconSize: [32, 32],
-      iconAnchor: [16, 16],
+      iconSize: [28, 28],
+      iconAnchor: [14, 14],
     })
   }, [L])
 
@@ -407,6 +416,27 @@ const BusMap = ({
               </div>
             </Popup>
           </Marker>
+        )}
+
+        {/* Marcadores de paradas de autobús de OpenStreetMap */}
+        {busStops && busStops.length > 0 && (
+          <>
+            {busStops.map((stop) => (
+              <Marker
+                key={stop.id}
+                position={[stop.lat, stop.lon]}
+                icon={stopIcon}
+              >
+                <Popup>
+                  <div className="text-sm p-1 min-w-32">
+                    <strong className="text-[#10B981]">🚌 Parada</strong>
+                    <br />
+                    {stop.name || 'Sin nombre'}
+                  </div>
+                </Popup>
+              </Marker>
+            ))}
+          </>
         )}
       </MapContainer>
     </div>

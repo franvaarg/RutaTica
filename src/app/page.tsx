@@ -72,6 +72,13 @@ interface RoutePath {
   direct?: [number, number][]
 }
 
+interface BusStop {
+  id: string
+  name: string
+  lat: number
+  lon: number
+}
+
 export default function BusPlannerApp() {
   const [currentLocation, setCurrentLocation] = useState<Location | null>(null)
   const [currentAddress, setCurrentAddress] = useState<string>('')
@@ -81,12 +88,14 @@ export default function BusPlannerApp() {
   const [plannedRoutes, setPlannedRoutes] = useState<PlanatedRoute[]>([])
   const [selectedRoute, setSelectedRoute] = useState<PlanatedRoute | null>(null)
   const [routePath, setRoutePath] = useState<RoutePath | null>(null)
+  const [busStops, setBusStops] = useState<BusStop[] | null>(null)
   const [hasPlanned, setHasPlanned] = useState(false)
   const [loadingLocation, setLoadingLocation] = useState(false)
   const [loadingAddress, setLoadingAddress] = useState(false)
   const [planning, setPlanning] = useState(false)
   const [loadingRoute, setLoadingRoute] = useState(false)
   const [loadingDirectRoute, setLoadingDirectRoute] = useState(false)
+  const [loadingBusStops, setLoadingBusStops] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showFullAddress, setShowFullAddress] = useState(true)
   const [addressData, setAddressData] = useState<any>(null)
@@ -248,6 +257,82 @@ export default function BusPlannerApp() {
     }
   }
 
+  // Función para obtener paradas de autobús de OpenStreetMap usando Overpass API
+  const getBusStopsFromOSM = async (bounds: { south: number; west: number; north: number; east: number }) => {
+    try {
+      setLoadingBusStops(true)
+      const query = `
+        [out:json][timeout:25];
+        (
+          node["public_transport"="platform"]["bus"="yes"](${bounds.south},${bounds.west},${bounds.north},${bounds.east});
+          node["highway"="bus_stop"](${bounds.south},${bounds.west},${bounds.north},${bounds.east});
+        );
+        out body;
+        >;
+        out skel qt;
+      `
+
+      const response = await fetch('https://overpass-api.de/api/interpreter', {
+        method: 'POST',
+        body: query,
+      })
+
+      const data = await response.json()
+
+      if (data.elements && data.elements.length > 0) {
+        const stops: BusStop[] = data.elements
+          .filter((el: any) => el.type === 'node' && el.lat && el.lon)
+          .map((el: any) => ({
+            id: el.id.toString(),
+            name: el.tags?.name || el.tags?.ref || `Parada ${el.id}`,
+            lat: el.lat,
+            lon: el.lon,
+          }))
+
+        // Limitar a las 50 paradas más cercanas para no saturar el mapa
+        return stops.slice(0, 50)
+      }
+
+      return []
+    } catch (error) {
+      console.error('Error al obtener paradas de autobús:', error)
+      return []
+    } finally {
+      setLoadingBusStops(false)
+    }
+  }
+
+  // Calcular los límites del área alrededor de la ruta
+  const getRouteBounds = (routePath: RoutePath | null) => {
+    if (!routePath) return null
+
+    const allPoints: [number, number][] = []
+
+    if (routePath.walking) {
+      allPoints.push(...routePath.walking)
+    }
+    if (routePath.bus) {
+      allPoints.push(...routePath.bus)
+    }
+    if (routePath.direct) {
+      allPoints.push(...routePath.direct)
+    }
+
+    if (allPoints.length === 0) return null
+
+    const lats = allPoints.map(p => p[0])
+    const lons = allPoints.map(p => p[1])
+
+    const margin = 0.01 // Aproximadamente 1 km de margen
+
+    return {
+      south: Math.min(...lats) - margin,
+      west: Math.min(...lons) - margin,
+      north: Math.max(...lats) + margin,
+      east: Math.max(...lons) + margin,
+    }
+  }
+
   const handleDestinationSelect = (location: any) => {
     try {
       // Validar que la ubicación tenga los datos necesarios
@@ -311,6 +396,7 @@ export default function BusPlannerApp() {
     setError(null)
     setSelectedRoute(null)
     setRoutePath(null)
+    setBusStops(null)
 
     try {
       const response = await fetch(
@@ -355,6 +441,13 @@ export default function BusPlannerApp() {
           }
 
           setRoutePath(newRoutePath)
+
+          // Obtener paradas de autobús de OpenStreetMap alrededor de la ruta
+          const bounds = getRouteBounds(newRoutePath)
+          if (bounds) {
+            const stops = await getBusStopsFromOSM(bounds)
+            setBusStops(stops)
+          }
         }
 
         if (data.routes.length === 0) {
@@ -600,12 +693,14 @@ export default function BusPlannerApp() {
           <Card className="mb-4 shadow-sm border border-[#E5E7EB]">
             <CardContent className="p-2">
               <div className="relative w-full h-[40vh] min-h-[280px] max-h-[350px] rounded-lg overflow-hidden border border-[#E5E7EB] shadow-sm">
-                {(loadingRoute || loadingDirectRoute) && (
+                {(loadingRoute || loadingDirectRoute || loadingBusStops) && (
                   <div className="absolute inset-0 bg-white/80 flex items-center justify-center z-10">
                     <div className="text-center">
                       <Loader2 className="w-8 h-8 animate-spin mx-auto mb-2 text-[#E31837]" />
                       <p className="text-sm text-[#6B7280]">
-                        {loadingRoute ? 'Obteniendo ruta de calles...' : 'Obteniendo ruta al destino...'}
+                        {loadingRoute ? 'Obteniendo ruta de calles...' :
+                         loadingDirectRoute ? 'Obteniendo ruta al destino...' :
+                         'Buscando paradas de autobús...'}
                       </p>
                     </div>
                   </div>
@@ -624,6 +719,7 @@ export default function BusPlannerApp() {
                     displayName: selectedDestination.displayName
                   } : null}
                   routePath={routePath}
+                  busStops={busStops}
                 />
               </div>
             </CardContent>
