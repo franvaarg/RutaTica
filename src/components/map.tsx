@@ -81,6 +81,11 @@ interface BusMapProps {
     longitude: number
     displayName?: string
   } | null
+  routePath?: {
+    walking?: [number, number][]
+    bus?: [number, number][]
+    direct?: [number, number][]
+  } | null
 }
 
 const BusMap = ({
@@ -91,6 +96,7 @@ const BusMap = ({
   plannedRoutes,
   selectedRoute,
   destinationCoordinates,
+  routePath,
 }: BusMapProps) => {
   const [isMounted, setIsMounted] = useState(false)
   const [L, setL] = useState<any>(null)
@@ -212,15 +218,12 @@ const BusMap = ({
       dashArray?: string
     }> = []
 
-    // Si hay ruta seleccionada, mostrar la ruta completa
-    if (selectedRoute && userLocation) {
+    // Si hay ruta seleccionada con caminos reales
+    if (selectedRoute && routePath) {
       // Segmento 1: Camino a pie desde ubicación del usuario hasta parada de embarque
-      if (selectedRoute.boardingStop?.coordinates) {
+      if (routePath.walking && routePath.walking.length > 0) {
         polylines.push({
-          positions: [
-            userLocation,
-            [selectedRoute.boardingStop.coordinates.latitude, selectedRoute.boardingStop.coordinates.longitude]
-          ],
+          positions: routePath.walking,
           color: '#0052B4', // Azul para caminar
           weight: 5,
           dashArray: '10, 10',
@@ -228,25 +231,56 @@ const BusMap = ({
       }
 
       // Segmento 2: Ruta de autobús desde parada de embarque hasta destino
+      if (routePath.bus && routePath.bus.length > 0) {
+        polylines.push({
+          positions: routePath.bus,
+          color: '#16a34a', // Verde para autobús
+          weight: 6,
+        })
+      }
+    }
+    // Fallback: Si no hay ruta con caminos reales pero hay ruta seleccionada, usar líneas rectas
+    else if (selectedRoute && userLocation) {
+      if (selectedRoute.boardingStop?.coordinates) {
+        polylines.push({
+          positions: [
+            userLocation,
+            [selectedRoute.boardingStop.coordinates.latitude, selectedRoute.boardingStop.coordinates.longitude]
+          ],
+          color: '#0052B4',
+          weight: 5,
+          dashArray: '10, 10',
+        })
+      }
+
       if (selectedRoute.boardingStop?.coordinates && selectedRoute.destinationStop?.coordinates) {
         polylines.push({
           positions: [
             [selectedRoute.boardingStop.coordinates.latitude, selectedRoute.boardingStop.coordinates.longitude],
             [selectedRoute.destinationStop.coordinates.latitude, selectedRoute.destinationStop.coordinates.longitude]
           ],
-          color: '#16a34a', // Verde para autobús
+          color: '#16a34a',
           weight: 6,
         })
       }
     }
-    // Si no hay ruta seleccionada pero hay destino seleccionado, mostrar línea directa
+    // Si no hay ruta seleccionada pero hay destino seleccionado con camino directo
+    else if (routePath?.direct && routePath.direct.length > 0) {
+      polylines.push({
+        positions: routePath.direct,
+        color: '#E31837', // Rojo para conexión directa
+        weight: 4,
+        dashArray: '5, 5',
+      })
+    }
+    // Fallback: Línea directa simple
     else if (userLocation && destinationCoordinates) {
       polylines.push({
         positions: [
           userLocation,
           [destinationCoordinates.latitude, destinationCoordinates.longitude]
         ],
-        color: '#E31837', // Rojo para conexión directa
+        color: '#E31837',
         weight: 4,
         dashArray: '5, 5',
       })

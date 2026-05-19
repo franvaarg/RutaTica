@@ -66,6 +66,12 @@ interface SelectedLocation {
   displayName?: string
 }
 
+interface RoutePath {
+  walking?: [number, number][]
+  bus?: [number, number][]
+  direct?: [number, number][]
+}
+
 export default function BusPlannerApp() {
   const [currentLocation, setCurrentLocation] = useState<Location | null>(null)
   const [currentAddress, setCurrentAddress] = useState<string>('')
@@ -74,10 +80,13 @@ export default function BusPlannerApp() {
   const [selectedDestination, setSelectedDestination] = useState<SelectedLocation | null>(null)
   const [plannedRoutes, setPlannedRoutes] = useState<PlanatedRoute[]>([])
   const [selectedRoute, setSelectedRoute] = useState<PlanatedRoute | null>(null)
+  const [routePath, setRoutePath] = useState<RoutePath | null>(null)
   const [hasPlanned, setHasPlanned] = useState(false)
   const [loadingLocation, setLoadingLocation] = useState(false)
   const [loadingAddress, setLoadingAddress] = useState(false)
   const [planning, setPlanning] = useState(false)
+  const [loadingRoute, setLoadingRoute] = useState(false)
+  const [loadingDirectRoute, setLoadingDirectRoute] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showFullAddress, setShowFullAddress] = useState(true)
   const [addressData, setAddressData] = useState<any>(null)
@@ -219,6 +228,26 @@ export default function BusPlannerApp() {
     }
   }
 
+  // Función para obtener ruta de OSRM (Open Source Routing Machine)
+  const getOSRMRoute = async (start: [number, number], end: [number, number], profile: 'walking' | 'driving' = 'driving') => {
+    try {
+      const url = `https://router.project-osrm.org/route/v1/${profile}/${start[1]},${start[0]};${end[1]},${end[0]}?overview=full&geometries=geojson`
+      const response = await fetch(url)
+      const data = await response.json()
+
+      if (data.code === 'Ok' && data.routes && data.routes.length > 0) {
+        const route = data.routes[0]
+        // Extraer las coordenadas de la ruta
+        const coordinates = route.geometry.coordinates.map((coord: number[]) => [coord[1], coord[0]]) as [number, number][]
+        return coordinates
+      }
+      return null
+    } catch (error) {
+      console.error('Error al obtener ruta de OSRM:', error)
+      return null
+    }
+  }
+
   const handleDestinationSelect = (location: any) => {
     try {
       // Validar que la ubicación tenga los datos necesarios
@@ -245,9 +274,29 @@ export default function BusPlannerApp() {
       })
       setDestination(location.name || '')
       setError(null)
+
+      // Obtener ruta directa al destino seleccionado
+      if (currentLocation) {
+        getDirectRouteToDestination([currentLocation.latitude, currentLocation.longitude], [lat, lon])
+      }
     } catch (error) {
       console.error('Error al seleccionar destino:', error)
       setError('Error al procesar la ubicación seleccionada')
+    }
+  }
+
+  // Función para obtener ruta directa al destino seleccionado
+  const getDirectRouteToDestination = async (start: [number, number], end: [number, number]) => {
+    try {
+      setLoadingDirectRoute(true)
+      const route = await getOSRMRoute(start, end, 'driving')
+      if (route) {
+        setRoutePath({ direct: route })
+      }
+    } catch (error) {
+      console.error('Error al obtener ruta directa:', error)
+    } finally {
+      setLoadingDirectRoute(false)
     }
   }
 
@@ -258,8 +307,10 @@ export default function BusPlannerApp() {
     }
 
     setPlanning(true)
+    setLoadingRoute(true)
     setError(null)
     setSelectedRoute(null)
+    setRoutePath(null)
 
     try {
       const response = await fetch(
@@ -274,6 +325,36 @@ export default function BusPlannerApp() {
 
         if (data.routes.length > 0) {
           setSelectedRoute(data.routes[0])
+
+          // Obtener rutas reales de las calles usando OSRM
+          const route = data.routes[0]
+          const newRoutePath: RoutePath = {}
+
+          // Ruta caminando desde ubicación actual hasta parada de embarque
+          if (route.boardingStop?.coordinates && currentLocation) {
+            const walkingRoute = await getOSRMRoute(
+              [currentLocation.latitude, currentLocation.longitude],
+              [route.boardingStop.coordinates.latitude, route.boardingStop.coordinates.longitude],
+              'walking'
+            )
+            if (walkingRoute) {
+              newRoutePath.walking = walkingRoute
+            }
+          }
+
+          // Ruta en autobús desde parada de embarque hasta destino
+          if (route.boardingStop?.coordinates && route.destinationStop?.coordinates) {
+            const busRoute = await getOSRMRoute(
+              [route.boardingStop.coordinates.latitude, route.boardingStop.coordinates.longitude],
+              [route.destinationStop.coordinates.latitude, route.destinationStop.coordinates.longitude],
+              'driving'
+            )
+            if (busRoute) {
+              newRoutePath.bus = busRoute
+            }
+          }
+
+          setRoutePath(newRoutePath)
         }
 
         if (data.routes.length === 0) {
@@ -287,6 +368,7 @@ export default function BusPlannerApp() {
       setError('Error de conexión. Por favor intenta de nuevo.')
     } finally {
       setPlanning(false)
+      setLoadingRoute(false)
     }
   }
 
@@ -517,7 +599,17 @@ export default function BusPlannerApp() {
         {currentLocation && (
           <Card className="mb-4 shadow-sm border border-[#E5E7EB]">
             <CardContent className="p-2">
-              <div className="w-full h-[40vh] min-h-[280px] max-h-[350px] rounded-lg overflow-hidden border border-[#E5E7EB] shadow-sm">
+              <div className="relative w-full h-[40vh] min-h-[280px] max-h-[350px] rounded-lg overflow-hidden border border-[#E5E7EB] shadow-sm">
+                {(loadingRoute || loadingDirectRoute) && (
+                  <div className="absolute inset-0 bg-white/80 flex items-center justify-center z-10">
+                    <div className="text-center">
+                      <Loader2 className="w-8 h-8 animate-spin mx-auto mb-2 text-[#E31837]" />
+                      <p className="text-sm text-[#6B7280]">
+                        {loadingRoute ? 'Obteniendo ruta de calles...' : 'Obteniendo ruta al destino...'}
+                      </p>
+                    </div>
+                  </div>
+                )}
                 <BusMap
                   center={[currentLocation.latitude, currentLocation.longitude]}
                   zoom={14}
@@ -531,6 +623,7 @@ export default function BusPlannerApp() {
                     longitude: selectedDestination.lon,
                     displayName: selectedDestination.displayName
                   } : null}
+                  routePath={routePath}
                 />
               </div>
             </CardContent>
