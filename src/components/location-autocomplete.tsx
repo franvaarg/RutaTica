@@ -66,16 +66,29 @@ async function searchNominatim(query: string): Promise<LocationSuggestion[]> {
 
     const data = await response.json()
 
-    return data.map((item: any) => {
-      const addr = item.address
+    if (!Array.isArray(data) || data.length === 0) {
+      return []
+    }
+
+    return data.map((item: any, index: number) => {
+      const addr = item.address || {}
+      const lat = parseFloat(item.lat)
+      const lon = parseFloat(item.lon)
+
+      // Validar que las coordenadas sean válidas
+      if (isNaN(lat) || isNaN(lon)) {
+        console.error('Coordenadas inválidas:', item)
+        return null
+      }
+
       return {
-        id: item.place_id,
-        name: item.name || addr.village || addr.town || addr.city || addr.county || 'Ubicación',
-        displayName: item.display_name.split(',').slice(0, 3).join(','),
+        id: item.place_id || `nominatim-${index}`,
+        name: item.name || addr.village || addr.town || addr.city || addr.county || addr.suburb || 'Ubicación',
+        displayName: item.display_name ? item.display_name.split(',').slice(0, 3).join(',') : 'Ubicación',
         type: mapNominatimType(item.type, addr),
-        lat: parseFloat(item.lat),
-        lon: parseFloat(item.lon),
-        fullAddress: item.display_name,
+        lat: lat,
+        lon: lon,
+        fullAddress: item.display_name || '',
         locationData: {
           barrio: addr.neighbourhood || addr.suburb || '',
           localidad: addr.village || addr.town || addr.hamlet || '',
@@ -84,7 +97,7 @@ async function searchNominatim(query: string): Promise<LocationSuggestion[]> {
           postcode: addr.postcode || '',
         }
       }
-    })
+    }).filter((loc): loc is LocationSuggestion => loc !== null)
   } catch (error) {
     console.error('Error al buscar en Nominatim:', error)
     return []

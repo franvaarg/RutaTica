@@ -220,13 +220,35 @@ export default function BusPlannerApp() {
   }
 
   const handleDestinationSelect = (location: any) => {
-    setSelectedDestination({
-      name: location.name,
-      lat: location.lat,
-      lon: location.lon,
-      displayName: location.displayName || location.name,
-    })
-    setDestination(location.name)
+    try {
+      // Validar que la ubicación tenga los datos necesarios
+      if (!location || !location.lat || !location.lon) {
+        console.error('Ubicación inválida:', location)
+        setError('La ubicación seleccionada no tiene coordenadas válidas')
+        return
+      }
+
+      const lat = parseFloat(location.lat)
+      const lon = parseFloat(location.lon)
+
+      if (isNaN(lat) || isNaN(lon)) {
+        console.error('Coordenadas inválidas:', { lat, lon, location })
+        setError('Las coordenadas seleccionadas no son válidas')
+        return
+      }
+
+      setSelectedDestination({
+        name: location.name || 'Destino desconocido',
+        lat: lat,
+        lon: lon,
+        displayName: location.displayName || location.name || 'Destino desconocido',
+      })
+      setDestination(location.name || '')
+      setError(null)
+    } catch (error) {
+      console.error('Error al seleccionar destino:', error)
+      setError('Error al procesar la ubicación seleccionada')
+    }
   }
 
   const handlePlanRoute = async () => {
@@ -503,7 +525,12 @@ export default function BusPlannerApp() {
                   nearestStop={nearestStop}
                   plannedRoutes={plannedRoutes}
                   selectedRoute={selectedRoute}
-                  destinationCoordinates={selectedDestination}
+                  destinationCoordinates={selectedDestination ? {
+                    name: selectedDestination.name || 'Destino',
+                    latitude: selectedDestination.lat,
+                    longitude: selectedDestination.lon,
+                    displayName: selectedDestination.displayName
+                  } : null}
                 />
               </div>
             </CardContent>
