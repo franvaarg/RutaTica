@@ -133,6 +133,25 @@ const BusMap = ({
     })
   }, [L])
 
+  const originIcon = useMemo(() => {
+    if (!L) return null
+    return L.divIcon({
+      className: 'custom-origin-marker',
+      html: `
+        <div class="relative flex items-center justify-center">
+          <div class="w-10 h-10 bg-[#0052B4] rounded-full border-3 border-white shadow-lg flex items-center justify-center">
+            <span class="text-white text-lg font-bold">📍</span>
+          </div>
+          <div class="absolute -bottom-6 left-1/2 transform -translate-x-1/2 bg-white px-2 py-1 rounded shadow-md text-xs font-semibold text-[#0052B4] whitespace-nowrap">
+            Origen
+          </div>
+        </div>
+      `,
+      iconSize: [48, 64],
+      iconAnchor: [24, 48],
+    })
+  }, [L])
+
   const stopIcon = useMemo(() => {
     if (!L) return null
     return L.divIcon({
@@ -174,17 +193,18 @@ const BusMap = ({
           <div class="w-10 h-10 bg-[#E31837] rounded-full border-3 border-white shadow-lg flex items-center justify-center">
             <span class="text-white text-lg">🏁</span>
           </div>
+          <div class="absolute -bottom-6 left-1/2 transform -translate-x-1/2 bg-white px-2 py-1 rounded shadow-md text-xs font-semibold text-[#E31837] whitespace-nowrap">
+            Destino
+          </div>
         </div>
       `,
-      iconSize: [40, 40],
-      iconAnchor: [20, 20],
+      iconSize: [48, 64],
+      iconAnchor: [24, 48],
     })
   }, [L])
 
   // Crear polilínea para la ruta seleccionada
   const getRoutePolylines = () => {
-    if (!selectedRoute || !userLocation) return []
-
     const polylines: Array<{
       positions: [number, number][]
       color: string
@@ -192,28 +212,43 @@ const BusMap = ({
       dashArray?: string
     }> = []
 
-    // Segmento 1: Camino a pie desde ubicación del usuario hasta parada de embarque
-    if (selectedRoute.boardingStop?.coordinates) {
+    // Si hay ruta seleccionada, mostrar la ruta completa
+    if (selectedRoute && userLocation) {
+      // Segmento 1: Camino a pie desde ubicación del usuario hasta parada de embarque
+      if (selectedRoute.boardingStop?.coordinates) {
+        polylines.push({
+          positions: [
+            userLocation,
+            [selectedRoute.boardingStop.coordinates.latitude, selectedRoute.boardingStop.coordinates.longitude]
+          ],
+          color: '#0052B4', // Azul para caminar
+          weight: 5,
+          dashArray: '10, 10',
+        })
+      }
+
+      // Segmento 2: Ruta de autobús desde parada de embarque hasta destino
+      if (selectedRoute.boardingStop?.coordinates && selectedRoute.destinationStop?.coordinates) {
+        polylines.push({
+          positions: [
+            [selectedRoute.boardingStop.coordinates.latitude, selectedRoute.boardingStop.coordinates.longitude],
+            [selectedRoute.destinationStop.coordinates.latitude, selectedRoute.destinationStop.coordinates.longitude]
+          ],
+          color: '#16a34a', // Verde para autobús
+          weight: 6,
+        })
+      }
+    }
+    // Si no hay ruta seleccionada pero hay destino seleccionado, mostrar línea directa
+    else if (userLocation && destinationCoordinates) {
       polylines.push({
         positions: [
           userLocation,
-          [selectedRoute.boardingStop.coordinates.latitude, selectedRoute.boardingStop.coordinates.longitude]
+          [destinationCoordinates.latitude, destinationCoordinates.longitude]
         ],
-        color: '#0052B4', // Azul para caminar
-        weight: 5,
-        dashArray: '10, 10',
-      })
-    }
-
-    // Segmento 2: Ruta de autobús desde parada de embarque hasta destino
-    if (selectedRoute.boardingStop?.coordinates && selectedRoute.destinationStop?.coordinates) {
-      polylines.push({
-        positions: [
-          [selectedRoute.boardingStop.coordinates.latitude, selectedRoute.boardingStop.coordinates.longitude],
-          [selectedRoute.destinationStop.coordinates.latitude, selectedRoute.destinationStop.coordinates.longitude]
-        ],
-        color: '#16a34a', // Verde para autobús
-        weight: 6,
+        color: '#E31837', // Rojo para conexión directa
+        weight: 4,
+        dashArray: '5, 5',
       })
     }
 
@@ -221,7 +256,7 @@ const BusMap = ({
   }
 
   // No renderizar nada hasta que el componente esté montado en el cliente
-  if (!isMounted || !L || !userIcon || !stopIcon || !boardingIcon || !destinationIcon) {
+  if (!isMounted || !L || !userIcon || !originIcon || !stopIcon || !boardingIcon || !destinationIcon) {
     return (
       <div className="w-full h-full min-h-[300px] rounded-lg overflow-hidden border border-[#E5E7EB] flex items-center justify-center bg-gray-50">
         <div className="text-center">
@@ -247,8 +282,8 @@ const BusMap = ({
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
 
-        {/* Polilíneas de la ruta seleccionada */}
-        {selectedRoute && getRoutePolylines().map((polyline, index) => (
+        {/* Polilíneas de la ruta seleccionada o conexión directa */}
+        {getRoutePolylines().map((polyline, index) => (
           <Polyline
             key={index}
             positions={polyline.positions}
@@ -261,12 +296,14 @@ const BusMap = ({
           />
         ))}
 
-        {/* Marcador de ubicación del usuario */}
+        {/* Marcador de origen (ubicación del usuario) */}
         {userLocation && (
-          <Marker position={userLocation} icon={userIcon}>
+          <Marker position={userLocation} icon={selectedRoute ? userIcon : originIcon}>
             <Popup>
               <div className="text-sm p-1 min-w-32">
-                <strong className="text-[#0052B4]">📍 Tu ubicación</strong>
+                <strong className="text-[#0052B4]">📍 Origen</strong>
+                <br />
+                <span className="text-xs text-[#6B7280]">Tu ubicación actual</span>
               </div>
             </Popup>
           </Marker>
@@ -306,8 +343,24 @@ const BusMap = ({
           </Marker>
         )}
 
-        {/* Marcador de parada más cercana (solo cuando no hay ruta seleccionada) */}
-        {!selectedRoute && nearestStop && (
+        {/* Marcador de destino seleccionado */}
+        {destinationCoordinates && (
+          <Marker
+            position={[destinationCoordinates.latitude, destinationCoordinates.longitude]}
+            icon={destinationIcon}
+          >
+            <Popup>
+              <div className="text-sm p-1 min-w-32">
+                <strong className="text-[#E31837]">🏁 Destino</strong>
+                <br />
+                {destinationCoordinates.displayName || destinationCoordinates.name}
+              </div>
+            </Popup>
+          </Marker>
+        )}
+
+        {/* Marcador de parada más cercana (solo cuando no hay ruta ni destino seleccionado) */}
+        {!selectedRoute && !destinationCoordinates && nearestStop && (
           <Marker
             position={[nearestStop.coordinates.latitude, nearestStop.coordinates.longitude]}
             icon={stopIcon}
@@ -317,22 +370,6 @@ const BusMap = ({
                 <strong className="text-[#10B981]">🚌 Parada más cercana</strong>
                 <br />
                 {nearestStop.name}
-              </div>
-            </Popup>
-          </Marker>
-        )}
-
-        {/* Marcador de destino seleccionado (cuando se selecciona del autocompletado) */}
-        {!selectedRoute && destinationCoordinates && (
-          <Marker
-            position={[destinationCoordinates.latitude, destinationCoordinates.longitude]}
-            icon={destinationIcon}
-          >
-            <Popup>
-              <div className="text-sm p-1 min-w-32">
-                <strong className="text-[#E31837]">🎯 Destino</strong>
-                <br />
-                {destinationCoordinates.displayName || destinationCoordinates.name}
               </div>
             </Popup>
           </Marker>
