@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useMemo, useRef } from 'react'
 import dynamic from 'next/dynamic'
-import { MapContainer as LeafletMapContainer, useMap } from 'react-leaflet'
 
 // Variable global para cachear la instancia de Leaflet
 let leafletInstance: any = null
@@ -49,6 +48,10 @@ const Popup = dynamic(
 )
 const Polyline = dynamic(
   () => import('react-leaflet').then((mod) => mod.Polyline),
+  { ssr: false }
+)
+const useMap = dynamic(
+  () => import('react-leaflet').then((mod) => mod.useMap),
   { ssr: false }
 )
 
@@ -108,6 +111,13 @@ interface PlannedRoute {
   destinationStop: RouteStop & { coordinates?: { latitude: number; longitude: number } | null }
 }
 
+interface BusStop {
+  id: string
+  name: string
+  lat: number
+  lon: number
+}
+
 interface BusMapProps {
   center: [number, number]
   zoom?: number
@@ -153,6 +163,8 @@ const BusMap = ({
 }: BusMapProps) => {
   const [isMounted, setIsMounted] = useState(false)
   const [L, setL] = useState<any>(null)
+  const [dbStops, setDbStops] = useState<any[]>([])
+  const [loadingDbStops, setLoadingDbStops] = useState(false)
   const mapRef = useRef<any>(null)
 
   useEffect(() => {
@@ -176,6 +188,31 @@ const BusMap = ({
       mounted = false
     }
   }, [])
+
+  // Cargar paradas de buses de la base de datos
+  useEffect(() => {
+    const fetchDbStops = async () => {
+      if (!userLocation) return
+
+      try {
+        setLoadingDbStops(true)
+        const response = await fetch(
+          `/api/stops?lat=${userLocation[0]}&lon=${userLocation[1]}&radius=25`
+        )
+        const data = await response.json()
+
+        if (data.success && data.stops) {
+          setDbStops(data.stops)
+        }
+      } catch (error) {
+        console.error('Error al cargar paradas de la base de datos:', error)
+      } finally {
+        setLoadingDbStops(false)
+      }
+    }
+
+    fetchDbStops()
+  }, [userLocation])
 
   // Crear iconos personalizados con useMemo para evitar recreaciones
   const userIcon = useMemo(() => {
@@ -227,6 +264,26 @@ const BusMap = ({
       `,
       iconSize: [28, 28],
       iconAnchor: [14, 14],
+    })
+  }, [L])
+
+  // Icono especial para paradas de buses de la base de datos (resaltado)
+  const busStationIcon = useMemo(() => {
+    if (!L) return null
+    return L.divIcon({
+      className: 'custom-bus-station-marker',
+      html: `
+        <div class="relative flex items-center justify-center">
+          <div class="w-9 h-9 bg-[#E31837] rounded-full border-3 border-white shadow-lg flex items-center justify-center">
+            <svg viewBox="0 0 24 24" class="w-5 h-5 text-white" fill="currentColor">
+              <path d="M4 16c0 .88.39 1.67 1 2.22V20c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h8v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1.78c.61-.55 1-1.34 1-2.22V6c0-3.5-3.58-4-8-4s-8 .5-8 4v10zm3.5 1c-.83 0-1.5-.67-1.5-1.5S6.67 14 7.5 14s1.5.67 1.5 1.5S8.33 17 7.5 17zm9 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm1.5-6H6V6h12v5z"/>
+            </svg>
+          </div>
+          <div class="absolute top-0 right-0 w-3 h-3 bg-[#FBBF24] rounded-full border-2 border-white shadow-md"></div>
+        </div>
+      `,
+      iconSize: [36, 36],
+      iconAnchor: [18, 18],
     })
   }, [L])
 
@@ -346,7 +403,7 @@ const BusMap = ({
   }
 
   // No renderizar nada hasta que el componente esté montado en el cliente
-  if (!isMounted || !L || !userIcon || !originIcon || !stopIcon || !boardingIcon || !destinationIcon) {
+  if (!isMounted || !L || !userIcon || !originIcon || !stopIcon || !boardingIcon || !destinationIcon || !busStationIcon) {
     return (
       <div className="w-full h-full min-h-[300px] rounded-lg overflow-hidden border border-[#E5E7EB] flex items-center justify-center bg-gray-50">
         <div className="text-center">
@@ -401,6 +458,39 @@ const BusMap = ({
               </div>
             </Popup>
           </Marker>
+        )}
+
+        {/* Marcadores de paradas de buses de la base de datos (resaltados) */}
+        {dbStops && dbStops.length > 0 && (
+          <>
+            {dbStops.map((stop) => (
+              <Marker
+                key={`db-${stop.id}`}
+                position={[stop.latitude, stop.longitude]}
+                icon={busStationIcon}
+              >
+                <Popup>
+                  <div className="text-sm p-1 min-w-40">
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="w-6 h-6 bg-[#E31837] rounded-full flex items-center justify-center">
+                        <svg viewBox="0 0 24 24" className="w-4 h-4 text-white" fill="currentColor">
+                          <path d="M4 16c0 .88.39 1.67 1 2.22V20c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h8v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1.78c.61-.55 1-1.34 1-2.22V6c0-3.5-3.58-4-8-4s-8 .5-8 4v10zm3.5 1c-.83 0-1.5-.67-1.5-1.5S6.67 14 7.5 14s1.5.67 1.5 1.5S8.33 17 7.5 17zm9 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm1.5-6H6V6h12v5z"/>
+                        </svg>
+                      </div>
+                      <strong className="text-[#E31837]">Parada de Bus</strong>
+                    </div>
+                    <p className="font-semibold text-[#374151]">{stop.name}</p>
+                    {stop.city && <p className="text-xs text-[#6B7280] mt-1">{stop.city}</p>}
+                    {stop.distance !== undefined && (
+                      <p className="text-xs text-[#0052B4] mt-1 font-medium">
+                        {stop.distance.toFixed(1)} km de tu ubicación
+                      </p>
+                    )}
+                  </div>
+                </Popup>
+              </Marker>
+            ))}
+          </>
         )}
 
         {/* Marcador de parada de embarque */}

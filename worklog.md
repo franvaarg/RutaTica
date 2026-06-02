@@ -57,3 +57,34 @@ Stage Summary:
 - Posicionados en la esquina inferior derecha para evitar conflicto con el header
 - Estilo consistente con el diseño de la aplicación
 - Fondo blanco con sombra y bordes para mejor visibilidad
+
+---
+Task ID: 3
+Agent: Z.ai Code
+Task: Resaltar las paradas de buses de la base de datos en el mapa
+
+Work Log:
+- Revisado el esquema de Prisma para identificar el modelo "Stop" (paradas de buses)
+- Creada la API `/api/stops` para obtener paradas de la base de datos
+  - Soporta parámetros lat, lon y radius
+  - Calcula distancias usando la fórmula de Haversine
+  - Filtra paradas dentro del radio especificado
+  - Ordena por distancia ascendente
+- Actualizado el componente map.tsx:
+  - Añadido estado para cargar paradas de la base de datos (dbStops)
+  - Creado useEffect para cargar paradas automáticamente cuando se obtiene la ubicación del usuario
+  - Creado nuevo icono personalizado busStationIcon:
+    - Círculo rojo (#E31837) de 36x36px con ícono de bus
+    - Indicador amarillo en la esquina para destacar
+    - Bordes y sombra para mejor visibilidad
+  - Añadidos marcadores para todas las paradas de la base de datos dentro de 25km
+  - Mejorado el popup de las paradas con información completa (nombre, ciudad, distancia)
+  - Los marcadores de paradas de la base de datos se muestran siempre que hay ubicación del usuario
+
+Stage Summary:
+- Las paradas de buses de la base de datos (modelo Stop) ahora se muestran resaltadas en el mapa
+- Icono distintivo en rojo con indicador amarillo para diferenciarlas de otras paradas
+- Cargan automáticamente cuando el usuario activa su ubicación GPS
+- Se muestran todas las paradas dentro de 25km de la ubicación del usuario
+- Los popups muestran información detallada incluyendo nombre, ciudad y distancia
+- Las paradas se cargan desde la base de datos SQLite mediante Prisma
