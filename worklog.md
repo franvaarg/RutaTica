@@ -35,3 +35,25 @@ Stage Summary:
 - El origen es automático y no requiere búsqueda manual del usuario
 - El mapa sigue ocupando toda la pantalla principal
 - El menú lateral (Sheet) contiene todos los controles necesarios
+
+---
+Task ID: 2
+Agent: Z.ai Code
+Task: Ajustar los controles del mapa para mejorar su visibilidad
+
+Work Log:
+- Leído el archivo src/components/map.tsx para revisar la configuración actual de los controles
+- Identificado que los controles de zoom por defecto de Leaflet pueden estar ocultos por el header
+- Deshabilitado los controles de zoom por defecto (zoomControl={false})
+- Creado un componente ZoomControls personalizado con useMap
+- Posicionado los controles de zoom en la esquina inferior derecha (bottom: 80px, right: 16px)
+- Aplicado estilos personalizados: sombra, bordes redondeados, mejor contraste
+- Añadido z-index: 1000 para asegurar que estén por encima de otros elementos
+- Importado useMap de react-leaflet para controlar el mapa
+
+Stage Summary:
+- Los controles de zoom ahora son más visibles y están en una posición mejor
+- Botones de zoom más grandes (40x40px) con mejor contraste
+- Posicionados en la esquina inferior derecha para evitar conflicto con el header
+- Estilo consistente con el diseño de la aplicación
+- Fondo blanco con sombra y bordes para mejor visibilidad
