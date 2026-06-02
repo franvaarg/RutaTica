@@ -88,3 +88,26 @@ Stage Summary:
 - Se muestran todas las paradas dentro de 25km de la ubicación del usuario
 - Los popups muestran información detallada incluyendo nombre, ciudad y distancia
 - Las paradas se cargan desde la base de datos SQLite mediante Prisma
+
+---
+Task ID: 4
+Agent: Z.ai Code
+Task: Corregir el funcionamiento de los controles de zoom
+
+Work Log:
+- Identificado el problema: `useMap` se estaba importando de forma dinámica, lo cual no funciona correctamente
+- Corregida la importación de `useMap` a importación estática desde 'react-leaflet'
+- Actualizado el componente ZoomControls para usar estilos en línea con objetos de estilo
+- Añadido `type="button"` a los botones para evitar problemas con formularios
+- Mejorados los estilos de los botones:
+  - Uso de `onMouseEnter` y `onMouseLeave` para efectos hover
+  - Transiciones suaves de color de fondo
+  - Mejor separación entre los botones
+- Verificado que el componente ZoomControls esté dentro del MapContainer para tener acceso al contexto del mapa
+
+Stage Summary:
+- Los controles de zoom ahora funcionan correctamente
+- Botones de 40x40px con fondo blanco y transiciones suaves
+- Efecto hover que cambia el color de fondo a gris claro
+- Posicionamiento en la esquina inferior derecha del mapa
+- Funcionalidad de zoom in (+) y zoom out (−) completamente operativa

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, useRef } from 'react'
 import dynamic from 'next/dynamic'
+import { useMap } from 'react-leaflet'
 
 // Variable global para cachear la instancia de Leaflet
 let leafletInstance: any = null
@@ -50,10 +51,6 @@ const Polyline = dynamic(
   () => import('react-leaflet').then((mod) => mod.Polyline),
   { ssr: false }
 )
-const useMap = dynamic(
-  () => import('react-leaflet').then((mod) => mod.useMap),
-  { ssr: false }
-)
 
 // Componente para controles de zoom personalizados
 function ZoomControls() {
@@ -68,34 +65,63 @@ function ZoomControls() {
   }
 
   return (
-    <div className="leaflet-bottom-right">
-      <div className="leaflet-control leaflet-bar" style={{
-        position: 'absolute',
-        bottom: '80px',
-        right: '16px',
-        zIndex: 1000,
-        boxShadow: '0 2px 8px rgba(0, 0, 0, 0.15)',
-        borderRadius: '8px',
-        overflow: 'hidden',
-        border: '2px solid rgba(255, 255, 255, 0.9)',
-      }}>
-        <button
-          onClick={handleZoomIn}
-          className="flex items-center justify-center w-10 h-10 bg-white hover:bg-gray-100 border-b border-gray-200 transition-colors"
-          style={{ fontSize: '20px', fontWeight: 'bold', color: '#374151' }}
-          aria-label="Acercar"
-        >
-          +
-        </button>
-        <button
-          onClick={handleZoomOut}
-          className="flex items-center justify-center w-10 h-10 bg-white hover:bg-gray-100 transition-colors"
-          style={{ fontSize: '20px', fontWeight: 'bold', color: '#374151' }}
-          aria-label="Alejar"
-        >
-          −
-        </button>
-      </div>
+    <div style={{
+      position: 'absolute',
+      bottom: '80px',
+      right: '16px',
+      zIndex: 1000,
+      boxShadow: '0 2px 8px rgba(0, 0, 0, 0.15)',
+      borderRadius: '8px',
+      overflow: 'hidden',
+      border: '2px solid rgba(255, 255, 255, 0.9)',
+    }}>
+      <button
+        onClick={handleZoomIn}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: '40px',
+          height: '40px',
+          backgroundColor: 'white',
+          cursor: 'pointer',
+          border: 'none',
+          borderBottom: '1px solid #E5E7EB',
+          fontSize: '20px',
+          fontWeight: 'bold',
+          color: '#374151',
+          transition: 'background-color 0.2s',
+        }}
+        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#F3F4F6'}
+        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'white'}
+        aria-label="Acercar"
+        type="button"
+      >
+        +
+      </button>
+      <button
+        onClick={handleZoomOut}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: '40px',
+          height: '40px',
+          backgroundColor: 'white',
+          cursor: 'pointer',
+          border: 'none',
+          fontSize: '20px',
+          fontWeight: 'bold',
+          color: '#374151',
+          transition: 'background-color 0.2s',
+        }}
+        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#F3F4F6'}
+        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'white'}
+        aria-label="Alejar"
+        type="button"
+      >
+        −
+      </button>
     </div>
   )
 }
