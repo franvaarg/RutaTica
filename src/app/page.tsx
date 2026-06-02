@@ -611,6 +611,58 @@ export default function BusPlannerApp() {
                     </CardContent>
                   </Card>
 
+                  {/* Current Location Info */}
+                  {!hasPlanned && currentLocation && (
+                    <Card className="shadow-sm border border-[#E5E7EB]">
+                      <CardContent className="p-4 space-y-3">
+                        <div className="flex items-center gap-2">
+                          <div className="w-6 h-6 bg-[#0052B4] rounded-full flex items-center justify-center">
+                            <MapPin className="w-3.5 h-3.5 text-white" />
+                          </div>
+                          <span className="font-semibold text-sm text-[#374151]">Origen (tu ubicación)</span>
+                        </div>
+                        {loadingLocation || loadingAddress ? (
+                          <div className="flex items-center gap-2 text-muted-foreground p-3 bg-blue-50 rounded-lg border border-[#E5E7EB]">
+                            <Loader2 className="w-4 h-4 animate-spin text-[#0052B4]" />
+                            <span className="text-sm">
+                              {loadingLocation ? 'Obteniendo ubicación...' : 'Obteniendo dirección...'}
+                            </span>
+                          </div>
+                        ) : (
+                          <div className="space-y-2">
+                            <div className="bg-white rounded-lg p-3 border border-[#E5E7EB] shadow-sm">
+                              <p className="text-sm leading-relaxed text-[#374151]">{currentAddress}</p>
+                            </div>
+
+                            <div className="flex items-center justify-between gap-2">
+                              <Label htmlFor="address-toggle" className="text-xs cursor-pointer text-[#6B7280]">
+                                Dirección {showFullAddress ? 'completa' : 'corta'}
+                              </Label>
+                              <Switch
+                                id="address-toggle"
+                                checked={showFullAddress}
+                                onCheckedChange={setShowFullAddress}
+                                className="scale-90"
+                              />
+                            </div>
+
+                            {nearestStop && (
+                              <div className="flex items-center gap-2 text-xs text-[#6B7280] bg-green-50 p-2 rounded-lg border border-[#E5E7EB]">
+                                <Bus className="w-3.5 h-3.5 text-[#10B981]" />
+                                <span>
+                                  Parada: <span className="font-semibold text-[#10B981]">{nearestStop.name}</span>
+                                </span>
+                                <Badge variant="secondary" className="ml-auto text-xs bg-green-100 text-[#10B981] border-green-200">
+                                  {nearestStop.distance.toFixed(1)} km
+                                </Badge>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  )}
+
                   {/* Quick Access Buttons */}
                   {!hasPlanned && (
                     <div className="grid grid-cols-2 gap-3">
@@ -652,79 +704,9 @@ export default function BusPlannerApp() {
                     </div>
                   )}
 
-                  {/* Route Planning Section */}
+                  {/* Destination Card */}
                   <Card className="shadow-md border border-[#E5E7EB]">
                     <CardContent className="p-4 space-y-4">
-                      {/* Origen */}
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-2">
-                          <div className="w-6 h-6 bg-[#0052B4] rounded-full flex items-center justify-center">
-                            <MapPin className="w-3.5 h-3.5 text-white" />
-                          </div>
-                          <span className="font-semibold text-sm text-[#374151]">Origen</span>
-                        </div>
-                        {loadingLocation || loadingAddress ? (
-                          <div className="flex items-center gap-2 text-muted-foreground p-3 bg-blue-50 rounded-lg border border-[#E5E7EB]">
-                            <Loader2 className="w-4 h-4 animate-spin text-[#0052B4]" />
-                            <span className="text-sm">
-                              {loadingLocation ? 'Obteniendo ubicación...' : 'Obteniendo dirección...'}
-                            </span>
-                          </div>
-                        ) : currentLocation ? (
-                          <div className="space-y-2">
-                            <div className="bg-white rounded-lg p-3 border border-[#E5E7EB] shadow-sm">
-                              <p className="text-sm leading-relaxed text-[#374151]">{currentAddress}</p>
-                            </div>
-
-                            <div className="flex items-center justify-between gap-2">
-                              <Label htmlFor="address-toggle" className="text-xs cursor-pointer text-[#6B7280]">
-                                Dirección {showFullAddress ? 'completa' : 'corta'}
-                              </Label>
-                              <Switch
-                                id="address-toggle"
-                                checked={showFullAddress}
-                                onCheckedChange={setShowFullAddress}
-                                className="scale-90"
-                              />
-                            </div>
-
-                            {nearestStop && (
-                              <div className="flex items-center gap-2 text-xs text-[#6B7280] bg-green-50 p-2 rounded-lg border border-[#E5E7EB]">
-                                <Bus className="w-3.5 h-3.5 text-[#10B981]" />
-                                <span>
-                                  Parada: <span className="font-semibold text-[#10B981]">{nearestStop.name}</span>
-                                </span>
-                                <Badge variant="secondary" className="ml-auto text-xs bg-green-100 text-[#10B981] border-green-200">
-                                  {nearestStop.distance.toFixed(1)} km
-                                </Badge>
-                              </div>
-                            )}
-                          </div>
-                        ) : (
-                          <Button
-                            onClick={getCurrentLocation}
-                            variant="outline"
-                            size="sm"
-                            className="w-full h-10 text-sm border border-[#E5E7EB] text-[#0052B4] hover:bg-blue-50 hover:border-[#0052B4]"
-                          >
-                            <MapPin className="w-4 h-4 mr-2" />
-                            Activar GPS
-                          </Button>
-                        )}
-                      </div>
-
-                      {/* Separator */}
-                      <div className="relative py-2">
-                        <div className="absolute inset-0 flex items-center">
-                          <div className="w-full border-t border-dashed border-[#E5E7EB]"></div>
-                        </div>
-                        <div className="relative flex justify-center">
-                          <div className="bg-white px-3">
-                            <ArrowRight className="w-5 h-5 text-[#9CA3AF]" />
-                          </div>
-                        </div>
-                      </div>
-
                       {/* Destino */}
                       <div className="space-y-2">
                         <div className="flex items-center gap-2">
@@ -955,28 +937,30 @@ export default function BusPlannerApp() {
       </header>
 
       {/* Bottom Navigation - Floating on top of map */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-sm border-t border-[#E5E7EB] shadow-md z-30">
-        <div className="flex justify-around items-center py-2 px-2 max-w-lg mx-auto">
-          <Button variant="ghost" className="flex flex-col items-center gap-1 h-16 w-16 text-[#E31837] hover:bg-red-50">
-            <Home className="w-6 h-6" />
-            <span className="text-xs font-medium">Inicio</span>
-          </Button>
-          <Button variant="ghost" className="flex flex-col items-center gap-1 h-16 w-16 text-[#6B7280] hover:bg-gray-50">
-            <Bus className="w-6 h-6" />
-            <span className="text-xs font-medium">Rutas</span>
-          </Button>
-          <Button variant="ghost" className="flex flex-col items-center gap-1 h-16 w-16 text-[#6B7280] hover:bg-gray-50">
-            <Map className="w-6 h-6" />
-            <span className="text-xs font-medium">Mapa</span>
-          </Button>
-          <Button variant="ghost" className="flex flex-col items-center gap-1 h-16 w-16 text-[#6B7280] hover:bg-gray-50">
-            <Wallet className="w-6 h-6" />
-            <span className="text-xs font-medium">Pagos</span>
-          </Button>
-          <Button variant="ghost" className="flex flex-col items-center gap-1 h-16 w-16 text-[#6B7280] hover:bg-gray-50">
-            <User className="w-6 h-6" />
-            <span className="text-xs font-medium">Perfil</span>
-          </Button>
+      <nav className="absolute bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur-sm border-t border-[#E5E7EB]">
+        <div className="container mx-auto px-4">
+          <div className="flex items-center justify-around py-2">
+            <Button variant="ghost" className="flex flex-col items-center gap-1 text-gray-600 hover:bg-gray-100 h-auto py-2">
+              <Map className="w-5 h-5" />
+              <span className="text-xs">Mapa</span>
+            </Button>
+            <Button variant="ghost" className="flex flex-col items-center gap-1 text-gray-600 hover:bg-gray-100 h-auto py-2">
+              <Bus className="w-5 h-5" />
+              <span className="text-xs">Rutas</span>
+            </Button>
+            <Button variant="ghost" className="flex flex-col items-center gap-1 text-gray-600 hover:bg-gray-100 h-auto py-2">
+              <Clock className="w-5 h-5" />
+              <span className="text-xs">Horarios</span>
+            </Button>
+            <Button variant="ghost" className="flex flex-col items-center gap-1 text-gray-600 hover:bg-gray-100 h-auto py-2">
+              <Heart className="w-5 h-5" />
+              <span className="text-xs">Favoritos</span>
+            </Button>
+            <Button variant="ghost" className="flex flex-col items-center gap-1 text-gray-600 hover:bg-gray-100 h-auto py-2">
+              <User className="w-5 h-5" />
+              <span className="text-xs">Perfil</span>
+            </Button>
+          </div>
         </div>
       </nav>
     </div>
