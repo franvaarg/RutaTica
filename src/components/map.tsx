@@ -156,6 +156,7 @@ interface BusMapProps {
     }
   } | null
   plannedRoutes?: PlannedRoute[] | null
+  plannedRoutesLength?: number | null
   selectedRoute?: PlannedRoute | null
   destinationCoordinates?: {
     name: string
@@ -182,6 +183,7 @@ const BusMap = ({
   userLocation,
   nearestStop,
   plannedRoutes,
+  plannedRoutesLength,
   selectedRoute,
   destinationCoordinates,
   routePath,
@@ -215,15 +217,17 @@ const BusMap = ({
     }
   }, [])
 
-  // Cargar paradas de buses de la base de datos
+  // Cargar paradas de buses de la base de datos (solo cuando se planea una ruta)
   useEffect(() => {
     const fetchDbStops = async () => {
-      if (!userLocation) return
+      // Solo cargar cuando hay una ruta planificada o cuando el usuario quiere ver paradas
+      if (!userLocation || !plannedRoutesLength || plannedRoutesLength === 0) return
 
       try {
         setLoadingDbStops(true)
+        // Reducir el radio de búsqueda de 25km a 10km para mejor rendimiento
         const response = await fetch(
-          `/api/stops?lat=${userLocation[0]}&lon=${userLocation[1]}&radius=25`
+          `/api/stops?lat=${userLocation[0]}&lon=${userLocation[1]}&radius=10`
         )
         const data = await response.json()
 
@@ -237,8 +241,15 @@ const BusMap = ({
       }
     }
 
-    fetchDbStops()
-  }, [userLocation])
+    // Debounce para evitar múltiples llamadas
+    const timer = setTimeout(() => {
+      fetchDbStops()
+    }, 500)
+
+    return () => {
+      clearTimeout(timer)
+    }
+  }, [userLocation, plannedRoutesLength])
 
   // Crear iconos personalizados con useMemo para evitar recreaciones
   const userIcon = useMemo(() => {

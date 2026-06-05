@@ -212,7 +212,6 @@ export default function BusPlannerApp() {
 
   const getCurrentLocation = async () => {
     setLoadingLocation(true)
-    setLoadingAddress(true)
     setError(null)
     try {
       if (!navigator.geolocation) {
@@ -227,24 +226,33 @@ export default function BusPlannerApp() {
           resolve,
           reject,
           {
-            enableHighAccuracy: true,
-            timeout: 10000,
-            maximumAge: 0,
+            enableHighAccuracy: false, // Cambiar a false para mejor rendimiento
+            timeout: 5000, // Reducir timeout a 5 segundos
+            maximumAge: 30000, // Permitir caché de 30 segundos
           }
         )
       })
 
       const { latitude, longitude } = position.coords
       setCurrentLocation({ latitude, longitude })
-      const address = await getAddressFromCoordinates(latitude, longitude)
-      setCurrentAddress(address)
-      await findNearestStop(latitude, longitude)
+
+      // Cargar dirección en segundo plano sin bloquear
+      setLoadingAddress(true)
+      getAddressFromCoordinates(latitude, longitude)
+        .then((address) => {
+          setCurrentAddress(address)
+        })
+        .catch((error) => {
+          console.error('Error al obtener dirección:', error)
+        })
+        .finally(() => {
+          setLoadingAddress(false)
+        })
     } catch (error) {
       console.error('Error al obtener ubicación:', error)
       setError('No se pudo obtener tu ubicación. Por favor activa el GPS y permite el acceso.')
     } finally {
       setLoadingLocation(false)
-      setLoadingAddress(false)
     }
   }
 
@@ -631,6 +639,7 @@ export default function BusPlannerApp() {
             userLocation={[currentLocation.latitude, currentLocation.longitude]}
             nearestStop={nearestStop}
             plannedRoutes={plannedRoutes}
+            plannedRoutesLength={plannedRoutes.length}
             selectedRoute={selectedRoute}
             destinationCoordinates={selectedDestination ? {
               name: selectedDestination.name || 'Destino',
@@ -644,17 +653,12 @@ export default function BusPlannerApp() {
         </div>
       )}
 
-      {/* Loading Overlay */}
-      {(!currentLocation || loadingRoute || loadingDirectRoute || loadingBusStops) && (
-        <div className="absolute inset-0 bg-white/80 flex items-center justify-center z-20">
+      {/* Loading Overlay - Solo muestra cuando no hay ubicación */}
+      {!currentLocation && loadingLocation && (
+        <div className="absolute inset-0 bg-white/90 flex items-center justify-center z-20">
           <div className="text-center">
             <Loader2 className="w-12 h-12 animate-spin mx-auto mb-3 text-[#E31837]" />
-            <p className="text-sm text-[#6B7280]">
-              {!currentLocation ? 'Obteniendo tu ubicación...' :
-               loadingRoute ? 'Obteniendo ruta de calles...' :
-               loadingDirectRoute ? 'Obteniendo ruta al destino...' :
-               'Buscando paradas de autobús...'}
-            </p>
+            <p className="text-sm text-[#6B7280]">Obteniendo tu ubicación...</p>
           </div>
         </div>
       )}
