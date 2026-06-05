@@ -102,6 +102,14 @@ export default function BusPlannerApp() {
   const [addressData, setAddressData] = useState<any>(null)
   const [isMenuOpen, setIsMenuOpen] = useState(false)
 
+  // Estados para seguimiento de viaje
+  const [isTracking, setIsTracking] = useState(false)
+  const [trackingId, setTrackingId] = useState<number | null>(null)
+  const [tripStartTime, setTripStartTime] = useState<Date | null>(null)
+  const [distanceRemaining, setDistanceRemaining] = useState<number>(0)
+  const [elapsedTime, setElapsedTime] = useState<number>(0)
+  const [showArrivalNotification, setShowArrivalNotification] = useState(false)
+
   useEffect(() => {
     getCurrentLocation()
   }, [])
@@ -185,6 +193,22 @@ export default function BusPlannerApp() {
       setCurrentAddress(formatAddress(addressData, showFullAddress))
     }
   }, [showFullAddress])
+
+  // Actualizar tiempo transcurrido durante el viaje
+  useEffect(() => {
+    if (!isTracking || !tripStartTime) {
+      return
+    }
+
+    const interval = setInterval(() => {
+      const elapsed = (Date.now() - tripStartTime.getTime()) / 1000 / 60 // en minutos
+      setElapsedTime(elapsed)
+    }, 1000)
+
+    return () => {
+      clearInterval(interval)
+    }
+  }, [isTracking, tripStartTime])
 
   const getCurrentLocation = async () => {
     setLoadingLocation(true)
@@ -468,6 +492,18 @@ export default function BusPlannerApp() {
   }
 
   const handleResetSearch = () => {
+    // Detener seguimiento si está activo
+    if (trackingId) {
+      navigator.geolocation.clearWatch(trackingId)
+      setTrackingId(null)
+    }
+    
+    setIsTracking(false)
+    setTripStartTime(null)
+    setElapsedTime(0)
+    setDistanceRemaining(0)
+    setShowArrivalNotification(false)
+    
     setDestination('')
     setSelectedDestination(null)
     setPlannedRoutes([])
@@ -498,6 +534,90 @@ export default function BusPlannerApp() {
     if (hours === 0) return `${mins} min`
     if (mins === 0) return `${hours} h`
     return `${hours} h ${mins} min`
+  }
+
+  // Calcular distancia entre dos coordenadas usando Haversine
+  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+    const R = 6371 // Radio de la Tierra en km
+    const dLat = (lat2 - lat1) * Math.PI / 180
+    const dLon = (lon2 - lon1) * Math.PI / 180
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+      Math.sin(dLon / 2) * Math.sin(dLon / 2)
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+    return R * c
+  }
+
+  const handleStartTrip = () => {
+    if (!currentLocation || !selectedRoute) {
+      return
+    }
+
+    setIsTracking(true)
+    setTripStartTime(new Date())
+    setElapsedTime(0)
+
+    // Calcular distancia inicial al destino
+    if (selectedRoute.destinationStop?.coordinates) {
+      const initialDistance = calculateDistance(
+        currentLocation.latitude,
+        currentLocation.longitude,
+        selectedRoute.destinationStop.coordinates.latitude,
+        selectedRoute.destinationStop.coordinates.longitude
+      )
+      setDistanceRemaining(initialDistance)
+    }
+
+    // Iniciar seguimiento de posición con watchPosition
+    const id = navigator.geolocation.watchPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords
+        setCurrentLocation({ latitude, longitude })
+
+        // Calcular distancia restante
+        if (selectedRoute.destinationStop?.coordinates) {
+          const remaining = calculateDistance(
+            latitude,
+            longitude,
+            selectedRoute.destinationStop.coordinates.latitude,
+            selectedRoute.destinationStop.coordinates.longitude
+          )
+          setDistanceRemaining(remaining)
+
+          // Verificar si ha llegado al destino (dentro de 100 metros)
+          if (remaining < 0.1) {
+            handleStopTrip()
+            setShowArrivalNotification(true)
+          }
+        }
+
+        // Actualizar dirección
+        getAddressFromCoordinates(latitude, longitude).then(setCurrentAddress)
+      },
+      (error) => {
+        console.error('Error al rastrear ubicación:', error)
+        setError('Error al rastrear tu ubicación. Verifica que el GPS esté activo.')
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0,
+      }
+    )
+
+    setTrackingId(id)
+  }
+
+  const handleStopTrip = () => {
+    if (trackingId) {
+      navigator.geolocation.clearWatch(trackingId)
+      setTrackingId(null)
+    }
+    setIsTracking(false)
+    setTripStartTime(null)
+    setElapsedTime(0)
+    setDistanceRemaining(0)
   }
 
   return (
@@ -536,6 +656,96 @@ export default function BusPlannerApp() {
                'Buscando paradas de autobús...'}
             </p>
           </div>
+        </div>
+      )}
+
+      {/* Panel de seguimiento de viaje */}
+      {isTracking && (
+        <div className="absolute bottom-24 left-4 right-4 z-40">
+          <Card className="bg-white/95 backdrop-blur-sm shadow-lg border-2 border-[#E31837]">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-10 h-10 bg-[#10B981] rounded-full flex items-center justify-center">
+                    <Bus className="w-5 h-5 text-white animate-pulse" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-[#374151] text-sm">Viaje en curso</h3>
+                    <p className="text-xs text-[#6B7280]">{selectedRoute?.routeNumber} - {selectedRoute?.company}</p>
+                  </div>
+                </div>
+                <Badge className="bg-[#10B981] text-white border-none">
+                  Activo
+                </Badge>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3 text-center">
+                <div>
+                  <p className="text-xs text-[#6B7280] mb-1">Distancia restante</p>
+                  <p className="font-bold text-[#E31837] text-lg">
+                    {distanceRemaining.toFixed(1)} km
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-[#6B7280] mb-1">Tiempo transcurrido</p>
+                  <p className="font-bold text-[#0052B4] text-lg">
+                    {elapsedTime < 60
+                      ? `${Math.floor(elapsedTime)} min`
+                      : `${Math.floor(elapsedTime / 60)}h ${Math.floor(elapsedTime % 60)}min`}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-[#6B7280] mb-1">Destino</p>
+                  <p className="font-bold text-[#374151] text-lg">
+                    {selectedRoute?.destinationStop?.name || destination}
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-3 pt-3 border-t border-[#E5E7EB]">
+                <p className="text-xs text-[#6B7280] text-center">
+                  📍 Destino: {selectedRoute?.destinationStop?.name || destination}
+                  {selectedRoute?.destinationStop?.city && `, ${selectedRoute.destinationStop.city}`}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Notificación de llegada */}
+      {showArrivalNotification && (
+        <div className="absolute top-20 left-4 right-4 z-50">
+          <Card className="bg-[#10B981] border-2 border-[#059669] shadow-xl animate-bounce">
+            <CardContent className="p-6 text-center">
+              <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center mx-auto mb-3">
+                <Navigation className="w-8 h-8 text-[#10B981]" />
+              </div>
+              <h3 className="text-xl font-bold text-white mb-2">¡Has llegado a tu destino!</h3>
+              <p className="text-white/90 mb-4">
+                {selectedRoute?.destinationStop?.name || destination}
+              </p>
+              <div className="flex gap-2 justify-center">
+                <Button
+                  onClick={() => setShowArrivalNotification(false)}
+                  variant="secondary"
+                  size="sm"
+                >
+                  Cerrar
+                </Button>
+                <Button
+                  onClick={() => {
+                    setShowArrivalNotification(false)
+                    handleResetSearch()
+                  }}
+                  size="sm"
+                  className="bg-white text-[#10B981] hover:bg-gray-100"
+                >
+                  Nueva Ruta
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       )}
 
@@ -742,6 +952,27 @@ export default function BusPlannerApp() {
                           </>
                         )}
                       </Button>
+
+                      {hasPlanned && selectedRoute && !isTracking && (
+                        <Button
+                          onClick={handleStartTrip}
+                          className="w-full h-11 text-base font-semibold bg-[#10B981] hover:bg-[#059669] shadow-md mt-3"
+                        >
+                          <Navigation className="w-5 h-5 mr-2" />
+                          Empezar Viaje
+                        </Button>
+                      )}
+
+                      {isTracking && (
+                        <Button
+                          onClick={handleStopTrip}
+                          variant="outline"
+                          className="w-full h-11 text-base font-semibold border-[#E31837] text-[#E31837] hover:bg-red-50 mt-3"
+                        >
+                          <X className="w-5 h-5 mr-2" />
+                          Detener Viaje
+                        </Button>
+                      )}
                     </CardContent>
                   </Card>
 
@@ -912,7 +1143,9 @@ export default function BusPlannerApp() {
                   <span className="text-[#0052B4]">Ruta</span>
                   <span className="text-[#E31837]">Tica</span>
                 </h1>
-                <p className="text-xs text-gray-500">{hasPlanned ? `Ruta a ${destination}` : '¿A dónde vamos hoy?'}</p>
+                <p className="text-xs text-gray-500">
+                  {isTracking ? '🚌 Viaje en curso' : hasPlanned ? `Ruta a ${destination}` : '¿A dónde vamos hoy?'}
+                </p>
               </div>
             </div>
 
