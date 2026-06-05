@@ -115,7 +115,7 @@ Stage Summary:
 ---
 Task ID: 5
 Agent: Z.ai Code
-Task: Reiniciar el servidor de desarrollo
+Task: Reiniciar el servidor de desarrollo (primera vez)
 
 Work Log:
 - Detenido el servidor de desarrollo existente con pkill
@@ -128,3 +128,25 @@ Stage Summary:
 - Las nuevas coordenadas de ubicación se reflejan en el log (lat=9.92, lon=-84.08, correspondientes a San José, Costa Rica)
 - La API de paradas está funcionando correctamente con la nueva ubicación
 - El mapa debería mostrar ahora la ubicación correcta del usuario
+
+---
+Task ID: 6
+Agent: Z.ai Code
+Task: Reiniciar el servidor de desarrollo (segunda vez)
+
+Work Log:
+- Detenido el servidor de desarrollo existente con pkill
+- Esperado 2 segundos para asegurar que el proceso se detuviera completamente
+- Iniciado el servidor de desarrollo nuevamente con nohup
+- Esperado 8 segundos y verificado el log
+- Confirmado que el servidor está procesando peticiones correctamente con múltiples ubicaciones diferentes:
+  - lat=9.92, lon=-84.08 (San José)
+  - lat=10.6099, lon=-84.5409 (aprox. Liberia, Guanacaste)
+  - lat=9.9332, lon=-84.0845 (San José específico)
+- Verificado que las APIs /api/stops y /api/routes/nearby están funcionando correctamente
+
+Stage Summary:
+- Servidor reiniciado exitosamente por segunda vez
+- El servidor está respondiendo correctamente a las peticiones
+- Las APIs de paradas y rutas cercanas están funcionando
+- El mapa debería estar actualizado y funcional
