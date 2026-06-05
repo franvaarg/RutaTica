@@ -111,3 +111,20 @@ Stage Summary:
 - Efecto hover que cambia el color de fondo a gris claro
 - Posicionamiento en la esquina inferior derecha del mapa
 - Funcionalidad de zoom in (+) y zoom out (−) completamente operativa
+
+---
+Task ID: 5
+Agent: Z.ai Code
+Task: Reiniciar el servidor de desarrollo
+
+Work Log:
+- Detenido el servidor de desarrollo existente con pkill
+- Iniciado el servidor de desarrollo nuevamente con nohup
+- Verificado que el servidor está corriendo correctamente
+- Confirmado que las coordenadas de ubicación han cambiado de Liberia (10.62, -84.53) a San José (9.92, -84.08)
+
+Stage Summary:
+- Servidor reiniciado exitosamente
+- Las nuevas coordenadas de ubicación se reflejan en el log (lat=9.92, lon=-84.08, correspondientes a San José, Costa Rica)
+- La API de paradas está funcionando correctamente con la nueva ubicación
+- El mapa debería mostrar ahora la ubicación correcta del usuario
