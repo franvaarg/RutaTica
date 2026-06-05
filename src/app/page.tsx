@@ -1041,6 +1041,28 @@ export default function BusPlannerApp() {
                                     </div>
                                   </div>
 
+                                  {/* Distance Indicator - Prominent */}
+                                  <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-lg p-4 shadow-md">
+                                    <div className="flex items-center justify-between text-white">
+                                      <div className="flex items-center gap-2">
+                                        <MapPin className="w-6 h-6" />
+                                        <span className="text-sm font-medium">Distancia total</span>
+                                      </div>
+                                      <div className="flex items-baseline gap-1">
+                                        <span className="text-3xl font-bold">
+                                          {route.distanceKm ? route.distanceKm.toFixed(1) : '--'}
+                                        </span>
+                                        <span className="text-xl font-semibold">km</span>
+                                      </div>
+                                    </div>
+                                    {formatDuration(route.durationMin) && (
+                                      <div className="mt-2 pt-2 border-t border-white/20 flex items-center gap-2 text-white/90">
+                                        <Clock className="w-4 h-4" />
+                                        <span className="text-sm">Tiempo estimado: {formatDuration(route.durationMin)}</span>
+                                      </div>
+                                    )}
+                                  </div>
+
                                   {/* Route Path */}
                                   <div className="bg-gradient-to-r from-blue-50 to-red-50 rounded-lg p-3 space-y-2">
                                     {/* Boarding */}
@@ -1081,22 +1103,6 @@ export default function BusPlannerApp() {
                                         )}
                                       </div>
                                     </div>
-                                  </div>
-
-                                  {/* Route Details */}
-                                  <div className="flex flex-wrap gap-3 text-xs text-[#6B7280]">
-                                    {formatDistance(route.distanceKm) && (
-                                      <div className="flex items-center gap-1">
-                                        <MapPin className="w-4 h-4 text-[#0052B4]" />
-                                        {formatDistance(route.distanceKm)}
-                                      </div>
-                                    )}
-                                    {formatDuration(route.durationMin) && (
-                                      <div className="flex items-center gap-1">
-                                        <Clock className="w-4 h-4 text-[#F59E0B]" />
-                                        {formatDuration(route.durationMin)}
-                                      </div>
-                                    )}
                                   </div>
                                 </div>
                               </CardContent>

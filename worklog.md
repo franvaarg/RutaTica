@@ -1,4 +1,27 @@
 ---
+Task ID: 8
+Agent: Z.ai Code (via main conversation)
+Task: Implementar indicador de distancia prominente entre origen y destino
+
+Work Log:
+- Añadido indicador de distancia prominente en las tarjetas de ruta
+- El indicador muestra:
+  - Distancia total en kilómetros con fuente grande (text-3xl)
+  - Etiqueta "Distancia total" con icono de ubicación
+  - Tiempo estimado del viaje debajo de la distancia
+- Diseño con gradiente azul (from-blue-500 to-blue-600)
+- Fondo blanco para el texto de distancia para máxima visibilidad
+- Eliminada sección duplicada de "Route Details" en la parte inferior de la tarjeta
+- La información de distancia ahora es más prominente y fácil de leer
+
+Stage Summary:
+- Indicador de distancia más visible y accesible para los usuarios
+- Diseño profesional con gradiente azul destacado
+- La distancia total en km es claramente visible al seleccionar una ruta
+- Build exitoso sin errores TypeScript
+- Servidor de desarrollo corriendo correctamente
+
+---
 Task ID: 7
 Agent: Z.ai Code (via fullstack-developer subagent)
 Task: Implementar funcionalidad de seguimiento de viaje con botón "Empezar Viaje"
