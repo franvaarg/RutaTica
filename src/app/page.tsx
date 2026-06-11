@@ -1207,6 +1207,29 @@ export default function BusPlannerApp() {
                     </div>
                   )}
 
+                  {/* Botón de Viaje - Empezar/Detener */}
+                  {hasPlanned && plannedRoutes.length > 0 && selectedRoute && (
+                    <div className="mt-4">
+                      {!isTracking ? (
+                        <Button
+                          onClick={handleStartTrip}
+                          className="w-full h-12 text-base font-semibold bg-[#10B981] hover:bg-[#059669] shadow-md"
+                        >
+                          <Navigation className="w-5 h-5 mr-2" />
+                          Empezar Viaje
+                        </Button>
+                      ) : (
+                        <Button
+                          onClick={handleStopTrip}
+                          className="w-full h-12 text-base font-semibold bg-white text-red-600 border-2 border-red-600 hover:bg-red-50"
+                        >
+                          <Navigation className="w-5 h-5 mr-2" />
+                          Detener Viaje
+                        </Button>
+                      )}
+                    </div>
+                  )}
+
                   {/* Popular Destinations */}
                   {!hasPlanned && !error && currentLocation && (
                     <div className="space-y-3">

@@ -208,7 +208,27 @@ Stage Summary:
 - Prop isTracking permite activar/desactivar los event listeners
 - Prop onMapInteraction callback se ejecuta cuando el usuario interactúa
 - Implementación correcta con cleanup de listeners
+---
+Task ID: restore-missing-buttons
+Agent: Z.ai Code (main conversation)
+Task: Restaurar botones "Empezar Viaje" y "Detener Viaje" faltantes
 
+Work Log:
+- Identificado que faltaban los botones de control de viaje en el Sheet del menú lateral
+- Según worklog Task ID 7, estos botones deberían aparecer cuando hay rutas planificadas:
+  - Botón "Empezar Viaje" (verde con ícono de navegación) cuando no está en viaje
+  - Botón "Detener Viaje" (rojo con borde) reemplaza al primero durante el viaje
+- Agregados botones en el Sheet (líneas 1210-1231 de page.tsx):
+  - Botón "Empezar Viaje": verde (#10B981), con ícono Navigation, solo visible cuando !isTracking
+  - Botón "Detener Viaje": fondo blanco con borde rojo (#DC2626), texto rojo, visible durante isTracking
+- Los botones aparecen en el Sheet del menú lateral cuando hay rutas planificadas
+- Ambos botones llaman a handleStartTrip() y handleStopTrip() respectivamente
+
+Stage Summary:
+- Botones "Empezar Viaje" y "Detener Viaje" restaurados correctamente
+- Funcionalidad de control de viaje ahora completa en el menú lateral
+- Los botones alternan según el estado de isTracking
+- Todos los cambios de Task ID 7 ahora están presentes en el código
 ---
 Task ID: verify-changes
 Agent: Z.ai Code (main conversation)
