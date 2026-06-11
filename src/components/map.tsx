@@ -175,6 +175,8 @@ interface BusMapProps {
     lat: number
     lon: number
   }> | null
+  isTracking?: boolean
+  onMapInteraction?: () => void
 }
 
 const BusMap = ({
@@ -188,6 +190,8 @@ const BusMap = ({
   destinationCoordinates,
   routePath,
   busStops,
+  isTracking,
+  onMapInteraction,
 }: BusMapProps) => {
   const [isMounted, setIsMounted] = useState(false)
   const [L, setL] = useState<any>(null)
@@ -216,6 +220,24 @@ const BusMap = ({
       mounted = false
     }
   }, [])
+
+  // Event listeners para detectar interacción del usuario con el mapa
+  useEffect(() => {
+    if (!mapRef.current || !isTracking || !onMapInteraction) return
+
+    const map = mapRef.current
+    const handlers = ['movestart', 'zoomstart', 'drag', 'zoom']
+
+    handlers.forEach(event => {
+      map.on(event, onMapInteraction)
+    })
+
+    return () => {
+      handlers.forEach(event => {
+        map.off(event, onMapInteraction)
+      })
+    }
+  }, [mapRef.current, isTracking, onMapInteraction])
 
   // Cargar paradas de buses de la base de datos (solo cuando se planea una ruta)
   useEffect(() => {
