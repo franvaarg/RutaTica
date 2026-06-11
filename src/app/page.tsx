@@ -869,7 +869,7 @@ export default function BusPlannerApp() {
       {/* Notificación de llegada */}
       {showArrivalNotification && (
         <div className="absolute top-20 left-4 right-4 z-50">
-          <Card className="bg-[#10B981] border-2 border-[#059669] shadow-xl animate-bounce">
+          <Card className="bg-[#10B981] border-2 border-[#059669] shadow-xl">
             <CardContent className="p-6 text-center">
               <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center mx-auto mb-3">
                 <Navigation className="w-8 h-8 text-[#10B981]" />
@@ -1281,19 +1281,21 @@ export default function BusPlannerApp() {
         </SheetContent>
       </Sheet>
 
-      {/* Focus Location Button - Bottom Left */}
-      <Button
-        onClick={(e) => {
-          e.stopPropagation()
-          handleFocusLocation()
-        }}
-        variant="ghost"
-        size="icon"
-        className="absolute bottom-20 left-4 z-50 bg-white/95 backdrop-blur-sm shadow-md hover:bg-gray-100 w-12 h-12"
-        title="Enfocar en mi ubicación"
-      >
-        <Navigation className="w-6 h-6 text-[#0052B4]" />
-      </Button>
+      {/* Focus Location Button - Bottom Left - Solo visible cuando hay ubicación */}
+      {currentLocation && (
+        <Button
+          onClick={(e) => {
+            e.stopPropagation()
+            handleFocusLocation()
+          }}
+          variant="ghost"
+          size="icon"
+          className="absolute bottom-20 left-4 z-50 bg-white/95 backdrop-blur-sm shadow-md hover:bg-gray-100 w-12 h-12"
+          title="Enfocar en mi ubicación"
+        >
+          <Navigation className="w-6 h-6 text-[#0052B4]" />
+        </Button>
+      )}
 
       {/* Floating Alert Button */}
       <Button

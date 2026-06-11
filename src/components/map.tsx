@@ -199,6 +199,25 @@ const BusMap = ({
   const [loadingDbStops, setLoadingDbStops] = useState(false)
   const mapRef = useRef<any>(null)
 
+  // Actualizar centro y zoom del mapa cuando cambian las props
+  useEffect(() => {
+    if (!mapRef.current || !center) return
+
+    const map = mapRef.current
+    const currentCenter = map.getCenter()
+    const currentZoom = map.getZoom()
+
+    // Solo actualizar si hay cambios significativos para evitar loops infinitos
+    const centerChanged = !currentCenter || 
+      Math.abs(currentCenter.lat - center[0]) > 0.0001 || 
+      Math.abs(currentCenter.lng - center[1]) > 0.0001
+    const zoomChanged = currentZoom !== zoom
+
+    if (centerChanged || zoomChanged) {
+      map.setView(center, zoom, { animate: true })
+    }
+  }, [center, zoom])
+
   useEffect(() => {
     let mounted = true
 
