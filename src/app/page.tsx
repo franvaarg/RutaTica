@@ -477,6 +477,8 @@ export default function BusPlannerApp() {
       const route = await getOSRMRoute(start, end, 'driving')
       if (route) {
         setRoutePath({ direct: route })
+        // Zoom out para mostrar toda la ruta
+        fitRouteToBounds({ direct: route })
       }
     } catch (error) {
       console.error('Error al obtener ruta directa:', error)
@@ -832,7 +834,7 @@ export default function BusPlannerApp() {
       {/* Alerta de inicio de viaje con conteo de 30 segundos */}
       {showStartTripAlert && selectedDestination && !isTracking && (
         <div className="absolute inset-0 z-50 bg-black/30 flex items-center justify-center p-4">
-          <Card className="max-w-[280px] w-full bg-white shadow-xl rounded-lg animate-bounce">
+          <Card className="max-w-[280px] w-full bg-white shadow-xl rounded-lg">
             <CardContent className="p-4 text-center">
               <div className="w-14 h-14 bg-[#10B981] rounded-full flex items-center justify-center mx-auto mb-3">
                 <Navigation className="w-7 h-7 text-white" />
@@ -1281,10 +1283,13 @@ export default function BusPlannerApp() {
 
       {/* Focus Location Button - Bottom Left */}
       <Button
-        onClick={handleFocusLocation}
+        onClick={(e) => {
+          e.stopPropagation()
+          handleFocusLocation()
+        }}
         variant="ghost"
         size="icon"
-        className="absolute bottom-20 left-4 z-30 bg-white/95 backdrop-blur-sm shadow-md hover:bg-gray-100 w-12 h-12"
+        className="absolute bottom-20 left-4 z-50 bg-white/95 backdrop-blur-sm shadow-md hover:bg-gray-100 w-12 h-12"
         title="Enfocar en mi ubicación"
       >
         <Navigation className="w-6 h-6 text-[#0052B4]" />

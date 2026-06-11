@@ -370,3 +370,29 @@ Stage Summary:
 - Botón de enfocar ubicación en esquina inferior izquierda
 - Todos los cambios compilados exitosamente sin errores
 - Servidor de desarrollo funcionando correctamente
+
+---
+Task ID: ui-bugfixes
+Agent: Z.ai Code (main conversation)
+Task: Corrección de errores de interfaz - botón enfocar y alerta
+
+Work Log:
+- **Corregido botón de enfocar ubicación**:
+  - Añadido e.stopPropagation() al onClick para prevenir conflictos con otros eventos
+  - Incrementado z-index de 30 a 50 para asegurar que esté por encima de otros elementos
+  - Verificado que handleFocusLocation() existe y está correctamente implementado
+
+- **Añadido zoom out automático al seleccionar destino**:
+  - Actualizada función getDirectRouteToDestination()
+  - Ahora llama a fitRouteToBounds({ direct: route }) después de obtener la ruta
+  - El mapa hace zoom out automáticamente a nivel 10 para mostrar toda la ruta completa
+
+- **Eliminada animación de la ventana de alerta**:
+  - Removida clase animate-bounce de la alerta de inicio de viaje
+  - La alerta ahora permanece estática en el centro de la pantalla
+
+Stage Summary:
+- Botón de enfocar ubicación ahora funciona correctamente con z-index más alto
+- Al seleccionar un destino, el mapa hace zoom out automáticamente para mostrar la ruta completa
+- Ventana de alerta estática sin animación de rebote
+- Todos los cambios compilados exitosamente
