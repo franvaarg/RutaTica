@@ -277,3 +277,96 @@ Stage Summary:
 - Aplicación cargando sin errores
 - Interfaz antigua ha sido actualizada con todas las mejoras solicitadas
 - Todas las funcionalidades implementadas verificadas
+
+---
+Task ID: comprehensive-ui-update
+Agent: Z.ai Code (main conversation)
+Task: Actualización completa de la interfaz de usuario para smartphones
+
+Work Log:
+- **Añadidos nuevos estados**:
+  - `showStartTripAlert`: para mostrar alerta de inicio de viaje con countdown
+  - `countdownSeconds`: contador de 30 segundos para la alerta
+  - `tripDetailsVisible`: para mostrar/ocultar detalles del viaje
+  - `showDistance`: para alternar entre mostrar distancia y tiempo
+
+- **Mejorada obtención de ubicación GPS**:
+  - Cambiado enableHighAccuracy a true para mayor precisión
+  - Aumentado timeout a 10s
+  - Establecido maximumAge a 0 para obtener ubicación fresca
+  - Añadido zoom automático a 16 al encontrar ubicación
+
+- **Añadida función handleFocusLocation()**:
+  - Permite enfocar el mapa en la ubicación actual del usuario
+  - Establece zoom a 16
+  - Botón posicionado en esquina inferior izquierda
+
+- **Actualizada función handleDestinationSelect()**:
+  - Ahora limpia el textbox de búsqueda después de seleccionar un destino
+  - Esconde automáticamente el menú principal al seleccionar destino
+  - Muestra alerta con conteo de 30 segundos
+  - Inicializa countdown a 30 segundos
+
+- **Añadidos efectos useEffect**:
+  - Manejo del conteo de la alerta de inicio de viaje (auto-cierre a los 30s)
+  - Alternancia automática entre mostrar distancia y tiempo cada 3 segundos durante el viaje
+
+- **Añadidas funciones de control**:
+  - `handleStartTripFromAlert()`: Inicia viaje desde la alerta y esconde menú
+  - `handleCancelStartTrip()`: Cancela inicio de viaje y reabre menú
+
+- **Actualizado panel de seguimiento de viaje**:
+  - Ubicado en `bottom-20 left-1/2` (abajo del icono de seguimiento)
+  - Solo muestra distancia o tiempo (alternando cada 3s)
+  - Efecto de blur (`blur-[2px]`) cuando el valor no está activo
+  - Transición suave de 500ms
+  - Reducido tamaño (max-width ya no necesario, solo pequeño card)
+
+- **Añadida alerta de inicio de viaje con countdown**:
+  - Muestra "¿Quieres empezar el viaje?" con countdown de 30s
+  - Botones "Sí" y "No" con funciones específicas
+  - Centrada en pantalla con fondo semi-transparente
+  - Icono de navegación verde
+  - Muestra el destino seleccionado
+
+- **Actualizado menú principal**:
+  - Botón de menú cambiado a barra en el borde izquierdo
+  - Tres líneas verticales grises como indicador
+  - Posicionado en `top-1/2 left-0 transform -translate-y-1/2`
+  - Ancho reducido a 3px, altura 96px
+
+- **Actualizada sección de destino**:
+  - Ahora muestra como labelbox cuando se selecciona destino
+  - Con gradiente `from-red-50 to-red-100`
+  - Borde rojo `border-2 border-[#E31837]`
+  - Botón X para limpiar destino
+  - El textbox de búsqueda solo se muestra cuando no hay destino seleccionado
+  - El textbox se limpia automáticamente al seleccionar un destino
+
+- **Eliminados elementos**:
+  - Botón "Buscar Ruta" completamente removido (causaba errores)
+  - Navegación inferior eliminada para aprovechar más pantalla
+  - Diálogo antiguo de "Empezar Ruta" reemplazado por alerta con countdown
+  - Estado `showStartTripDialog` eliminado (ya no necesario)
+
+- **Añadido botón de enfocar ubicación**:
+  - Posicionado en `absolute bottom-20 left-4`
+  - Icono Navigation azul (#0052B4)
+  - Tooltip "Enfocar en mi ubicación"
+  - Fondo blanco semi-transparente con blur
+
+- **Mantenido botón de alertas flotante**:
+  - Posicionado en `absolute top-4 right-4`
+  - Ícono Bell flotante
+
+Stage Summary:
+- Interfaz de usuario completamente rediseñada para smartphones
+- Más espacio de pantalla disponible sin banners ni navegación inferior
+- Menú deslizante con barra minimalista en el borde
+- Búsqueda de destino mejorada con labelbox para destino seleccionado
+- Alerta de inicio de viaje con countdown de 30 segundos
+- Panel de seguimiento compacto con alternancia entre distancia y tiempo
+- Efecto visual de blur en el valor inactivo
+- Botón de enfocar ubicación en esquina inferior izquierda
+- Todos los cambios compilados exitosamente sin errores
+- Servidor de desarrollo funcionando correctamente

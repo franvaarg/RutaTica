@@ -120,8 +120,15 @@ export default function BusPlannerApp() {
   const [lastUserActivity, setLastUserActivity] = useState(0)
   const [manualCenter, setManualCenter] = useState<[number, number] | null>(null)
 
-  // Estado para diálogo de inicio de viaje
-  const [showStartTripDialog, setShowStartTripDialog] = useState(false)
+  // Estado para alerta de inicio de viaje con conteo
+  const [showStartTripAlert, setShowStartTripAlert] = useState(false)
+  const [countdownSeconds, setCountdownSeconds] = useState(30)
+
+  // Estado para visibilidad de detalles del viaje
+  const [tripDetailsVisible, setTripDetailsVisible] = useState(false)
+
+  // Estado para alternar entre distancia y tiempo
+  const [showDistance, setShowDistance] = useState(true)
 
   useEffect(() => {
     getCurrentLocation()
@@ -253,9 +260,9 @@ export default function BusPlannerApp() {
           resolve,
           reject,
           {
-            enableHighAccuracy: false, // Cambiar a false para mejor rendimiento
-            timeout: 5000, // Reducir timeout a 5 segundos
-            maximumAge: 30000, // Permitir caché de 30 segundos
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 0,
           }
         )
       })
@@ -263,6 +270,7 @@ export default function BusPlannerApp() {
       const { latitude, longitude } = position.coords
       setCurrentLocation({ latitude, longitude })
       setMapCenter([latitude, longitude])
+      setMapZoom(16)
 
       // Cargar dirección en segundo plano sin bloquear
       setLoadingAddress(true)
@@ -281,6 +289,14 @@ export default function BusPlannerApp() {
       setError('No se pudo obtener tu ubicación. Por favor activa el GPS y permite el acceso.')
     } finally {
       setLoadingLocation(false)
+    }
+  }
+
+  // Función para enfocar en la ubicación actual
+  const handleFocusLocation = () => {
+    if (currentLocation) {
+      setMapCenter([currentLocation.latitude, currentLocation.longitude])
+      setMapZoom(16)
     }
   }
 
@@ -433,13 +449,21 @@ export default function BusPlannerApp() {
         lon: lon,
         displayName: location.displayName || location.name || 'Destino desconocido',
       })
-      setDestination(location.name || '')
+      // Limpiar el textbox de búsqueda después de seleccionar
+      setDestination('')
       setError(null)
+      
+      // Esconder el menú principal
+      setIsMenuOpen(false)
 
       // Obtener ruta directa al destino seleccionado
       if (currentLocation) {
         getDirectRouteToDestination([currentLocation.latitude, currentLocation.longitude], [lat, lon])
       }
+
+      // Mostrar alerta con conteo de 30 segundos
+      setShowStartTripAlert(true)
+      setCountdownSeconds(30)
     } catch (error) {
       console.error('Error al seleccionar destino:', error)
       setError('Error al procesar la ubicación seleccionada')
@@ -557,7 +581,7 @@ export default function BusPlannerApp() {
     setDistanceRemaining(0)
     setShowArrivalNotification(false)
     setTrackingPanelVisible(true)
-    setShowStartTripDialog(false)
+    setShowStartTripAlert(false)
 
     setDestination('')
     setSelectedDestination(null)
@@ -619,7 +643,6 @@ export default function BusPlannerApp() {
     setTripStartTime(new Date())
     setElapsedTime(0)
     setTrackingPanelVisible(false) // Esconder panel al empezar
-    setShowStartTripDialog(false)
 
     // Calcular distancia inicial al destino
     if (selectedRoute.destinationStop?.coordinates) {
@@ -696,12 +719,44 @@ export default function BusPlannerApp() {
     }
   }
 
-  // Mostrar diálogo de inicio de viaje cuando se selecciona una ruta
+  // Manejar el conteo de la alerta de inicio de viaje
   useEffect(() => {
-    if (selectedRoute && hasPlanned && !isTracking) {
-      setShowStartTripDialog(true)
+    let interval: NodeJS.Timeout | null = null
+    if (showStartTripAlert && countdownSeconds > 0) {
+      interval = setInterval(() => {
+        setCountdownSeconds((prev) => prev - 1)
+      }, 1000)
+    } else if (countdownSeconds === 0 && showStartTripAlert) {
+      // Auto-cerrar después de 30 segundos
+      setShowStartTripAlert(false)
+      setIsMenuOpen(true)
     }
-  }, [selectedRoute, hasPlanned, isTracking])
+    return () => {
+      if (interval) clearInterval(interval)
+    }
+  }, [showStartTripAlert, countdownSeconds])
+
+  // Alternar entre mostrar distancia y tiempo durante el viaje
+  useEffect(() => {
+    if (isTracking) {
+      const interval = setInterval(() => {
+        setShowDistance((prev) => !prev)
+      }, 3000)
+      return () => clearInterval(interval)
+    }
+  }, [isTracking])
+
+  const handleStartTripFromAlert = () => {
+    setShowStartTripAlert(false)
+    if (selectedRoute) {
+      handleStartTrip()
+    }
+  }
+
+  const handleCancelStartTrip = () => {
+    setShowStartTripAlert(false)
+    setIsMenuOpen(true)
+  }
 
   return (
     <div
@@ -743,70 +798,53 @@ export default function BusPlannerApp() {
         </div>
       )}
 
-      {/* Panel de seguimiento de viaje - Centrado horizontalmente */}
+      {/* Panel de seguimiento de viaje - Debajo del icono de seguimiento */}
       {isTracking && trackingPanelVisible && (
-        <div className="absolute bottom-24 left-1/2 transform -translate-x-1/2 z-40 max-w-[240px] w-full">
-          <Card className="bg-white/95 backdrop-blur-sm shadow-lg border-2 border-[#E31837]">
-            <CardContent className="p-3">
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 bg-[#10B981] rounded-full flex items-center justify-center">
-                    <Bus className="w-4 h-4 text-white animate-pulse" />
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-[#374151] text-xs">Viaje en curso</h3>
-                    <p className="text-xs text-[#6B7280]">{selectedRoute?.routeNumber}</p>
-                  </div>
-                </div>
-                <Badge className="bg-[#10B981] text-white border-none text-xs">
-                  Activo
-                </Badge>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2 text-center">
-                <div>
-                  <p className="text-xs text-[#6B7280]">Restante</p>
+        <div 
+          className={`absolute bottom-20 left-1/2 transform -translate-x-1/2 z-40 transition-all duration-500 ${
+            showDistance ? 'opacity-100 blur-0' : 'opacity-60 blur-[2px]'
+          }`}
+        >
+          <Card className="bg-white/95 backdrop-blur-sm shadow-lg border-2 border-[#10B981]">
+            <CardContent className="p-2 text-center">
+              {showDistance ? (
+                <div className="flex items-center justify-center gap-2">
+                  <Navigation className="w-4 h-4 text-[#E31837]" />
                   <p className="font-bold text-[#E31837] text-sm">
                     {distanceRemaining.toFixed(1)} km
                   </p>
                 </div>
-                <div>
-                  <p className="text-xs text-[#6B7280]">Tiempo</p>
+              ) : (
+                <div className="flex items-center justify-center gap-2">
+                  <Clock className="w-4 h-4 text-[#0052B4]" />
                   <p className="font-bold text-[#0052B4] text-sm">
                     {elapsedTime < 60
                       ? `${Math.floor(elapsedTime)} min`
                       : `${Math.floor(elapsedTime / 60)}h ${Math.floor(elapsedTime % 60)}min`}
                   </p>
                 </div>
-              </div>
+              )}
             </CardContent>
           </Card>
         </div>
       )}
 
-      {/* Diálogo para empezar viaje - En la parte inferior, compacto, sin blur */}
-      {showStartTripDialog && selectedRoute && !isTracking && (
-        <div className="absolute inset-0 z-50 bg-black/20 flex items-end justify-center p-4">
-          <Card className="max-w-xs w-full bg-white shadow-xl rounded-t-lg">
-            <CardContent className="p-4">
-              <div className="flex items-start gap-3 mb-3">
-                <div className="w-12 h-12 bg-[#10B981] rounded-full flex items-center justify-center flex-shrink-0">
-                  <Bus className="w-6 h-6 text-white" />
-                </div>
-                <div className="flex-1">
-                  <h3 className="font-bold text-[#374151] text-lg mb-1">Empezar Ruta</h3>
-                  <p className="text-sm text-[#6B7280]">
-                    {selectedRoute.routeNumber} - {selectedRoute.company}
-                  </p>
-                  <p className="text-xs text-[#6B7280] mt-1">
-                    Destino: {selectedRoute.destinationStop?.name || destination}
-                  </p>
-                </div>
+      {/* Alerta de inicio de viaje con conteo de 30 segundos */}
+      {showStartTripAlert && selectedDestination && !isTracking && (
+        <div className="absolute inset-0 z-50 bg-black/30 flex items-center justify-center p-4">
+          <Card className="max-w-[280px] w-full bg-white shadow-xl rounded-lg animate-bounce">
+            <CardContent className="p-4 text-center">
+              <div className="w-14 h-14 bg-[#10B981] rounded-full flex items-center justify-center mx-auto mb-3">
+                <Navigation className="w-7 h-7 text-white" />
               </div>
-
-              <div className="flex gap-2">
+              <h3 className="font-bold text-[#374151] text-lg mb-2">¿Quieres empezar el viaje?</h3>
+              <p className="text-xs text-[#6B7280] mb-1">
+                Destino: {selectedDestination.displayName || selectedDestination.name}
+              </p>
+              <p className="text-2xl font-bold text-[#E31837] mb-4">{countdownSeconds}s</p>
+              <div className="flex gap-2 justify-center">
                 <Button
-                  onClick={() => setShowStartTripDialog(false)}
+                  onClick={handleCancelStartTrip}
                   variant="outline"
                   size="sm"
                   className="flex-1"
@@ -814,7 +852,7 @@ export default function BusPlannerApp() {
                   No
                 </Button>
                 <Button
-                  onClick={handleStartTrip}
+                  onClick={handleStartTripFromAlert}
                   size="sm"
                   className="flex-1 bg-[#10B981] hover:bg-[#059669]"
                 >
@@ -862,16 +900,16 @@ export default function BusPlannerApp() {
         </div>
       )}
 
-      {/* Floating Menu Button */}
+      {/* Menu Bar on Left Edge */}
       <Sheet open={isMenuOpen} onOpenChange={setIsMenuOpen}>
         <SheetTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="absolute top-4 left-4 z-30 bg-white/95 backdrop-blur-sm shadow-md hover:bg-gray-100 w-12 h-12"
-          >
-            <Menu className="w-6 h-6 text-gray-600" />
-          </Button>
+          <div className="absolute top-1/2 left-0 transform -translate-y-1/2 z-30 bg-white/95 backdrop-blur-sm shadow-lg hover:shadow-xl transition-shadow rounded-r-lg cursor-pointer w-3 h-24 flex items-center justify-center">
+            <div className="space-y-1">
+              <div className="w-1 h-6 bg-gray-400 rounded-full"></div>
+              <div className="w-1 h-6 bg-gray-400 rounded-full"></div>
+              <div className="w-1 h-6 bg-gray-400 rounded-full"></div>
+            </div>
+          </div>
         </SheetTrigger>
         <SheetContent side="left" className="w-full sm:w-96 overflow-y-auto">
           <div className="mt-4 space-y-4">
@@ -1010,7 +1048,7 @@ export default function BusPlannerApp() {
                       </Card>
                     </div>
                   )}
-            {/* Destination */}
+            {/* Destination - Labelbox style */}
             <div className="space-y-2">
               <div className="flex items-center gap-2">
                 <div className="w-6 h-6 bg-[#E31837] rounded-full flex items-center justify-center">
@@ -1018,33 +1056,38 @@ export default function BusPlannerApp() {
                 </div>
                 <span className="font-semibold text-sm text-[#374151]">Destino</span>
               </div>
-              <LocationAutocomplete
-                value={destination}
-                onChange={setDestination}
-                onSelect={handleDestinationSelect}
-                placeholder="Escribe el destino..."
-                disabled={!currentLocation || planning}
-              />
-
-              {/* Buscar Ruta Button - Ocultar cuando hay destino seleccionado */}
-              {!selectedDestination && (
-                <Button
-                  onClick={handlePlanRoute}
-                  disabled={!currentLocation || !destination.trim() || planning}
-                  className="w-full h-11 text-base font-semibold bg-[#E31837] hover:bg-[#C41230] shadow-md"
-                >
-                  {planning ? (
-                    <>
-                      <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                      Calculando ruta...
-                    </>
-                  ) : (
-                    <>
-                      <Navigation className="w-5 h-5 mr-2" />
-                      Buscar Ruta
-                    </>
-                  )}
-                </Button>
+              
+              {/* Labelbox showing selected destination */}
+              {selectedDestination ? (
+                <div className="bg-gradient-to-r from-red-50 to-red-100 p-4 rounded-lg border-2 border-[#E31837]">
+                  <div className="flex items-center gap-2">
+                    <Navigation className="w-5 h-5 text-[#E31837]" />
+                    <div className="flex-1">
+                      <p className="font-semibold text-sm text-[#374151]">
+                        {selectedDestination.displayName || selectedDestination.name}
+                      </p>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleResetSearch}
+                      className="text-red-600 hover:bg-red-50"
+                    >
+                      <X className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  {/* Search textbox for autocomplete */}
+                  <LocationAutocomplete
+                    value={destination}
+                    onChange={setDestination}
+                    onSelect={handleDestinationSelect}
+                    placeholder="Escribe el destino..."
+                    disabled={!currentLocation || planning}
+                  />
+                </>
               )}
             </div>
                   {/* Error Message */}
@@ -1236,6 +1279,17 @@ export default function BusPlannerApp() {
         </SheetContent>
       </Sheet>
 
+      {/* Focus Location Button - Bottom Left */}
+      <Button
+        onClick={handleFocusLocation}
+        variant="ghost"
+        size="icon"
+        className="absolute bottom-20 left-4 z-30 bg-white/95 backdrop-blur-sm shadow-md hover:bg-gray-100 w-12 h-12"
+        title="Enfocar en mi ubicación"
+      >
+        <Navigation className="w-6 h-6 text-[#0052B4]" />
+      </Button>
+
       {/* Floating Alert Button */}
       <Button
         variant="ghost"
@@ -1244,33 +1298,6 @@ export default function BusPlannerApp() {
       >
         <Bell className="w-6 h-6 text-gray-600" />
       </Button>
-      {/* Bottom Navigation - Floating on top of map */}
-      <nav className="absolute bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur-sm border-t border-[#E5E7EB]">
-        <div className="container mx-auto px-4">
-          <div className="flex items-center justify-around py-2">
-            <Button variant="ghost" className="flex flex-col items-center gap-1 text-gray-600 hover:bg-gray-100 h-auto py-2">
-              <Map className="w-5 h-5" />
-              <span className="text-xs">Mapa</span>
-            </Button>
-            <Button variant="ghost" className="flex flex-col items-center gap-1 text-gray-600 hover:bg-gray-100 h-auto py-2">
-              <Bus className="w-5 h-5" />
-              <span className="text-xs">Rutas</span>
-            </Button>
-            <Button variant="ghost" className="flex flex-col items-center gap-1 text-gray-600 hover:bg-gray-100 h-auto py-2">
-              <Clock className="w-5 h-5" />
-              <span className="text-xs">Horarios</span>
-            </Button>
-            <Button variant="ghost" className="flex flex-col items-center gap-1 text-gray-600 hover:bg-gray-100 h-auto py-2">
-              <Heart className="w-5 h-5" />
-              <span className="text-xs">Favoritos</span>
-            </Button>
-            <Button variant="ghost" className="flex flex-col items-center gap-1 text-gray-600 hover:bg-gray-100 h-auto py-2">
-              <User className="w-5 h-5" />
-              <span className="text-xs">Perfil</span>
-            </Button>
-          </div>
-        </div>
-      </nav>
     </div>
   )
 }
