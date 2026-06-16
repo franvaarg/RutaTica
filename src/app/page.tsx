@@ -107,6 +107,7 @@ export default function BusPlannerApp() {
   const [trackingId, setTrackingId] = useState<number | null>(null)
   const [tripStartTime, setTripStartTime] = useState<Date | null>(null)
   const [distanceRemaining, setDistanceRemaining] = useState<number>(0)
+  const [distanceTraveled, setDistanceTraveled] = useState<number>(0)
   const [elapsedTime, setElapsedTime] = useState<number>(0)
   const [showArrivalNotification, setShowArrivalNotification] = useState(false)
 
@@ -637,22 +638,31 @@ export default function BusPlannerApp() {
   }
 
   const handleStartTrip = () => {
-    if (!currentLocation || !selectedRoute) {
+    if (!currentLocation) {
       return
     }
 
     setIsTracking(true)
     setTripStartTime(new Date())
     setElapsedTime(0)
+    setDistanceTraveled(0)
     setTrackingPanelVisible(false) // Esconder panel al empezar
 
     // Calcular distancia inicial al destino
-    if (selectedRoute.destinationStop?.coordinates) {
+    if (selectedRoute?.destinationStop?.coordinates) {
       const initialDistance = calculateDistance(
         currentLocation.latitude,
         currentLocation.longitude,
         selectedRoute.destinationStop.coordinates.latitude,
         selectedRoute.destinationStop.coordinates.longitude
+      )
+      setDistanceRemaining(initialDistance)
+    } else if (selectedDestination) {
+      const initialDistance = calculateDistance(
+        currentLocation.latitude,
+        currentLocation.longitude,
+        selectedDestination.lat,
+        selectedDestination.lon
       )
       setDistanceRemaining(initialDistance)
     }
@@ -661,19 +671,53 @@ export default function BusPlannerApp() {
     setMapCenter([currentLocation.latitude, currentLocation.longitude])
     setMapZoom(14)
 
+    // Guardar última ubicación para calcular distancia recorrida
+    let lastPosition: [number, number] = [currentLocation.latitude, currentLocation.longitude]
+
     // Iniciar seguimiento de posición con watchPosition
     const id = navigator.geolocation.watchPosition(
       (position) => {
         const { latitude, longitude } = position.coords
+        const currentPosition: [number, number] = [latitude, longitude]
         setCurrentLocation({ latitude, longitude })
 
+        // Calcular distancia recorrida incrementalmente
+        const segmentDistance = calculateDistance(
+          lastPosition[0],
+          lastPosition[1],
+          currentPosition[0],
+          currentPosition[1]
+        )
+        // Solo agregar si el movimiento es significativo (más de 5 metros para evitar errores de GPS)
+        if (segmentDistance > 0.005) {
+          setDistanceTraveled((prev) => {
+            const newDistance = prev + segmentDistance * 1000
+            lastPosition = currentPosition
+            return newDistance
+          })
+        }
+
         // Calcular distancia restante
-        if (selectedRoute.destinationStop?.coordinates) {
+        if (selectedRoute?.destinationStop?.coordinates) {
           const remaining = calculateDistance(
             latitude,
             longitude,
             selectedRoute.destinationStop.coordinates.latitude,
             selectedRoute.destinationStop.coordinates.longitude
+          )
+          setDistanceRemaining(remaining)
+
+          // Verificar si ha llegado al destino (dentro de 100 metros)
+          if (remaining < 0.1) {
+            handleStopTrip()
+            setShowArrivalNotification(true)
+          }
+        } else if (selectedDestination) {
+          const remaining = calculateDistance(
+            latitude,
+            longitude,
+            selectedDestination.lat,
+            selectedDestination.lon
           )
           setDistanceRemaining(remaining)
 
@@ -693,8 +737,8 @@ export default function BusPlannerApp() {
       },
       {
         enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 0,
+        timeout: 15000, // Aumentado a 15 segundos
+        maximumAge: 3000, // Reducido para obtener ubicación más fresca
       }
     )
 
@@ -710,6 +754,7 @@ export default function BusPlannerApp() {
     setTripStartTime(null)
     setElapsedTime(0)
     setDistanceRemaining(0)
+    setDistanceTraveled(0)
     setTrackingPanelVisible(true)
   }
 
@@ -750,8 +795,13 @@ export default function BusPlannerApp() {
 
   const handleStartTripFromAlert = () => {
     setShowStartTripAlert(false)
-    if (selectedRoute) {
+    if (selectedRoute || selectedDestination) {
       handleStartTrip()
+      // Enfocar en la ubicación del usuario
+      if (currentLocation) {
+        setMapCenter([currentLocation.latitude, currentLocation.longitude])
+        setMapZoom(16)
+      }
     }
   }
 
@@ -786,6 +836,9 @@ export default function BusPlannerApp() {
             busStops={busStops}
             isTracking={isTracking}
             onMapInteraction={handleMapInteraction}
+            tripDistance={distanceTraveled}
+            tripTime={elapsedTime}
+            showDistanceInfo={isTracking}
           />
         </div>
       )}
@@ -1078,6 +1131,26 @@ export default function BusPlannerApp() {
                       <X className="w-4 h-4" />
                     </Button>
                   </div>
+                  {/* Botón Empezar/Detener Viaje para destino directo */}
+                  {!selectedRoute && (
+                    !isTracking ? (
+                      <Button
+                        onClick={handleStartTripFromAlert}
+                        className="w-full h-10 text-sm font-semibold bg-[#10B981] hover:bg-[#059669] shadow-md"
+                      >
+                        <Navigation className="w-4 h-4 mr-2" />
+                        Empezar Viaje
+                      </Button>
+                    ) : (
+                      <Button
+                        onClick={handleStopTrip}
+                        className="w-full h-10 text-sm font-semibold bg-white text-red-600 border-2 border-red-600 hover:bg-red-50"
+                      >
+                        <Navigation className="w-4 h-4 mr-2" />
+                        Detener Viaje
+                      </Button>
+                    )
+                  )}
                 </div>
               ) : (
                 <>
@@ -1252,6 +1325,50 @@ export default function BusPlannerApp() {
                         </Button>
                       )}
                     </div>
+                  )}
+
+                  {/* Información del viaje activo */}
+                  {isTracking && (
+                    <Card className="shadow-md border-2 border-[#E31837]">
+                      <CardContent className="p-4">
+                        <div className="flex items-center gap-2 mb-3">
+                          <div className="w-8 h-8 bg-[#E31837] rounded-full flex items-center justify-center">
+                            <Navigation className="w-4 h-4 text-white" />
+                          </div>
+                          <h3 className="font-bold text-base text-[#374151]">Viaje en curso</h3>
+                        </div>
+                        {(selectedRoute || selectedDestination) && (
+                          <div className="mb-3 text-sm text-[#6B7280] bg-gray-50 p-2 rounded-lg">
+                            <span className="font-medium text-[#374151]">Hacia: </span>
+                            {selectedRoute?.destinationStop?.name || selectedDestination?.displayName || selectedDestination?.name}
+                          </div>
+                        )}
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="bg-blue-50 rounded-lg p-3 border border-blue-200">
+                            <div className="flex items-center gap-2 mb-1">
+                              <MapPin className="w-4 h-4 text-[#0052B4]" />
+                              <span className="text-xs text-[#6B7280] font-medium">Distancia</span>
+                            </div>
+                            <p className="text-lg font-bold text-[#0052B4]">
+                              {distanceTraveled >= 1000
+                                ? `${(distanceTraveled / 1000).toFixed(2)} km`
+                                : `${distanceTraveled.toFixed(2)} m`}
+                            </p>
+                          </div>
+                          <div className="bg-green-50 rounded-lg p-3 border border-green-200">
+                            <div className="flex items-center gap-2 mb-1">
+                              <Clock className="w-4 h-4 text-[#10B981]" />
+                              <span className="text-xs text-[#6B7280] font-medium">Tiempo</span>
+                            </div>
+                            <p className="text-lg font-bold text-[#10B981]">
+                              {elapsedTime < 60
+                                ? `${elapsedTime.toFixed(2)} min`
+                                : `${(elapsedTime / 60).toFixed(2)} h`}
+                            </p>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
                   )}
 
                   {/* Popular Destinations */}

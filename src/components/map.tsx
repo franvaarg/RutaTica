@@ -177,6 +177,9 @@ interface BusMapProps {
   }> | null
   isTracking?: boolean
   onMapInteraction?: () => void
+  tripDistance?: number
+  tripTime?: number
+  showDistanceInfo?: boolean
 }
 
 const BusMap = ({
@@ -192,6 +195,9 @@ const BusMap = ({
   busStops,
   isTracking,
   onMapInteraction,
+  tripDistance = 0,
+  tripTime = 0,
+  showDistanceInfo = true,
 }: BusMapProps) => {
   const [isMounted, setIsMounted] = useState(false)
   const [L, setL] = useState<any>(null)
@@ -307,6 +313,95 @@ const BusMap = ({
       iconAnchor: [24, 24],
     })
   }, [L])
+
+  // Icono del usuario cuando está en viaje (tracking) con información dinámica y animación fade intercalado
+  const trackingIcon = useMemo(() => {
+    if (!L) return null
+    const formattedDistance = tripDistance >= 1000
+      ? `${(tripDistance / 1000).toFixed(0)}km`
+      : `${tripDistance.toFixed(0)}m`
+    const formattedTime = `${tripTime.toFixed(0)}min`
+
+    return L.divIcon({
+      className: 'custom-tracking-marker',
+      html: `
+        <style>
+          @keyframes fadeInOut {
+            0%, 100% { opacity: 0; }
+            50% { opacity: 1; }
+          }
+          @keyframes pulse-ring {
+            0% { transform: translate(-50%, -50%) scale(0.5); opacity: 1; }
+            100% { transform: translate(-50%, -50%) scale(1.5); opacity: 0; }
+          }
+          @keyframes pulse-ring-inner {
+            0% { transform: translate(-50%, -50%) scale(0.5); opacity: 0.6; }
+            100% { transform: translate(-50%, -50%) scale(1.2); opacity: 0; }
+          }
+          .tracking-info-fade-1 {
+            animation: fadeInOut 3s ease-in-out infinite;
+          }
+          .tracking-info-fade-2 {
+            animation: fadeInOut 3s ease-in-out infinite;
+            animation-delay: 1.5s;
+          }
+          .tracking-pulse-ring {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            background: rgba(227, 24, 55, 0.3);
+            animation: pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+            pointer-events: none;
+          }
+          .tracking-pulse-ring-2 {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: rgba(227, 24, 55, 0.2);
+            animation: pulse-ring-inner 2s cubic-bezier(0.4, 0, 0.6, 1) infinite 0.5s;
+            pointer-events: none;
+          }
+          .tracking-pulse-ring-3 {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 64px;
+            height: 64px;
+            border-radius: 50%;
+            background: rgba(227, 24, 55, 0.15);
+            animation: pulse-ring-inner 2s cubic-bezier(0.4, 0, 0.6, 1) infinite 1s;
+            pointer-events: none;
+          }
+        </style>
+        <div class="relative flex flex-col items-center justify-center">
+          <div class="relative">
+            <div class="w-7 h-7 bg-[#E31837] rounded-full border-3 border-white shadow-lg flex items-center justify-center relative z-10">
+              <svg viewBox="0 0 24 24" class="w-4 h-4 text-white" fill="currentColor">
+                <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
+              </svg>
+            </div>
+            <div class="tracking-pulse-ring"></div>
+            <div class="tracking-pulse-ring-2"></div>
+            <div class="tracking-pulse-ring-3"></div>
+          </div>
+          ${showDistanceInfo ? `
+          <div class="mt-2 bg-white/95 backdrop-blur-sm px-2 py-1 rounded-full shadow-md border border-red-200 whitespace-nowrap">
+            <span class="text-xs font-bold text-[#E31837] tracking-info-fade-1">${formattedDistance}</span>
+            <span class="text-xs font-bold text-[#0052B4] tracking-info-fade-2">${formattedTime}</span>
+          </div>
+          ` : ''}
+        </div>
+      `,
+      iconSize: [80, 80],
+      iconAnchor: [40, 40],
+    })
+  }, [L, tripDistance, tripTime, showDistanceInfo])
 
   const originIcon = useMemo(() => {
     if (!L) return null
@@ -527,12 +622,19 @@ const BusMap = ({
 
         {/* Marcador de origen (ubicación del usuario) */}
         {userLocation && (
-          <Marker position={userLocation} icon={selectedRoute ? userIcon : originIcon}>
+          <Marker
+            position={userLocation}
+            icon={isTracking ? trackingIcon : (selectedRoute ? userIcon : originIcon)}
+          >
             <Popup>
               <div className="text-sm p-1 min-w-32">
-                <strong className="text-[#0052B4]">📍 Origen</strong>
+                <strong className={isTracking ? "text-[#E31837]" : "text-[#0052B4]"}>
+                  {isTracking ? "🚗 Tu posición" : "📍 Origen"}
+                </strong>
                 <br />
-                <span className="text-xs text-[#6B7280]">Tu ubicación actual</span>
+                <span className="text-xs text-[#6B7280]">
+                  {isTracking ? "Rastreando en tiempo real" : "Tu ubicación actual"}
+                </span>
               </div>
             </Popup>
           </Marker>
