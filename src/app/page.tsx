@@ -114,9 +114,8 @@ export default function BusPlannerApp() {
   const [trackingPanelVisible, setTrackingPanelVisible] = useState(true)
 
   // Estados para control del mapa
-  // Ubicación por defecto: San José, Costa Rica
-  const [mapCenter, setMapCenter] = useState<[number, number]>([9.9281, -84.0907])
-  const [mapZoom, setMapZoom] = useState(13)
+  const [mapCenter, setMapCenter] = useState<[number, number] | null>(null)
+  const [mapZoom, setMapZoom] = useState(14)
   const [isUserInteracting, setIsUserInteracting] = useState(false)
   const [lastUserActivity, setLastUserActivity] = useState(0)
   const [manualCenter, setManualCenter] = useState<[number, number] | null>(null)
@@ -722,28 +721,30 @@ export default function BusPlannerApp() {
       className="relative h-screen w-screen overflow-hidden bg-gray-100"
       onClick={() => isTracking && setTrackingPanelVisible(!trackingPanelVisible)}
     >
-      {/* Full Screen Map - Siempre se renderiza, usa ubicación por defecto si no hay geolocalización */}
-      <div className="absolute inset-0 z-0">
-        <BusMap
-          center={mapCenter}
-          zoom={mapZoom}
-          userLocation={currentLocation ? [currentLocation.latitude, currentLocation.longitude] : undefined}
-          nearestStop={nearestStop}
-          plannedRoutes={plannedRoutes}
-          plannedRoutesLength={plannedRoutes.length}
-          selectedRoute={selectedRoute}
-          destinationCoordinates={selectedDestination ? {
-            name: selectedDestination.name || 'Destino',
-            latitude: selectedDestination.lat,
-            longitude: selectedDestination.lon,
-            displayName: selectedDestination.displayName
-          } : null}
-          routePath={routePath}
-          busStops={busStops}
-          isTracking={isTracking}
-          onMapInteraction={handleMapInteraction}
-        />
-      </div>
+      {/* Full Screen Map */}
+      {currentLocation && mapCenter && (
+        <div className="absolute inset-0 z-0">
+          <BusMap
+            center={mapCenter}
+            zoom={mapZoom}
+            userLocation={[currentLocation.latitude, currentLocation.longitude]}
+            nearestStop={nearestStop}
+            plannedRoutes={plannedRoutes}
+            plannedRoutesLength={plannedRoutes.length}
+            selectedRoute={selectedRoute}
+            destinationCoordinates={selectedDestination ? {
+              name: selectedDestination.name || 'Destino',
+              latitude: selectedDestination.lat,
+              longitude: selectedDestination.lon,
+              displayName: selectedDestination.displayName
+            } : null}
+            routePath={routePath}
+            busStops={busStops}
+            isTracking={isTracking}
+            onMapInteraction={handleMapInteraction}
+          />
+        </div>
+      )}
 
       {/* Loading Overlay - Solo muestra cuando no hay ubicación */}
       {!currentLocation && loadingLocation && (
