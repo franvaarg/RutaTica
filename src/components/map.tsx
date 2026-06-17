@@ -205,24 +205,44 @@ const BusMap = ({
   const [loadingDbStops, setLoadingDbStops] = useState(false)
   const mapRef = useRef<any>(null)
 
+  // El mapa de Leaflet calcula su tamaño interno (_size) a partir del contenedor DOM.
+  // Si fitBounds()/setView() se llaman antes de que ese tamaño se haya calculado
+  // (por ejemplo, justo al montar el componente), Leaflet produce internamente
+  // "Invalid LatLng object: (NaN, NaN)" aunque las coordenadas que le pasemos sean
+  // válidas. Esperamos a que el mapa dispare su evento "ready" antes de permitir
+  // cualquier fitBounds/setView programático.
+  const [mapReady, setMapReady] = useState(false)
+
   // Actualizar centro y zoom del mapa cuando cambian las props
   useEffect(() => {
-    if (!mapRef.current || !center) return
+    if (!mapRef.current || !center || !mapReady) return
 
     const map = mapRef.current
+
+    // Validar que el centro y el zoom sean números válidos (no NaN ni infinito)
+    // antes de pasarlos a Leaflet, que falla con "Invalid LatLng object" si no lo son.
+    if (!isFinite(center[0]) || !isFinite(center[1]) || !isFinite(zoom)) {
+      console.warn('Centro o zoom del mapa inválidos, ignorando setView', { center, zoom })
+      return
+    }
+
     const currentCenter = map.getCenter()
     const currentZoom = map.getZoom()
 
     // Solo actualizar si hay cambios significativos para evitar loops infinitos
-    const centerChanged = !currentCenter || 
-      Math.abs(currentCenter.lat - center[0]) > 0.0001 || 
+    const centerChanged = !currentCenter ||
+      Math.abs(currentCenter.lat - center[0]) > 0.0001 ||
       Math.abs(currentCenter.lng - center[1]) > 0.0001
     const zoomChanged = currentZoom !== zoom
 
     if (centerChanged || zoomChanged) {
-      map.setView(center, zoom, { animate: true })
+      try {
+        map.setView(center, zoom, { animate: true })
+      } catch (error) {
+        console.error('Error al llamar setView:', error, { center, zoom })
+      }
     }
-  }, [center, zoom])
+  }, [center, zoom, mapReady])
 
   useEffect(() => {
     let mounted = true
@@ -596,6 +616,16 @@ const BusMap = ({
         scrollWheelZoom={false}
         zoomControl={false}
         ref={mapRef}
+        whenReady={() => {
+          // Se dispara una vez que Leaflet terminó su inicialización interna
+          // (incluyendo el cálculo del tamaño del contenedor). A partir de aquí
+          // es seguro llamar a fitBounds()/setView() sin riesgo de NaN.
+          setMapReady(true)
+          // Por si el contenedor cambia de tamaño justo después del montaje inicial
+          requestAnimationFrame(() => {
+            mapRef.current?.invalidateSize()
+          })
+        }}
       >
         {/* Capa de OpenStreetMap */}
         <TileLayer
