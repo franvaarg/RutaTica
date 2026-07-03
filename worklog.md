@@ -597,3 +597,24 @@ Work Log:
 3. **Route cards**: Show time, schedule, transfers, walking distance, rank quality (was: just distance)
 4. **Popular destinations**: Real GTFS stops from API (was: hardcoded city names)
 5. **All existing features preserved**: GPS tracking, trip start/stop, location autocomplete, bottom nav, header, sheet/menu, map rendering
+
+---
+Task ID: fix-route-results-visibility
+Agent: Z.ai Code (main)
+Task: Fix route search results, trip details, and prices not appearing after clicking "Buscar Ruta"
+
+Work Log:
+- Diagnosed root cause: All route results (cards, prices, "Empezar Viaje" button) were rendered inside a `<Sheet>` side drawer component that was closed by default after search
+- After clicking "Buscar Ruta", the API returned data successfully (200) but the results were invisible because the Sheet stayed closed
+- Added `setIsMenuOpen(false)` in `handlePlanRoute` to auto-close the Sheet after search completes
+- Removed route results from inside the Sheet and moved them to a new bottom panel (`z-30`, `absolute bottom-0`) that overlays the map
+- Bottom panel includes: drag handle, "Rutas Encontradas" header with count badge, "Cerrar" button, scrollable route cards (max-h-[45vh]), and "Empezar Viaje" button
+- Removed the old `showStartTripDialog` overlay dialog (no longer needed since results are directly visible)
+- Bottom navigation bar now hides when route results are showing (`{!hasPlanned && <nav>...}`)
+- Cleaned up all references to `showStartTripDialog` state variable
+- Verified with agent-browser: 5 routes found for Alajuela with times, prices (₡550), walking distances, departure/arrival times, and "Empezar Viaje" button all visible
+
+Stage Summary:
+- Route search results now appear in a bottom panel on the map immediately after clicking "Buscar Ruta"
+- Users can see route cards with prices, times, boarding/alighting stops, and start trip button
+- The Sheet drawer auto-closes after search, and results panel replaces the bottom nav

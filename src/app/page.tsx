@@ -137,7 +137,6 @@ export default function BusPlannerApp() {
   const [manualCenter, setManualCenter] = useState<[number, number] | null>(null)
 
   // Estado para diálogo de inicio de viaje
-  const [showStartTripDialog, setShowStartTripDialog] = useState(false)
   const [popularDestinations, setPopularDestinations] = useState<PopularDestination[]>([])
 
   useEffect(() => {
@@ -586,6 +585,7 @@ export default function BusPlannerApp() {
         setPlannedRoutes(mappedRoutes)
         setHasPlanned(true)
         setSelectedRoute(mappedRoutes[0])
+        setIsMenuOpen(false) // Close drawer to show results on map
 
         // Build route path using GTFS shape data
         const newRoutePath: RoutePath = {}
@@ -653,6 +653,7 @@ export default function BusPlannerApp() {
         setPlannedRoutes([])
         setHasPlanned(true)
         setError('No se encontraron rutas para tu destino. Intenta con otra ubicación.')
+        setIsMenuOpen(false)
       }
     } catch (err: any) {
       console.error('Error al planificar ruta:', err)
@@ -676,7 +677,6 @@ export default function BusPlannerApp() {
     setDistanceRemaining(0)
     setShowArrivalNotification(false)
     setTrackingPanelVisible(true)
-    setShowStartTripDialog(false)
 
     setDestination('')
     setSelectedDestination(null)
@@ -738,7 +738,6 @@ export default function BusPlannerApp() {
     setTripStartTime(new Date())
     setElapsedTime(0)
     setTrackingPanelVisible(false) // Esconder panel al empezar
-    setShowStartTripDialog(false)
 
     // Calcular distancia inicial al destino
     if (selectedRoute.destinationStop?.coordinates) {
@@ -815,12 +814,7 @@ export default function BusPlannerApp() {
     }
   }
 
-  // Mostrar diálogo de inicio de viaje cuando se selecciona una ruta
-  useEffect(() => {
-    if (selectedRoute && hasPlanned && !isTracking) {
-      setShowStartTripDialog(true)
-    }
-  }, [selectedRoute, hasPlanned, isTracking])
+  // Route results are shown in bottom panel - no dialog needed
 
   return (
     <div
@@ -901,47 +895,7 @@ export default function BusPlannerApp() {
         </div>
       )}
 
-      {/* Diálogo para empezar viaje - En la parte inferior, compacto, sin blur */}
-      {showStartTripDialog && selectedRoute && !isTracking && (
-        <div className="absolute inset-0 z-50 bg-black/20 flex items-end justify-center p-4">
-          <Card className="max-w-xs w-full bg-white shadow-xl rounded-t-lg">
-            <CardContent className="p-4">
-              <div className="flex items-start gap-3 mb-3">
-                <div className="w-12 h-12 bg-[#10B981] rounded-full flex items-center justify-center flex-shrink-0">
-                  <Bus className="w-6 h-6 text-white" />
-                </div>
-                <div className="flex-1">
-                  <h3 className="font-bold text-[#374151] text-lg mb-1">Empezar Ruta</h3>
-                  <p className="text-sm text-[#6B7280]">
-                    {selectedRoute.routeNumber} - {selectedRoute.company}
-                  </p>
-                  <p className="text-xs text-[#6B7280] mt-1">
-                    Destino: {selectedRoute.destinationStop?.name || destination}
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex gap-2">
-                <Button
-                  onClick={() => setShowStartTripDialog(false)}
-                  variant="outline"
-                  size="sm"
-                  className="flex-1"
-                >
-                  No
-                </Button>
-                <Button
-                  onClick={handleStartTrip}
-                  size="sm"
-                  className="flex-1 bg-[#10B981] hover:bg-[#059669]"
-                >
-                  Sí
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
+      {/* Route results shown in bottom panel below */}
 
       {/* Notificación de llegada */}
       {showArrivalNotification && (
@@ -1194,208 +1148,7 @@ export default function BusPlannerApp() {
                     </Card>
                   )}
 
-                  {/* Planned Routes */}
-                  {hasPlanned && (
-                    <div className="space-y-4">
-                      <div className="flex items-center justify-between">
-                        <h2 className="text-xl font-bold flex items-center gap-2 text-gray-800">
-                          <Bus className="w-5 h-5 text-red-600" />
-                          Rutas Encontradas
-                          {plannedRoutes.length > 0 && (
-                            <Badge className="bg-red-600 text-white border-none">{plannedRoutes.length}</Badge>
-                          )}
-                        </h2>
-                      </div>
-
-                      {plannedRoutes.length === 0 ? (
-                        <Card className="p-6 text-center shadow-sm border border-[#E5E7EB]">
-                          <Bus className="w-16 h-16 mx-auto text-[#9CA3AF] mb-4" />
-                          <p className="text-[#6B7280] text-sm">
-                            No se encontraron rutas disponibles hacia "{destination}".
-                            Intenta con otro destino más cercano o verifica que el nombre sea correcto.
-                          </p>
-                        </Card>
-                      ) : (
-                        <div className="space-y-3">
-                          {plannedRoutes.map((route) => (
-                            <Card
-                              key={route.id}
-                              className={`hover:shadow-md transition-all cursor-pointer shadow-sm ${
-                                selectedRoute?.id === route.id
-                                  ? 'ring-2 ring-[#E31837] shadow-md border border-[#FECACA]'
-                                  : 'border border-[#E5E7EB] hover:border-[#FECACA]'
-                              }`}
-                              onClick={() => {
-                                setSelectedRoute(route)
-                                // Update map route path when selecting a different route
-                                if (route._shapePoints && route._shapePoints.length > 0) {
-                                  const newRoutePath: RoutePath = {}
-                                  if (currentLocation && route.boardingStop?.coordinates) {
-                                    newRoutePath.walking = [
-                                      [currentLocation.latitude, currentLocation.longitude],
-                                      [route.boardingStop.coordinates.latitude, route.boardingStop.coordinates.longitude],
-                                    ]
-                                  }
-                                  newRoutePath.bus = route._shapePoints.map(p => [p.lat, p.lon] as [number, number])
-                                  setRoutePath(newRoutePath)
-                                  fitRouteToBounds(newRoutePath)
-                                }
-                              }}
-                            >
-                              <CardContent className="p-4">
-                                <div className="space-y-3">
-                                  {/* Route Header */}
-                                  <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-2">
-                                      <div className="w-10 h-10 bg-red-50 rounded-full flex items-center justify-center">
-                                        <Bus className="w-5 h-5 text-[#E31837]" />
-                                      </div>
-                                      <div>
-                                        <span className="font-bold text-lg text-[#374151]">{route.routeNumber}</span>
-                                        <Badge variant="outline" className="ml-2 text-xs border-[#BFDBFE] text-[#0052B4]">
-                                          {route.company}
-                                        </Badge>
-                                      </div>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                      {/* Rank-based quality indicator - first route is best */}
-                                      {plannedRoutes.indexOf(route) === 0 && (
-                                        <Badge className="text-xs bg-green-100 text-green-700 border-none">
-                                          <Star className="w-3 h-3 mr-1" />
-                                          Mejor opción
-                                        </Badge>
-                                      )}
-                                      {plannedRoutes.indexOf(route) === 1 && (
-                                        <Badge variant="secondary" className="text-xs bg-yellow-100 text-yellow-700 border-none">
-                                          Buena
-                                        </Badge>
-                                      )}
-                                    </div>
-                                  </div>
-
-                                  {/* Key Metrics Row */}
-                                  <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-lg p-4 shadow-md">
-                                    <div className="flex items-center justify-between text-white">
-                                      <div className="flex items-center gap-2">
-                                        <Clock className="w-6 h-6" />
-                                        <span className="text-sm font-medium">Tiempo total</span>
-                                      </div>
-                                      <div className="flex items-baseline gap-1">
-                                        <span className="text-3xl font-bold">
-                                          {route.durationMin ? formatDuration(route.durationMin) : '--'}
-                                        </span>
-                                      </div>
-                                    </div>
-                                    <div className="mt-2 pt-2 border-t border-white/20 flex items-center justify-between text-white/90">
-                                      <div className="flex items-center gap-2">
-                                        <DollarSign className="w-4 h-4" />
-                                        <span className="text-sm font-medium">{formatPrice(route.price)}</span>
-                                      </div>
-                                      {route._walkingDistanceKm !== undefined && route._walkingDistanceKm > 0 && (
-                                        <div className="flex items-center gap-2">
-                                          <Navigation className="w-4 h-4" />
-                                          <span className="text-sm">{route._walkingDistanceKm.toFixed(1)} km caminando</span>
-                                        </div>
-                                      )}
-                                    </div>
-                                    {/* Departure / Arrival times */}
-                                    {(route._departTime || route._arriveTime) && (
-                                      <div className="mt-2 pt-2 border-t border-white/20 flex items-center justify-between text-white/90">
-                                        {route._departTime && (
-                                          <div className="flex items-center gap-1">
-                                            <span className="text-xs opacity-75">Sale:</span>
-                                            <span className="text-sm font-semibold">{route._departTime}</span>
-                                          </div>
-                                        )}
-                                        {route._arriveTime && (
-                                          <div className="flex items-center gap-1">
-                                            <span className="text-xs opacity-75">Llega:</span>
-                                            <span className="text-sm font-semibold">{route._arriveTime}</span>
-                                          </div>
-                                        )}
-                                        {route._transfers !== undefined && route._transfers > 0 && (
-                                          <Badge className="bg-white/20 text-white border-none text-xs">
-                                            {route._transfers} transbordo{route._transfers > 1 ? 's' : ''}
-                                          </Badge>
-                                        )}
-                                      </div>
-                                    )}
-                                  </div>
-
-                                  {/* Route Path */}
-                                  <div className="bg-gradient-to-r from-blue-50 to-red-50 rounded-lg p-3 space-y-2">
-                                    {/* Boarding */}
-                                    <div className="flex items-start gap-2">
-                                      <div className="flex flex-col items-center">
-                                        <div className="w-3 h-3 rounded-full bg-[#0052B4]" />
-                                        <div className="w-0.5 h-8 bg-blue-200" />
-                                      </div>
-                                      <div className="flex-1">
-                                        <p className="text-xs text-[#6B7280] mb-1">Sube en:</p>
-                                        <p className="font-semibold text-sm text-[#374151]">{route.boardingStop.name}</p>
-                                        {route.boardingStop.city && (
-                                          <p className="text-xs text-[#6B7280]">{route.boardingStop.city}</p>
-                                        )}
-                                        {route._boardingStopDistanceKm !== undefined && route._boardingStopDistanceKm > 0 && (
-                                          <p className="text-xs text-[#0052B4] mt-1 font-medium">
-                                            {route._boardingStopDistanceKm.toFixed(2)} km de tu ubicación
-                                          </p>
-                                        )}
-                                      </div>
-                                    </div>
-
-                                    {/* Arrow */}
-                                    <div className="flex items-center justify-center">
-                                      <ArrowRight className="w-5 h-5 text-[#9CA3AF]" />
-                                    </div>
-
-                                    {/* Destination */}
-                                    <div className="flex items-start gap-2">
-                                      <div>
-                                        <div className="w-3 h-3 rounded-full bg-[#E31837]" />
-                                      </div>
-                                      <div className="flex-1">
-                                        <p className="text-xs text-[#6B7280] mb-1">Baja en:</p>
-                                        <p className="font-semibold text-sm text-[#374151]">
-                                          {route.destinationStop?.name || route.destination}
-                                        </p>
-                                        {route.destinationStop?.city && (
-                                          <p className="text-xs text-[#6B7280]">{route.destinationStop.city}</p>
-                                        )}
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
-                              </CardContent>
-                            </Card>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Botón de Viaje - Empezar/Detener */}
-                  {hasPlanned && plannedRoutes.length > 0 && selectedRoute && (
-                    <div className="mt-4">
-                      {!isTracking ? (
-                        <Button
-                          onClick={handleStartTrip}
-                          className="w-full h-12 text-base font-semibold bg-[#10B981] hover:bg-[#059669] shadow-md"
-                        >
-                          <Navigation className="w-5 h-5 mr-2" />
-                          Empezar Viaje
-                        </Button>
-                      ) : (
-                        <Button
-                          onClick={handleStopTrip}
-                          className="w-full h-12 text-base font-semibold bg-white text-red-600 border-2 border-red-600 hover:bg-red-50"
-                        >
-                          <Navigation className="w-5 h-5 mr-2" />
-                          Detener Viaje
-                        </Button>
-                      )}
-                    </div>
-                  )}
+                  {/* Route results shown in bottom panel outside Sheet */}
 
                   {/* Popular Destinations */}
                   {!hasPlanned && !error && (
@@ -1491,7 +1244,224 @@ export default function BusPlannerApp() {
         </div>
       </header>
 
-      {/* Bottom Navigation - Floating on top of map */}
+      {/* Bottom Route Results Panel - Visible after search */}
+      {hasPlanned && (
+        <div className="absolute bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur-sm border-t border-[#E5E7EB] shadow-[0_-4px_20px_rgba(0,0,0,0.1)]">
+          {/* Drag handle */}
+          <div className="flex justify-center pt-2 pb-1">
+            <div className="w-10 h-1 bg-gray-300 rounded-full" />
+          </div>
+
+          {/* Header with route count and reset */}
+          <div className="px-4 pb-2 flex items-center justify-between">
+            <h2 className="text-lg font-bold flex items-center gap-2 text-gray-800">
+              <Bus className="w-5 h-5 text-red-600" />
+              Rutas Encontradas
+              {plannedRoutes.length > 0 && (
+                <Badge className="bg-red-600 text-white border-none">{plannedRoutes.length}</Badge>
+              )}
+            </h2>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleResetSearch}
+              className="text-xs border-[#E5E7EB] text-gray-600 hover:bg-red-50 hover:text-red-600"
+            >
+              <X className="w-3 h-3 mr-1" />
+              Cerrar
+            </Button>
+          </div>
+
+          {/* Error message when no routes */}
+          {error && plannedRoutes.length === 0 && (
+            <div className="px-4 pb-4">
+              <Card className="p-4 text-center border border-[#FECACA] bg-red-50">
+                <Bus className="w-12 h-12 mx-auto text-[#9CA3AF] mb-3" />
+                <p className="text-[#DC2626] text-sm">{error}</p>
+              </Card>
+            </div>
+          )}
+
+          {/* No routes message */}
+          {!error && plannedRoutes.length === 0 && (
+            <div className="px-4 pb-4">
+              <Card className="p-4 text-center shadow-sm border border-[#E5E7EB]">
+                <Bus className="w-12 h-12 mx-auto text-[#9CA3AF] mb-3" />
+                <p className="text-[#6B7280] text-sm">
+                  No se encontraron rutas disponibles hacia "{destination}".
+                  Intenta con otro destino más cercano.
+                </p>
+              </Card>
+            </div>
+          )}
+
+          {/* Route cards - scrollable */}
+          {plannedRoutes.length > 0 && (
+            <div className="max-h-[45vh] overflow-y-auto px-4 pb-4 space-y-3 scrollbar-thin">
+              {plannedRoutes.map((route) => (
+                <Card
+                  key={route.id}
+                  className={`hover:shadow-md transition-all cursor-pointer shadow-sm ${
+                    selectedRoute?.id === route.id
+                      ? 'ring-2 ring-[#E31837] shadow-md border border-[#FECACA]'
+                      : 'border border-[#E5E7EB] hover:border-[#FECACA]'
+                  }`}
+                  onClick={() => {
+                    setSelectedRoute(route)
+                    if (route._shapePoints && route._shapePoints.length > 0) {
+                      const newRoutePath: RoutePath = {}
+                      if (currentLocation && route.boardingStop?.coordinates) {
+                        newRoutePath.walking = [
+                          [currentLocation.latitude, currentLocation.longitude],
+                          [route.boardingStop.coordinates.latitude, route.boardingStop.coordinates.longitude],
+                        ]
+                      }
+                      newRoutePath.bus = route._shapePoints.map(p => [p.lat, p.lon] as [number, number])
+                      setRoutePath(newRoutePath)
+                      fitRouteToBounds(newRoutePath)
+                    }
+                  }}
+                >
+                  <CardContent className="p-4">
+                    <div className="space-y-3">
+                      {/* Route Header */}
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <div className="w-10 h-10 bg-red-50 rounded-full flex items-center justify-center">
+                            <Bus className="w-5 h-5 text-[#E31837]" />
+                          </div>
+                          <div>
+                            <span className="font-bold text-lg text-[#374151]">{route.routeNumber}</span>
+                            <Badge variant="outline" className="ml-2 text-xs border-[#BFDBFE] text-[#0052B4]">
+                              {route.company}
+                            </Badge>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {plannedRoutes.indexOf(route) === 0 && (
+                            <Badge className="text-xs bg-green-100 text-green-700 border-none">
+                              <Star className="w-3 h-3 mr-1" />
+                              Mejor opción
+                            </Badge>
+                          )}
+                          {plannedRoutes.indexOf(route) === 1 && (
+                            <Badge variant="secondary" className="text-xs bg-yellow-100 text-yellow-700 border-none">
+                              Buena
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Key Metrics */}
+                      <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-lg p-3 shadow-md">
+                        <div className="flex items-center justify-between text-white">
+                          <div className="flex items-center gap-2">
+                            <Clock className="w-5 h-5" />
+                            <span className="text-sm font-medium">Tiempo total</span>
+                          </div>
+                          <span className="text-2xl font-bold">
+                            {route.durationMin ? formatDuration(route.durationMin) : '--'}
+                          </span>
+                        </div>
+                        <div className="mt-2 pt-2 border-t border-white/20 flex items-center justify-between text-white/90">
+                          <div className="flex items-center gap-1">
+                            <DollarSign className="w-4 h-4" />
+                            <span className="text-sm font-medium">{formatPrice(route.price)}</span>
+                          </div>
+                          {route._walkingDistanceKm !== undefined && route._walkingDistanceKm > 0 && (
+                            <div className="flex items-center gap-1">
+                              <Navigation className="w-4 h-4" />
+                              <span className="text-sm">{route._walkingDistanceKm.toFixed(1)} km caminando</span>
+                            </div>
+                          )}
+                        </div>
+                        {(route._departTime || route._arriveTime) && (
+                          <div className="mt-2 pt-2 border-t border-white/20 flex items-center justify-between text-white/90">
+                            {route._departTime && (
+                              <div className="flex items-center gap-1">
+                                <span className="text-xs opacity-75">Sale:</span>
+                                <span className="text-sm font-semibold">{route._departTime}</span>
+                              </div>
+                            )}
+                            {route._arriveTime && (
+                              <div className="flex items-center gap-1">
+                                <span className="text-xs opacity-75">Llega:</span>
+                                <span className="text-sm font-semibold">{route._arriveTime}</span>
+                              </div>
+                            )}
+                            {route._transfers !== undefined && route._transfers > 0 && (
+                              <Badge className="bg-white/20 text-white border-none text-xs">
+                                {route._transfers} transbordo{route._transfers > 1 ? 's' : ''}
+                              </Badge>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Route Path Details */}
+                      <div className="bg-gradient-to-r from-blue-50 to-red-50 rounded-lg p-3 space-y-2">
+                        <div className="flex items-start gap-2">
+                          <div className="flex flex-col items-center">
+                            <div className="w-3 h-3 rounded-full bg-[#0052B4]" />
+                            <div className="w-0.5 h-6 bg-blue-200" />
+                          </div>
+                          <div className="flex-1">
+                            <p className="text-xs text-[#6B7280] mb-0.5">Sube en:</p>
+                            <p className="font-semibold text-sm text-[#374151]">{route.boardingStop.name}</p>
+                            {route._boardingStopDistanceKm !== undefined && route._boardingStopDistanceKm > 0 && (
+                              <p className="text-xs text-[#0052B4] mt-0.5 font-medium">
+                                {route._boardingStopDistanceKm.toFixed(2)} km de tu ubicación
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-center">
+                          <ArrowRight className="w-4 h-4 text-[#9CA3AF]" />
+                        </div>
+                        <div className="flex items-start gap-2">
+                          <div className="w-3 h-3 rounded-full bg-[#E31837]" />
+                          <div className="flex-1">
+                            <p className="text-xs text-[#6B7280] mb-0.5">Baja en:</p>
+                            <p className="font-semibold text-sm text-[#374151]">
+                              {route.destinationStop?.name || route.destination}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+
+              {/* Empezar Viaje Button */}
+              {selectedRoute && (
+                <div className="pt-1">
+                  {!isTracking ? (
+                    <Button
+                      onClick={(e) => { e.stopPropagation(); handleStartTrip() }}
+                      className="w-full h-12 text-base font-semibold bg-[#10B981] hover:bg-[#059669] shadow-md"
+                    >
+                      <Navigation className="w-5 h-5 mr-2" />
+                      Empezar Viaje
+                    </Button>
+                  ) : (
+                    <Button
+                      onClick={(e) => { e.stopPropagation(); handleStopTrip() }}
+                      className="w-full h-12 text-base font-semibold bg-white text-red-600 border-2 border-red-600 hover:bg-red-50"
+                    >
+                      <Navigation className="w-5 h-5 mr-2" />
+                      Detener Viaje
+                    </Button>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Bottom Navigation - Hidden when route results are showing */}
+      {!hasPlanned && (
       <nav className="absolute bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur-sm border-t border-[#E5E7EB]">
         <div className="container mx-auto px-4">
           <div className="flex items-center justify-around py-2">
@@ -1518,6 +1488,7 @@ export default function BusPlannerApp() {
           </div>
         </div>
       </nav>
+      )}
     </div>
   )
 }
