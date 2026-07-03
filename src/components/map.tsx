@@ -536,7 +536,7 @@ const BusMap = ({
         })
       }
 
-      // Segmento 2: Ruta de autobús desde parada de embarque hasta destino
+      // Segmento 2: Ruta de autobús usando GTFS shape data o ruta calculada
       if (routePath.bus && routePath.bus.length > 0) {
         polylines.push({
           positions: routePath.bus,

@@ -1,0 +1,89 @@
+stop_id,stop_name,stop_lat,stop_lon,location_type
+SJO001,Terminal San José Centro,9.9281,-84.0907,0
+SJO002,Parada Hospital San Juan de Dios,9.9310,-84.0865,0
+SJO003,Parada Parque Central,9.9295,-84.0830,0
+SJO004,Parada Coca-Cola,9.9270,-84.0810,0
+SJO005,Parada Iglesia La Merced,9.9265,-84.0785,0
+SJO006,Parada San Pedro,9.9335,-84.0510,0
+SJO007,Parada UCR,9.9370,-84.0505,0
+SJO008,Parada Zapote,9.9195,-84.0460,0
+SJO009,Parada Guadalupe,9.9465,-84.0665,0
+SJO010,Parada Tibás,9.9560,-84.0580,0
+SJO011,Parada Goicoechea,9.9500,-84.0360,0
+SJO012,Parada Moravia,9.9600,-84.0520,0
+SJO013,Parada Paso de la Vaca,9.9350,-84.0650,0
+SJO014,Parada Sabana Norte,9.9380,-84.1000,0
+SJO015,Parada Hospital México,9.9230,-84.0950,0
+ALA001,Terminal Alajuela Centro,10.0163,-84.2119,0
+ALA002,Parada Parque Central Alajuela,10.0145,-84.2125,0
+ALA003,Parada Hospital San Rafael Alajuela,10.0180,-84.2080,0
+ALA004,Parada Los Angeles Alajuela,10.0200,-84.2040,0
+ALA005,Parada Río Segundo,10.0050,-84.1950,0
+ALA006,Parada El Coco,10.0000,-84.1850,0
+ALA007,Parada Aeropuerto Juan Santamaría,9.9935,-84.2088,0
+HER001,Terminal Heredia Centro,10.0027,-84.1219,0
+HER002,Parada Parque Central Heredia,10.0040,-84.1200,0
+HER003,Parada Universidad Nacional,10.0090,-84.1150,0
+HER004,Parada Mercedes Norte,10.0075,-84.1120,0
+HER005,Parada San Francisco Heredia,10.0000,-84.1300,0
+HER006,Parada Barva,10.0230,-84.1050,0
+HER007,Parada San Pablo Heredia,10.0120,-84.1100,0
+CAR001,Terminal Cartago Centro,9.8639,-83.9194,0
+CAR002,Parada Parque Central Cartago,9.8645,-83.9210,0
+CAR003,Parada Basílica de los Ángeles,9.8670,-83.9220,0
+CAR004,Parada Tres Ríos,9.9050,-83.9870,0
+CAR005,Parada Ochomogo,9.8800,-83.9500,0
+CAR006,Parada Turrialba Centro,9.9070,-83.6820,0
+CAR007,Parada Juan Viñas,9.8700,-83.7300,0
+CAR008,Parada Paraíso,9.8420,-83.8750,0
+DESA001,Terminal Desamparados,9.9033,-84.0597,0
+DESA002,Parada San Miguel Desamparados,9.9060,-84.0540,0
+DESA003,Parada Gravilias,9.9100,-84.0480,0
+DESA004,Parada San Antonio Desamparados,9.8970,-84.0700,0
+DESA005,Parada Patarrá,9.8910,-84.0780,0
+DESA006,Parada Rosario,9.8870,-84.0850,0
+ESC001,Escazú Centro,9.9206,-84.1403,0
+ESC002,Parada San Rafael Escazú,9.9260,-84.1450,0
+ESC003,Parada Bello Horizonte,9.9320,-84.1500,0
+ESC004,Parada Guachipelín,9.9150,-84.1350,0
+ESC005,Parada San Rafael de Escazú Norte,9.9280,-84.1480,0
+STA001,Santa Ana Centro,9.9322,-84.1823,0
+STA002,Parada Pozos Santa Ana,9.9270,-84.1760,0
+STA003,Parada Brasil Santa Ana,9.9400,-84.1880,0
+STA004,Parada Río Oro,9.9450,-84.1950,0
+STA005,Parada Lindora,9.9510,-84.2020,0
+STA006,Parada Cumbres de Santa Ana,9.9350,-84.1900,0
+PUR001,Terminal Puriscal,9.8500,-84.3400,0
+PUR002,Parada Santiago de Puriscal,9.8450,-84.3300,0
+PUR003,Parada Barbacal,9.8800,-84.2500,0
+PUR004,Parada Ciudad Colón,9.9100,-84.2300,0
+PUR005,Parada Piedras Negras,9.8700,-84.2900,0
+SPD001,Parada San Pedro Mall,9.9350,-84.0480,0
+SPD002,Parada Centro Comercial,9.9320,-84.0530,0
+SPD003,Parada Liceo San Pedro,9.9380,-84.0470,0
+GUA001,Parada Guadalupe Norte,9.9480,-84.0640,0
+GUA002,Parada Guadalupe Sur,9.9430,-84.0700,0
+TIB001,Parada Tibás Centro,9.9580,-84.0620,0
+TIB002,Parada León XIII,9.9630,-84.0680,0
+TIB003,Parada Colima,9.9500,-84.0550,0
+GOI001,Parada Goicoechea Norte,9.9530,-84.0320,0
+GOI002,Parada Guadalupe Goicoechea,9.9470,-84.0420,0
+GOI003,Parada Rancho Redondo,9.9420,-84.0250,0
+LIM001,Terminal Limón Centro,9.9934,-83.0365,0
+LIM002,Parada Guápiles,10.2134,-83.7844,0
+LIM003,Parada Siquirres,10.0973,-83.5118,0
+LIM004,Parada Matina,10.0500,-83.2700,0
+MOR001,Parada Moravia Centro,9.9620,-84.0550,0
+MOR002,Parada La Trinidad,9.9680,-84.0480,0
+MON001,Parada Montes de Oca Centro,9.9400,-84.0450,0
+MON002,Parada Sabanilla,9.9450,-84.0400,0
+INT001,Parada Intersección Panamericana Norte,9.9650,-84.0900,0
+INT002,Parada Intersección General Cañas,9.9550,-84.1200,0
+INT003,Parada Cruce Florencio del Castillo,9.9100,-84.0000,0
+INT004,Parada Santa Rosa,9.9500,-84.1500,0
+INT005,Parada Río Torres,9.9400,-84.0750,0
+INT006,Parada Hospital Calderón Guardia,9.9420,-84.0700,0
+INT007,Parada Periférico Norte,9.9600,-84.0450,0
+INT008,Parada Autopista General Cañas,9.9600,-84.1100,0
+INT009,Parada Paseo Colón,9.9300,-84.0950,0
+INT010,Parada Estación al Pacifico,9.9240,-84.0840,0

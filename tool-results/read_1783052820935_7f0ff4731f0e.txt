@@ -1,0 +1,786 @@
+     1→     1→import { NextRequest, NextResponse } from 'next/server';
+     2→     2→import { db } from '@/lib/db';
+     3→     3→import { haversineDistance, findNearestStops, walkingTimeMinutes } from '@/lib/spatial';
+     4→     4→import { timeToMinutes, minutesToTime, getCurrentServiceId, getNextDepartureTime } from '@/lib/time-utils';
+     5→     5→import { loadScoringConfig, scoreAndSortRoutes, RouteOption } from '@/lib/route-scoring';
+     6→     6→
+     7→     7→interface RouteResult {
+     8→     8→  score: number;
+     9→     9→  totalTimeMinutes: number;
+    10→    10→  walkingDistanceKm: number;
+    11→    11→  transfers: number;
+    12→    12→  costCRC: number;
+    13→    13→  boardingStop: { name: string; lat: number; lon: number; distanceKm: number };
+    14→    14→  alightingStop: { name: string; lat: number; lon: number; distanceKm: number };
+    15→    15→  route: { routeId: string; shortName: string; longName: string; color: string; company: string };
+    16→    16→  departTime: string;
+    17→    17→  arriveTime: string;
+    18→    18→  stops: { name: string; lat: number; lon: number; time: string }[];
+    19→    19→  shapePoints: { lat: number; lon: number }[];
+    20→    20→  transferInfo?: { transferStop: string; waitMinutes: number; secondRoute: string };
+    21→    21→}
+    22→    22→
+    23→    23→interface BestRouteResponse {
+    24→    24→  origin: { lat: number; lon: number };
+    25→    25→  destination: { lat: number; lon: number };
+    26→    26→  routes: RouteResult[];
+    27→    27→}
+    28→    28→
+    29→    29→export async function GET(request: NextRequest) {
+    30→    30→  try {
+    31→    31→    const searchParams = request.nextUrl.searchParams;
+    32→    32→    const originLatStr = searchParams.get('originLat');
+    33→    33→    const originLonStr = searchParams.get('originLon');
+    34→    34→    const destLatStr = searchParams.get('destLat');
+    35→    35→    const destLonStr = searchParams.get('destLon');
+    36→    36→    const departAfter = searchParams.get('departAfter') || '00:00:00';
+    37→    37→
+    38→    38→    if (!originLatStr || !originLonStr || !destLatStr || !destLonStr) {
+    39→    39→      return NextResponse.json(
+    40→    40→        { error: 'originLat, originLon, destLat, and destLon are required' },
+    41→    41→        { status: 400 }
+    42→    42→      );
+    43→    43→    }
+    44→    44→
+    45→    45→    const originLat = parseFloat(originLatStr);
+    46→    46→    const originLon = parseFloat(originLonStr);
+    47→    47→    const destLat = parseFloat(destLatStr);
+    48→    48→    const destLon = parseFloat(destLonStr);
+    49→    49→
+    50→    50→    if (
+    51→    51→      [originLat, originLon, destLat, destLon].some((v) => isNaN(v))
+    52→    52→    ) {
+    53→    53→      return NextResponse.json({ error: 'Invalid coordinates' }, { status: 400 });
+    54→    54→    }
+    55→    55→
+    56→    56→    const departAfterMinutes = timeToMinutes(departAfter);
+    57→    57→    const serviceId = getCurrentServiceId();
+    58→    58→
+    59→    59→    // Step 1: Find nearest origin stops (within 1km)
+    60→    60→    const originStops = await findNearestStops(originLat, originLon, 1, 10);
+    61→    61→    if (originStops.length === 0) {
+    62→    62→      return NextResponse.json({
+    63→    63→        origin: { lat: originLat, lon: originLon },
+    64→    64→        destination: { lat: destLat, lon: destLon },
+    65→    65→        routes: [],
+    66→    66→        message: 'No bus stops found near origin within 1km',
+    67→    67→      });
+    68→    68→    }
+    69→    69→
+    70→    70→    // Step 2: Find nearest destination stops (within 1km)
+    71→    71→    const destStops = await findNearestStops(destLat, destLon, 1, 10);
+    72→    72→    if (destStops.length === 0) {
+    73→    73→      return NextResponse.json({
+    74→    74→        origin: { lat: originLat, lon: originLon },
+    75→    75→        destination: { lat: destLat, lon: destLon },
+    76→    76→        routes: [],
+    77→    77→        message: 'No bus stops found near destination within 1km',
+    78→    78→      });
+    79→    79→    }
+    80→    80→
+    81→    81→    // Build a map of route IDs that serve each origin/dest stop
+    82→    82→    const originStopIds = originStops.map((s) => s.stop.stop_id);
+    83→    83→    const destStopIds = destStops.map((s) => s.stop.stop_id);
+    84→    84→
+    85→    85→    // Get all StopRoute entries for origin and dest stops
+    86→    86→    const originStopRoutes = await db.stopRoute.findMany({
+    87→    87→      where: { stopId: { in: originStopIds } },
+    88→    88→      select: { stopId: true, routeId: true, company: true },
+    89→    89→    });
+    90→    90→
+    91→    91→    const destStopRoutes = await db.stopRoute.findMany({
+    92→    92→      where: { stopId: { in: destStopIds } },
+    93→    93→      select: { stopId: true, routeId: true, company: true },
+    94→    94→    });
+    95→    95→
+    96→    96→    // Build route-to-stop mappings
+    97→    97→    const originRoutesByStop = new Map<string, string[]>();
+    98→    98→    for (const sr of originStopRoutes) {
+    99→    99→      if (!originRoutesByStop.has(sr.stopId)) {
+   100→   100→        originRoutesByStop.set(sr.stopId, []);
+   101→   101→      }
+   102→   102→      originRoutesByStop.get(sr.stopId)!.push(sr.routeId);
+   103→   103→    }
+   104→   104→
+   105→   105→    const destRoutesByStop = new Map<string, string[]>();
+   106→   106→    for (const sr of destStopRoutes) {
+   107→   107→      if (!destRoutesByStop.has(sr.stopId)) {
+   108→   108→        destRoutesByStop.set(sr.stopId, []);
+   109→   109→      }
+   110→   110→      destRoutesByStop.get(sr.stopId)!.push(sr.routeId);
+   111→   111→    }
+   112→   112→
+   113→   113→    // Step 3: Find direct routes (routes serving both origin and destination stops)
+   114→   114→    const directRouteCandidates: {
+   115→   115→      routeId: string;
+   116→   116→      originStopId: string;
+   117→   117→      destStopId: string;
+   118→   118→    }[] = [];
+   119→   119→
+   120→   120→    for (const [originStopId, originRouteIds] of originRoutesByStop) {
+   121→   121→      for (const [destStopId, destRouteIds] of destRoutesByStop) {
+   122→   122→        const common = originRouteIds.filter((r) => destRouteIds.includes(r));
+   123→   123→        for (const routeId of common) {
+   124→   124→          directRouteCandidates.push({ routeId, originStopId, destStopId });
+   125→   125→        }
+   126→   126→      }
+   127→   127→    }
+   128→   128→
+   129→   129→    // Step 4: Evaluate each direct route
+   130→   130→    const routeOptions: RouteResult[] = [];
+   131→   131→
+   132→   132→    // Pre-fetch route details and fares for all candidate routes
+   133→   133→    const candidateRouteIds = [
+   134→   134→      ...new Set(directRouteCandidates.map((c) => c.routeId)),
+   135→   135→    ];
+   136→   136→
+   137→   137→    const routeDetails = new Map<
+   138→   138→      string,
+   139→   139→      {
+   140→   140→        routeId: string;
+   141→   141→        shortName: string;
+   142→   142→        longName: string;
+   143→   143→        color: string;
+   144→   144→        textColor: string;
+   145→   145→        agencyName: string;
+   146→   146→        shapeId: string | null;
+   147→   147→      }
+   148→   148→    >();
+   149→   149→
+   150→   150→    if (candidateRouteIds.length > 0) {
+   151→   151→      const routes = await db.gtfsRoute.findMany({
+   152→   152→        where: { route_id: { in: candidateRouteIds } },
+   153→   153→        include: {
+   154→   154→          agency: { select: { name: true } },
+   155→   155→          routeColor: { select: { color: true, textColor: true } },
+   156→   156→        },
+   157→   157→      });
+   158→   158→
+   159→   159→      for (const r of routes) {
+   160→   160→        routeDetails.set(r.route_id, {
+   161→   161→          routeId: r.route_id,
+   162→   162→          shortName: r.short_name || '',
+   163→   163→          longName: r.long_name || '',
+   164→   164→          color: r.routeColor?.color || r.color || '#6B7280',
+   165→   165→          textColor: r.routeColor?.textColor || r.text_color || '#FFFFFF',
+   166→   166→          agencyName: r.agency.name,
+   167→   167→          shapeId: null,
+   168→   168→        });
+   169→   169→      }
+   170→   170→    }
+   171→   171→
+   172→   172→    // Pre-fetch fares for all candidate routes
+   173→   173→    const fareMap = new Map<string, number>();
+   174→   174→    if (candidateRouteIds.length > 0) {
+   175→   175→      const fareRules = await db.gtfsFareRule.findMany({
+   176→   176→        where: { route_id: { in: candidateRouteIds } },
+   177→   177→        include: { fare: true },
+   178→   178→      });
+   179→   179→
+   180→   180→      for (const fr of fareRules) {
+   181→   181→        const existing = fareMap.get(fr.route_id);
+   182→   182→        if (existing === undefined || fr.fare.price < existing) {
+   183→   183→          fareMap.set(fr.route_id, fr.fare.price);
+   184→   184→        }
+   185→   185→      }
+   186→   186→    }
+   187→   187→
+   188→   188→    // For each direct route candidate, find the next trip and calculate details
+   189→   189→    for (const candidate of directRouteCandidates) {
+   190→   190→      const { routeId, originStopId, destStopId } = candidate;
+   191→   191→
+   192→   192→      // Get all StopRoute entries for this route to determine stop order
+   193→   193→      const routeStops = await db.stopRoute.findMany({
+   194→   194→        where: { routeId },
+   195→   195→        orderBy: { sequence: 'asc' },
+   196→   196→        select: { stopId: true, sequence: true },
+   197→   197→      });
+   198→   198→
+   199→   199→      const originIdx = routeStops.findIndex((s) => s.stopId === originStopId);
+   200→   200→      const destIdx = routeStops.findIndex((s) => s.stopId === destStopId);
+   201→   201→
+   202→   202→      // Origin must come before destination on the route
+   203→   203→      if (originIdx === -1 || destIdx === -1 || originIdx >= destIdx) {
+   204→   204→        continue;
+   205→   205→      }
+   206→   206→
+   207→   207→      // Get active trip for today's service
+   208→   208→      const trips = await db.gtfsTrip.findMany({
+   209→   209→        where: {
+   210→   210→          route_id: routeId,
+   211→   211→          service_id: serviceId,
+   212→   212→        },
+   213→   213→        select: { trip_id: true, shape_id: true },
+   214→   214→      });
+   215→   215→
+   216→   216→      if (trips.length === 0) continue;
+   217→   217→
+   218→   218→      // For each trip, get stop times for origin and dest stops
+   219→   219→      let bestOption: {
+   220→   220→        tripId: string;
+   221→   221→        shapeId: string | null;
+   222→   222→        boardTime: string;
+   223→   223→        alightTime: string;
+   224→   224→        intermediateStops: { name: string; lat: number; lon: number; time: string }[];
+   225→   225→      } | null = null;
+   226→   226→
+   227→   227→      for (const trip of trips) {
+   228→   228→        // Get stop times for this trip
+   229→   229→        const stopTimes = await db.gtfsStopTime.findMany({
+   230→   230→          where: {
+   231→   231→            trip_id: trip.trip_id,
+   232→   232→            stop_id: { in: [originStopId, destStopId] },
+   233→   233→          },
+   234→   234→          orderBy: { stop_sequence: 'asc' },
+   235→   235→          select: {
+   236→   236→            stop_id: true,
+   237→   237→            stop_sequence: true,
+   238→   238→            arrival_time: true,
+   239→   239→            departure_time: true,
+   240→   240→          },
+   241→   241→        });
+   242→   242→
+   243→   243→        if (stopTimes.length < 2) continue;
+   244→   244→
+   245→   245→        const boardSt = stopTimes.find((st) => st.stop_id === originStopId);
+   246→   246→        const alightSt = stopTimes.find((st) => st.stop_id === destStopId);
+   247→   247→
+   248→   248→        if (!boardSt || !alightSt) continue;
+   249→   249→
+   250→   250→        const boardMinutes = timeToMinutes(boardSt.departure_time);
+   251→   251→        const alightMinutes = timeToMinutes(alightSt.arrival_time);
+   252→   252→
+   253→   253→        // Board time must be after departAfter and alight after board
+   254→   254→        if (boardMinutes < departAfterMinutes || alightMinutes <= boardMinutes) continue;
+   255→   255→
+   256→   256→        if (
+   257→   257→          !bestOption ||
+   258→   258→          boardMinutes < timeToMinutes(bestOption.boardTime)
+   259→   259→        ) {
+   260→   260→          // Get intermediate stops for this trip
+   261→   261→          const allTripStopTimes = await db.gtfsStopTime.findMany({
+   262→   262→            where: {
+   263→   263→              trip_id: trip.trip_id,
+   264→   264→              stop_sequence: {
+   265→   265→                gte: boardSt.stop_sequence,
+   266→   266→                lte: alightSt.stop_sequence,
+   267→   267→              },
+   268→   268→            },
+   269→   269→            orderBy: { stop_sequence: 'asc' },
+   270→   270→            include: {
+   271→   271→              stop: { select: { name: true, lat: true, lon: true } },
+   272→   272→            },
+   273→   273→          });
+   274→   274→
+   275→   275→          const intermediateStops = allTripStopTimes.map((st) => ({
+   276→   276→            name: st.stop.name,
+   277→   277→            lat: st.stop.lat,
+   278→   278→            lon: st.stop.lon,
+   279→   279→            time: st.arrival_time,
+   280→   280→          }));
+   281→   281→
+   282→   282→          bestOption = {
+   283→   283→            tripId: trip.trip_id,
+   284→   284→            shapeId: trip.shape_id,
+   285→   285→            boardTime: boardSt.departure_time,
+   286→   286→            alightTime: alightSt.arrival_time,
+   287→   287→            intermediateStops,
+   288→   288→          };
+   289→   289→        }
+   290→   290→      }
+   291→   291→
+   292→   292→      if (!bestOption) continue;
+   293→   293→
+   294→   294→      // Get origin and dest stop details
+   295→   295→      const originStop = originStops.find((s) => s.stop.stop_id === originStopId);
+   296→   296→      const destStop = destStops.find((s) => s.stop.stop_id === destStopId);
+   297→   297→      if (!originStop || !destStop) continue;
+   298→   298→
+   299→   299→      // Get shape points
+   300→   300→      let shapePoints: { lat: number; lon: number }[] = [];
+   301→   301→      if (bestOption.shapeId) {
+   302→   302→        // Store shape ID for later batch fetch
+   303→   303→        routeDetails.get(routeId)!.shapeId = bestOption.shapeId;
+   304→   304→      }
+   305→   305→
+   306→   306→      const walkDistOrigin = originStop.distanceKm;
+   307→   307→      const walkDistDest = destStop.distanceKm;
+   308→   308→      const totalWalkingKm = walkDistOrigin + walkDistDest;
+   309→   309→
+   310→   310→      const walkTimeOrigin = walkingTimeMinutes(walkDistOrigin);
+   311→   311→      const walkTimeDest = walkingTimeMinutes(walkDistDest);
+   312→   312→      const travelTime =
+   313→   313→        timeToMinutes(bestOption.alightTime) - timeToMinutes(bestOption.boardTime);
+   314→   314→      const totalTime = walkTimeOrigin + travelTime + walkTimeDest;
+   315→   315→
+   316→   316→      const cost = fareMap.get(routeId) ?? 0;
+   317→   317→      const rd = routeDetails.get(routeId);
+   318→   318→
+   319→   319→      routeOptions.push({
+   320→   320→        score: 0,
+   321→   321→        totalTimeMinutes: Math.round(totalTime * 10) / 10,
+   322→   322→        walkingDistanceKm: Math.round(totalWalkingKm * 1000) / 1000,
+   323→   323→        transfers: 0,
+   324→   324→        costCRC: cost,
+   325→   325→        boardingStop: {
+   326→   326→          name: originStop.stop.name,
+   327→   327→          lat: originStop.stop.lat,
+   328→   328→          lon: originStop.stop.lon,
+   329→   329→          distanceKm: Math.round(walkDistOrigin * 1000) / 1000,
+   330→   330→        },
+   331→   331→        alightingStop: {
+   332→   332→          name: destStop.stop.name,
+   333→   333→          lat: destStop.stop.lat,
+   334→   334→          lon: destStop.stop.lon,
+   335→   335→          distanceKm: Math.round(walkDistDest * 1000) / 1000,
+   336→   336→        },
+   337→   337→        route: {
+   338→   338→          routeId: routeId,
+   339→   339→          shortName: rd?.shortName || '',
+   340→   340→          longName: rd?.longName || '',
+   341→   341→          color: rd?.color || '#6B7280',
+   342→   342→          company: rd?.agencyName || '',
+   343→   343→        },
+   344→   344→        departTime: bestOption.boardTime,
+   345→   345→        arriveTime: bestOption.alightTime,
+   346→   346→        stops: bestOption.intermediateStops,
+   347→   347→        shapePoints,
+   348→   348→        _shapeId: bestOption.shapeId,
+   349→   349→      } as RouteResult & { _shapeId?: string });
+   350→   350→    }
+   351→   351→
+   352→   352→    // Step 5: Transfer routes (if no direct routes found or to complement)
+   353→   353→    if (routeOptions.length < 3) {
+   354→   354→      const transferOptions = await findTransferRoutes(
+   355→   355→        originStops,
+   356→   356→        destStops,
+   357→   357→        originStopIds,
+   358→   358→        destStopIds,
+   359→   359→        originRoutesByStop,
+   360→   360→        destRoutesByStop,
+   361→   361→        serviceId,
+   362→   362→        departAfterMinutes,
+   363→   363→        routeDetails,
+   364→   364→        fareMap,
+   365→   365→        originLat,
+   366→   366→        originLon,
+   367→   367→        destLat,
+   368→   368→        destLon
+   369→   369→      );
+   370→   370→      routeOptions.push(...transferOptions);
+   371→   371→    }
+   372→   372→
+   373→   373→    // Fetch shape points for all unique shape IDs
+   374→   374→    const shapeIdsToFetch = [
+   375→   375→      ...new Set(
+   376→   376→        routeOptions
+   377→   377→          .filter((r) => (r as unknown as { _shapeId?: string })._shapeId)
+   378→   378→          .map((r) => (r as unknown as { _shapeId: string })._shapeId)
+   379→   379→      ),
+   380→   380→    ];
+   381→   381→
+   382→   382→    if (shapeIdsToFetch.length > 0) {
+   383→   383→      const allShapes = await db.gtfsShape.findMany({
+   384→   384→        where: { shape_id: { in: shapeIdsToFetch } },
+   385→   385→        orderBy: { shape_pt_sequence: 'asc' },
+   386→   386→        select: { shape_id: true, shape_pt_lat: true, shape_pt_lon: true, shape_pt_sequence: true },
+   387→   387→      });
+   388→   388→
+   389→   389→      const shapesByRoute = new Map<string, { lat: number; lon: number }[]>();
+   390→   390→      for (const sp of allShapes) {
+   391→   391→        if (!shapesByRoute.has(sp.shape_id)) {
+   392→   392→          shapesByRoute.set(sp.shape_id, []);
+   393→   393→        }
+   394→   394→        shapesByRoute.get(sp.shape_id)!.push({ lat: sp.shape_pt_lat, lon: sp.shape_pt_lon });
+   395→   395→      }
+   396→   396→
+   397→   397→      for (const option of routeOptions) {
+   398→   398→        const opt = option as unknown as { _shapeId?: string };
+   399→   399→        if (opt._shapeId) {
+   400→   400→          option.shapePoints = shapesByRoute.get(opt._shapeId) || [];
+   401→   401→          delete opt._shapeId;
+   402→   402→        }
+   403→   403→      }
+   404→   404→    }
+   405→   405→
+   406→   406→    // Clean up any remaining _shapeId
+   407→   407→    for (const option of routeOptions) {
+   408→   408→      delete (option as unknown as Record<string, unknown>)._shapeId;
+   409→   409→    }
+   410→   410→
+   411→   411→    // Step 6: Score and sort
+   412→   412→    const scoreConfig = await loadScoringConfig();
+   413→   413→    const scoredRoutes = scoreAndSortRoutes(routeOptions, scoreConfig);
+   414→   414→
+   415→   415→    // Step 7: Return top 5
+   416→   416→    const topRoutes = scoredRoutes.slice(0, 5);
+   417→   417→
+   418→   418→    const response: BestRouteResponse = {
+   419→   419→      origin: { lat: originLat, lon: originLon },
+   420→   420→      destination: { lat: destLat, lon: destLon },
+   421→   421→      routes: topRoutes,
+   422→   422→    };
+   423→   423→
+   424→   424→    return NextResponse.json(response);
+   425→   425→  } catch (error: unknown) {
+   426→   426→    const message = error instanceof Error ? error.message : 'Error finding best route';
+   427→   427→    console.error('Error finding best route:', error);
+   428→   428→    return NextResponse.json({ error: message }, { status: 500 });
+   429→   429→  }
+   430→   430→}
+   431→   431→
+   432→   432→/**
+   433→   433→ * Find routes requiring one transfer between origin and destination.
+   434→   434→ */
+   435→   435→async function findTransferRoutes(
+   436→   436→  originStops: { stop: { stop_id: string; name: string; lat: number; lon: number }; distanceKm: number }[],
+   437→   437→  destStops: { stop: { stop_id: string; name: string; lat: number; lon: number }; distanceKm: number }[],
+   438→   438→  originStopIds: string[],
+   439→   439→  destStopIds: string[],
+   440→   440→  originRoutesByStop: Map<string, string[]>,
+   441→   441→  destRoutesByStop: Map<string, string[]>,
+   442→   442→  serviceId: string,
+   443→   443→  departAfterMinutes: number,
+   444→   444→  routeDetails: Map<string, { routeId: string; shortName: string; longName: string; color: string; textColor: string; agencyName: string; shapeId: string | null }>,
+   445→   445→  fareMap: Map<string, number>,
+   446→   446→  originLat: number,
+   447→   447→  originLon: number,
+   448→   448→  destLat: number,
+   449→   449→  destLon: number
+   450→   450→): Promise<RouteResult[]> {
+   451→   451→  const options: RouteResult[] = [];
+   452→   452→  const TRANSFER_WAIT = 5;
+   453→   453→  const MAX_OPTIONS = 5;
+   454→   454→
+   455→   455→  // Get all route IDs that serve origin stops
+   456→   456→  const firstLegRouteIds = new Set<string>();
+   457→   457→  for (const routeIds of originRoutesByStop.values()) {
+   458→   458→    for (const rid of routeIds) firstLegRouteIds.add(rid);
+   459→   459→  }
+   460→   460→
+   461→   461→  // Get all route IDs that serve dest stops
+   462→   462→  const secondLegRouteIds = new Set<string>();
+   463→   463→  for (const routeIds of destRoutesByStop.values()) {
+   464→   464→    for (const rid of routeIds) secondLegRouteIds.add(rid);
+   465→   465→  }
+   466→   466→
+   467→   467→  // Find transfer stops: stops that are served by both a first-leg and second-leg route
+   468→   468→  // Get all stops for first-leg routes
+   469→   469→  const firstLegStops = await db.stopRoute.findMany({
+   470→   470→    where: { routeId: { in: [...firstLegRouteIds] } },
+   471→   471→    select: { stopId: true, routeId: true },
+   472→   472→  });
+   473→   473→
+   474→   474→  // Get all stops for second-leg routes
+   475→   475→  const secondLegStops = await db.stopRoute.findMany({
+   476→   476→    where: { routeId: { in: [...secondLegRouteIds] } },
+   477→   477→    select: { stopId: true, routeId: true },
+   478→   478→  });
+   479→   479→
+   480→   480→  // Build stop-to-routes maps
+   481→   481→  const stopToFirstRoutes = new Map<string, Set<string>>();
+   482→   482→  for (const sr of firstLegStops) {
+   483→   483→    if (!stopToFirstRoutes.has(sr.stopId)) stopToFirstRoutes.set(sr.stopId, new Set());
+   484→   484→    stopToFirstRoutes.get(sr.stopId)!.add(sr.routeId);
+   485→   485→  }
+   486→   486→
+   487→   487→  const stopToSecondRoutes = new Map<string, Set<string>>();
+   488→   488→  for (const sr of secondLegStops) {
+   489→   489→    if (!stopToSecondRoutes.has(sr.stopId)) stopToSecondRoutes.set(sr.stopId, new Set());
+   490→   490→    stopToSecondRoutes.get(sr.stopId)!.add(sr.routeId);
+   491→   491→  }
+   492→   492→
+   493→   493→  // Find transfer stop candidates (served by at least one first-leg and one second-leg route)
+   494→   494→  const transferCandidates: {
+   495→   495→    transferStopId: string;
+   496→   496→    firstRouteId: string;
+   497→   497→    secondRouteId: string;
+   498→   498→    originStopId: string;
+   499→   499→    destStopId: string;
+   500→   500→  }[] = [];
+   501→   501→
+   502→   502→  for (const [transferStopId, firstRoutes] of stopToFirstRoutes) {
+   503→   503→    const secondRoutes = stopToSecondRoutes.get(transferStopId);
+   504→   504→    if (!secondRoutes) continue;
+   505→   505→
+   506→   506→    // Don't use origin or destination stops as transfer points
+   507→   507→    if (originStopIds.includes(transferStopId) || destStopIds.includes(transferStopId)) continue;
+   508→   508→
+   509→   509→    for (const firstRouteId of firstRoutes) {
+   510→   510→      for (const secondRouteId of secondRoutes) {
+   511→   511→        if (firstRouteId === secondRouteId) continue;
+   512→   512→
+   513→   513→        // Find which origin stop has this first route
+   514→   514→        for (const [origStopId, origRoutes] of originRoutesByStop) {
+   515→   515→          if (origRoutes.includes(firstRouteId)) {
+   516→   516→            // Find which dest stop has this second route
+   517→   517→            for (const [dStopId, dRoutes] of destRoutesByStop) {
+   518→   518→              if (dRoutes.includes(secondRouteId)) {
+   519→   519→                transferCandidates.push({
+   520→   520→                  transferStopId,
+   521→   521→                  firstRouteId,
+   522→   522→                  secondRouteId,
+   523→   523→                  originStopId: origStopId,
+   524→   524→                  destStopId: dStopId,
+   525→   525→                });
+   526→   526→              }
+   527→   527→            }
+   528→   528→          }
+   529→   529→        }
+   530→   530→      }
+   531→   531→    }
+   532→   532→  }
+   533→   533→
+   534→   534→  // Limit candidates to prevent excessive queries
+   535→   535→  const limitedCandidates = transferCandidates.slice(0, 20);
+   536→   536→
+   537→   537→  // Fetch missing route details
+   538→   538→  const missingRouteIds = limitedCandidates
+   539→   539→    .flatMap((c) => [c.firstRouteId, c.secondRouteId])
+   540→   540→    .filter((id) => !routeDetails.has(id));
+   541→   541→
+   542→   542→  if (missingRouteIds.length > 0) {
+   543→   543→    const routes = await db.gtfsRoute.findMany({
+   544→   544→      where: { route_id: { in: missingRouteIds } },
+   545→   545→      include: {
+   546→   546→        agency: { select: { name: true } },
+   547→   547→        routeColor: { select: { color: true, textColor: true } },
+   548→   548→      },
+   549→   549→    });
+   550→   550→    for (const r of routes) {
+   551→   551→      routeDetails.set(r.route_id, {
+   552→   552→        routeId: r.route_id,
+   553→   553→        shortName: r.short_name || '',
+   554→   554→        longName: r.long_name || '',
+   555→   555→        color: r.routeColor?.color || r.color || '#6B7280',
+   556→   556→        textColor: r.routeColor?.textColor || r.text_color || '#FFFFFF',
+   557→   557→        agencyName: r.agency.name,
+   558→   558→        shapeId: null,
+   559→   559→      });
+   560→   560→    }
+   561→   561→  }
+   562→   562→
+   563→   563→  // Fetch missing fares
+   564→   564→  const missingFareIds = limitedCandidates
+   565→   565→    .flatMap((c) => [c.firstRouteId, c.secondRouteId])
+   566→   566→    .filter((id) => !fareMap.has(id));
+   567→   567→
+   568→   568→  if (missingFareIds.length > 0) {
+   569→   569→    const fareRules = await db.gtfsFareRule.findMany({
+   570→   570→      where: { route_id: { in: missingFareIds } },
+   571→   571→      include: { fare: true },
+   572→   572→    });
+   573→   573→    for (const fr of fareRules) {
+   574→   574→      const existing = fareMap.get(fr.route_id);
+   575→   575→      if (existing === undefined || fr.fare.price < existing) {
+   576→   576→        fareMap.set(fr.route_id, fr.fare.price);
+   577→   577→      }
+   578→   578→    }
+   579→   579→  }
+   580→   580→
+   581→   581→  for (const candidate of limitedCandidates) {
+   582→   582→    if (options.length >= MAX_OPTIONS) break;
+   583→   583→
+   584→   584→    const { transferStopId, firstRouteId, secondRouteId, originStopId, destStopId } = candidate;
+   585→   585→
+   586→   586→    // Find next trip for first leg
+   587→   587→    const firstTrips = await db.gtfsTrip.findMany({
+   588→   588→      where: { route_id: firstRouteId, service_id: serviceId },
+   589→   589→      select: { trip_id: true, shape_id: true },
+   590→   590→    });
+   591→   591→
+   592→   592→    let bestFirstLeg: {
+   593→   593→      tripId: string;
+   594→   594→      shapeId: string | null;
+   595→   595→      departTime: string;
+   596→   596→      arriveTime: string;
+   597→   597→      stops: { name: string; lat: number; lon: number; time: string }[];
+   598→   598→    } | null = null;
+   599→   599→
+   600→   600→    for (const trip of firstTrips) {
+   601→   601→      const stForLeg = await db.gtfsStopTime.findMany({
+   602→   602→        where: {
+   603→   603→          trip_id: trip.trip_id,
+   604→   604→          stop_id: { in: [originStopId, transferStopId] },
+   605→   605→        },
+   606→   606→        orderBy: { stop_sequence: 'asc' },
+   607→   607→        select: { stop_id: true, stop_sequence: true, arrival_time: true, departure_time: true },
+   608→   608→      });
+   609→   609→
+   610→   610→      if (stForLeg.length < 2) continue;
+   611→   611→
+   612→   612→      const boardSt = stForLeg.find((st) => st.stop_id === originStopId);
+   613→   613→      const alightSt = stForLeg.find((st) => st.stop_id === transferStopId);
+   614→   614→      if (!boardSt || !alightSt) continue;
+   615→   615→
+   616→   616→      const boardMin = timeToMinutes(boardSt.departure_time);
+   617→   617→      const alightMin = timeToMinutes(alightSt.arrival_time);
+   618→   618→
+   619→   619→      if (boardMin < departAfterMinutes || alightMin <= boardMin) continue;
+   620→   620→
+   621→   621→      if (!bestFirstLeg || boardMin < timeToMinutes(bestFirstLeg.departTime)) {
+   622→   622→        const allSt = await db.gtfsStopTime.findMany({
+   623→   623→          where: {
+   624→   624→            trip_id: trip.trip_id,
+   625→   625→            stop_sequence: { gte: boardSt.stop_sequence, lte: alightSt.stop_sequence },
+   626→   626→          },
+   627→   627→          orderBy: { stop_sequence: 'asc' },
+   628→   628→          include: { stop: { select: { name: true, lat: true, lon: true } } },
+   629→   629→        });
+   630→   630→
+   631→   631→        bestFirstLeg = {
+   632→   632→          tripId: trip.trip_id,
+   633→   633→          shapeId: trip.shape_id,
+   634→   634→          departTime: boardSt.departure_time,
+   635→   635→          arriveTime: alightSt.arrival_time,
+   636→   636→          stops: allSt.map((st) => ({
+   637→   637→            name: st.stop.name,
+   638→   638→            lat: st.stop.lat,
+   639→   639→            lon: st.stop.lon,
+   640→   640→            time: st.arrival_time,
+   641→   641→          })),
+   642→   642→        };
+   643→   643→      }
+   644→   644→    }
+   645→   645→
+   646→   646→    if (!bestFirstLeg) continue;
+   647→   647→
+   648→   648→    // Find next trip for second leg (depart after first leg arrival + transfer wait)
+   649→   649→    const secondLegAfter = minutesToTime(
+   650→   650→      timeToMinutes(bestFirstLeg.arriveTime) + TRANSFER_WAIT
+   651→   651→    );
+   652→   652→
+   653→   653→    const secondTrips = await db.gtfsTrip.findMany({
+   654→   654→      where: { route_id: secondRouteId, service_id: serviceId },
+   655→   655→      select: { trip_id: true, shape_id: true },
+   656→   656→    });
+   657→   657→
+   658→   658→    let bestSecondLeg: {
+   659→   659→      tripId: string;
+   660→   660→      shapeId: string | null;
+   661→   661→      departTime: string;
+   662→   662→      arriveTime: string;
+   663→   663→      stops: { name: string; lat: number; lon: number; time: string }[];
+   664→   664→    } | null = null;
+   665→   665→
+   666→   666→    for (const trip of secondTrips) {
+   667→   667→      const stForLeg = await db.gtfsStopTime.findMany({
+   668→   668→        where: {
+   669→   669→          trip_id: trip.trip_id,
+   670→   670→          stop_id: { in: [transferStopId, destStopId] },
+   671→   671→        },
+   672→   672→        orderBy: { stop_sequence: 'asc' },
+   673→   673→        select: { stop_id: true, stop_sequence: true, arrival_time: true, departure_time: true },
+   674→   674→      });
+   675→   675→
+   676→   676→      if (stForLeg.length < 2) continue;
+   677→   677→
+   678→   678→      const boardSt = stForLeg.find((st) => st.stop_id === transferStopId);
+   679→   679→      const alightSt = stForLeg.find((st) => st.stop_id === destStopId);
+   680→   680→      if (!boardSt || !alightSt) continue;
+   681→   681→
+   682→   682→      const boardMin = timeToMinutes(boardSt.departure_time);
+   683→   683→      const alightMin = timeToMinutes(alightSt.arrival_time);
+   684→   684→      const requiredMin = timeToMinutes(secondLegAfter);
+   685→   685→
+   686→   686→      if (boardMin < requiredMin || alightMin <= boardMin) continue;
+   687→   687→
+   688→   688→      if (!bestSecondLeg || boardMin < timeToMinutes(bestSecondLeg.departTime)) {
+   689→   689→        const allSt = await db.gtfsStopTime.findMany({
+   690→   690→          where: {
+   691→   691→            trip_id: trip.trip_id,
+   692→   692→            stop_sequence: { gte: boardSt.stop_sequence, lte: alightSt.stop_sequence },
+   693→   693→          },
+   694→   694→          orderBy: { stop_sequence: 'asc' },
+   695→   695→          include: { stop: { select: { name: true, lat: true, lon: true } } },
+   696→   696→        });
+   697→   697→
+   698→   698→        bestSecondLeg = {
+   699→   699→          tripId: trip.trip_id,
+   700→   700→          shapeId: trip.shape_id,
+   701→   701→          departTime: boardSt.departure_time,
+   702→   702→          arriveTime: alightSt.arrival_time,
+   703→   703→          stops: allSt.map((st) => ({
+   704→   704→            name: st.stop.name,
+   705→   705→            lat: st.stop.lat,
+   706→   706→            lon: st.stop.lon,
+   707→   707→            time: st.arrival_time,
+   708→   708→          })),
+   709→   709→        };
+   710→   710→      }
+   711→   711→    }
+   712→   712→
+   713→   713→    if (!bestSecondLeg) continue;
+   714→   714→
+   715→   715→    const originStop = originStops.find((s) => s.stop.stop_id === originStopId);
+   716→   716→    const destStop = destStops.find((s) => s.stop.stop_id === destStopId);
+   717→   717→    const transferStop = await db.gtfsStop.findUnique({
+   718→   718→      where: { stop_id: transferStopId },
+   719→   719→      select: { name: true, lat: true, lon: true },
+   720→   720→    });
+   721→   721→
+   722→   722→    if (!originStop || !destStop || !transferStop) continue;
+   723→   723→
+   724→   724→    const walkDistOrigin = originStop.distanceKm;
+   725→   725→    const walkDistDest = destStop.distanceKm;
+   726→   726→
+   727→   727→    const firstTravelTime = timeToMinutes(bestFirstLeg.arriveTime) - timeToMinutes(bestFirstLeg.departTime);
+   728→   728→    const transferWait = timeToMinutes(bestSecondLeg.departTime) - timeToMinutes(bestFirstLeg.arriveTime);
+   729→   729→    const secondTravelTime = timeToMinutes(bestSecondLeg.arriveTime) - timeToMinutes(bestSecondLeg.departTime);
+   730→   730→
+   731→   731→    const totalTime =
+   732→   732→      walkingTimeMinutes(walkDistOrigin) +
+   733→   733→      firstTravelTime +
+   734→   734→      Math.max(transferWait, 0) +
+   735→   735→      secondTravelTime +
+   736→   736→      walkingTimeMinutes(walkDistDest);
+   737→   737→
+   738→   738→    const cost = (fareMap.get(firstRouteId) ?? 0) + (fareMap.get(secondRouteId) ?? 0);
+   739→   739→
+   740→   740→    const firstRd = routeDetails.get(firstRouteId);
+   741→   741→
+   742→   742→    const allStops = [
+   743→   743→      ...bestFirstLeg.stops,
+   744→   744→      { name: transferStop.name, lat: transferStop.lat, lon: transferStop.lon, time: bestSecondLeg.departTime },
+   745→   745→      ...bestSecondLeg.stops.slice(1),
+   746→   746→    ];
+   747→   747→
+   748→   748→    options.push({
+   749→   749→      score: 0,
+   750→   750→      totalTimeMinutes: Math.round(totalTime * 10) / 10,
+   751→   751→      walkingDistanceKm: Math.round((walkDistOrigin + walkDistDest) * 1000) / 1000,
+   752→   752→      transfers: 1,
+   753→   753→      costCRC: cost,
+   754→   754→      boardingStop: {
+   755→   755→        name: originStop.stop.name,
+   756→   756→        lat: originStop.stop.lat,
+   757→   757→        lon: originStop.stop.lon,
+   758→   758→        distanceKm: Math.round(walkDistOrigin * 1000) / 1000,
+   759→   759→      },
+   760→   760→      alightingStop: {
+   761→   761→        name: destStop.stop.name,
+   762→   762→        lat: destStop.stop.lat,
+   763→   763→        lon: destStop.stop.lon,
+   764→   764→        distanceKm: Math.round(walkDistDest * 1000) / 1000,
+   765→   765→      },
+   766→   766→      route: {
+   767→   767→        routeId: firstRouteId,
+   768→   768→        shortName: firstRd?.shortName || '',
+   769→   769→        longName: firstRd?.longName || '',
+   770→   770→        color: firstRd?.color || '#6B7280',
+   771→   771→        company: firstRd?.agencyName || '',
+   772→   772→      },
+   773→   773→      departTime: bestFirstLeg.departTime,
+   774→   774→      arriveTime: bestSecondLeg.arriveTime,
+   775→   775→      stops: allStops,
+   776→   776→      shapePoints: [],
+   777→   777→      transferInfo: {
+   778→   778→        transferStop: transferStop.name,
+   779→   779→        waitMinutes: Math.max(transferWait, 0),
+   780→   780→        secondRoute: secondRouteId,
+   781→   781→      },
+   782→   782→    });
+   783→   783→  }
+   784→   784→
+   785→   785→  return options;
+   786→   786→}

@@ -1,83 +1,99 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server';
+import { db } from '@/lib/db';
+import { haversineDistance } from '@/lib/spatial';
 
-// Importar Prisma de forma dinámica para evitar problemas de caché
-let db: any = null
-
-async function getDb() {
-  if (!db) {
-    const { PrismaClient } = await import('@prisma/client')
-    db = new PrismaClient()
-  }
-  return db
-}
-
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
   try {
-    const db = await getDb()
+    const searchParams = request.nextUrl.searchParams;
+    const search = searchParams.get('search') || '';
+    const latStr = searchParams.get('lat');
+    const lonStr = searchParams.get('lon');
+    const radius = parseFloat(searchParams.get('radius') || '5');
+    const limit = Math.min(parseInt(searchParams.get('limit') || '20'), 100);
+    const offset = parseInt(searchParams.get('offset') || '0');
 
-    const { searchParams } = new URL(request.url)
-    const lat = searchParams.get('lat')
-    const lon = searchParams.get('lon')
-    const radius = searchParams.get('radius') || '20' // Radio en km, por defecto 20km
+    const hasCoords = latStr && lonStr && !isNaN(parseFloat(latStr)) && !isNaN(parseFloat(lonStr));
+    const lat = hasCoords ? parseFloat(latStr!) : 0;
+    const lon = hasCoords ? parseFloat(lonStr!) : 0;
 
-    // Obtener todas las paradas activas
-    let stops = await db.stop.findMany({
-      where: {
-        isActive: true,
-      },
-      select: {
-        id: true,
-        name: true,
-        latitude: true,
-        longitude: true,
-        city: true,
-      },
-    })
+    const where: Record<string, unknown> = { location_type: 0 };
 
-    // Si se proporcionan coordenadas, filtrar por radio
-    if (lat && lon) {
-      const userLat = parseFloat(lat)
-      const userLon = parseFloat(lon)
-      const radiusKm = parseFloat(radius)
-
-      if (!isNaN(userLat) && !isNaN(userLon)) {
-        // Calcular distancia usando fórmula de Haversine
-        const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
-          const R = 6371 // Radio de la Tierra en km
-          const dLat = (lat2 - lat1) * Math.PI / 180
-          const dLon = (lon2 - lon1) * Math.PI / 180
-          const a =
-            Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-            Math.sin(dLon / 2) * Math.sin(dLon / 2)
-          const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-          return R * c
-        }
-
-        // Filtrar paradas dentro del radio
-        stops = stops
-          .map((stop: any) => ({
-            ...stop,
-            distance: calculateDistance(userLat, userLon, stop.latitude, stop.longitude),
-          }))
-          .filter((stop: any) => stop.distance <= radiusKm)
-          .sort((a: any, b: any) => a.distance - b.distance)
-      }
+    if (search) {
+      where.OR = [
+        { name: { contains: search } },
+        { code: { contains: search } },
+        { desc: { contains: search } },
+      ];
     }
 
-    return NextResponse.json({
-      success: true,
-      stops: stops,
-      total: stops.length,
-    })
-  } catch (error) {
-    console.error('Error al obtener paradas:', error)
-    return NextResponse.json(
-      {
-        success: false,
-        error: 'Error al obtener las paradas de buses',
+    let stops = await db.gtfsStop.findMany({
+      where,
+      select: {
+        stop_id: true,
+        code: true,
+        name: true,
+        desc: true,
+        lat: true,
+        lon: true,
+        zone_id: true,
+        location_type: true,
+        parent_station: true,
+        wheelchair_boarding: true,
+        _count: {
+          select: { stopRoutes: true },
+        },
       },
-      { status: 500 }
-    )
+      orderBy: { stop_id: 'asc' },
+      take: hasCoords ? 500 : limit,
+      skip: hasCoords ? 0 : offset,
+    });
+
+    if (hasCoords) {
+      stops = stops
+        .map((stop) => ({
+          ...stop,
+          distanceKm: haversineDistance(lat, lon, stop.lat, stop.lon),
+        }))
+        .filter((stop) => stop.distanceKm <= radius)
+        .sort((a, b) => a.distanceKm - b.distanceKm)
+        .slice(offset, offset + limit);
+
+      return NextResponse.json({
+        stops: stops.map((s) => ({
+          stopId: s.stop_id,
+          code: s.code,
+          name: s.name,
+          desc: s.desc,
+          lat: s.lat,
+          lon: s.lon,
+          zoneId: s.zone_id,
+          wheelchairBoarding: s.wheelchair_boarding,
+          routeCount: s._count.stopRoutes,
+          distanceKm: Math.round(s.distanceKm * 1000) / 1000,
+        })),
+        total: stops.length,
+      });
+    }
+
+    const total = await db.gtfsStop.count({ where });
+
+    return NextResponse.json({
+      stops: stops.map((s) => ({
+        stopId: s.stop_id,
+        code: s.code,
+        name: s.name,
+        desc: s.desc,
+        lat: s.lat,
+        lon: s.lon,
+        zoneId: s.zone_id,
+        wheelchairBoarding: s.wheelchair_boarding,
+        routeCount: s._count.stopRoutes,
+      })),
+      total,
+    });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Error fetching stops';
+    console.error('Error fetching stops:', error);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

@@ -1,11 +1,12 @@
 // scripts/import-gtfs.ts
 // GTFS Importer for RutaTica
 // Reads GTFS CSV files and custom files, validates data, and imports into the database.
-// Usage: bun run import-gtfs [--gtfs-dir /path/to/gtfs-data]
+// Usage: bun run scripts/import-gtfs.ts [--gtfs-dir /path/to/gtfs-data]
 
 import { PrismaClient } from '@prisma/client'
 import * as fs from 'fs'
 import * as path from 'path'
+import { parse } from 'csv-parse/sync'
 
 const prisma = new PrismaClient()
 
@@ -15,8 +16,6 @@ const prisma = new PrismaClient()
 
 const args = process.argv.slice(2)
 let GTFS_DIR = path.join(process.cwd(), 'gtfs-data')
-const BATCH_SIZE = 500
-const PROGRESS_INTERVAL = 1000
 
 for (let i = 0; i < args.length; i++) {
   if ((args[i] === '--gtfs-dir' || args[i] === '-d') && args[i + 1]) {
@@ -26,1412 +25,817 @@ for (let i = 0; i < args.length; i++) {
 }
 
 // ============================================
-// CSV Parsing Utilities
+// Utilities
 // ============================================
 
-/**
- * Removes BOM (Byte Order Mark) from the beginning of a string.
- */
-function stripBOM(input: string): string {
-  if (input.charCodeAt(0) === 0xfeff) {
-    return input.slice(1)
-  }
-  return input
+interface ImportStats {
+  processed: number
+  created: number
+  updated: number
+  errors: string[]
 }
 
-/**
- * Parses a single CSV line into an array of fields, handling quoted fields.
- */
-function parseCSV(line: string): string[] {
-  const fields: string[] = []
-  let current = ''
-  let inQuotes = false
-  let i = 0
+function makeStats(): ImportStats {
+  return { processed: 0, created: 0, updated: 0, errors: [] }
+}
 
-  while (i < line.length) {
-    const ch = line[i]
-
-    if (inQuotes) {
-      if (ch === '"') {
-        if (i + 1 < line.length && line[i + 1] === '"') {
-          current += '"'
-          i += 2
-          continue
-        } else {
-          inQuotes = false
-          i++
-          continue
-        }
-      } else {
-        current += ch
-        i++
-        continue
-      }
+function logStats(label: string, stats: ImportStats) {
+  console.log(
+    `  [${label}] processed=${stats.processed} created=${stats.created} updated=${stats.updated} errors=${stats.errors.length}`
+  )
+  if (stats.errors.length > 0) {
+    for (const err of stats.errors.slice(0, 10)) {
+      console.log(`    ERROR: ${err}`)
     }
-
-    if (ch === '"') {
-      inQuotes = true
-      i++
-      continue
+    if (stats.errors.length > 10) {
+      console.log(`    ... and ${stats.errors.length - 10} more errors`)
     }
-
-    if (ch === ',') {
-      fields.push(current.trim())
-      current = ''
-      i++
-      continue
-    }
-
-    current += ch
-    i++
   }
-
-  fields.push(current.trim())
-  return fields
 }
 
-/**
- * Reads a CSV file and returns an array of rows (each row is an array of string fields).
- * Handles BOM, empty lines, and comment lines starting with #.
- */
-function parseCSVFile(filePath: string): string[][] {
-  if (!fs.existsSync(filePath)) {
-    return []
-  }
-
-  const raw = fs.readFileSync(filePath, 'utf-8')
-  const content = stripBOM(raw)
-  const lines = content.split(/\r?\n/)
-
-  const rows: string[][] = []
-  let headerFound = false
-  let headers: string[] = []
-
-  for (const line of lines) {
-    const trimmed = line.trim()
-
-    // Skip empty lines
-    if (trimmed.length === 0) continue
-
-    // Skip comment lines starting with #
-    if (trimmed.startsWith('#')) continue
-
-    const fields = parseCSV(trimmed)
-
-    // First non-empty, non-comment line is the header
-    if (!headerFound) {
-      headers = fields
-      headerFound = true
-      continue
-    }
-
-    // Pad or truncate fields to match header length
-    while (fields.length < headers.length) {
-      fields.push('')
-    }
-    if (fields.length > headers.length) {
-      fields.length = headers.length
-    }
-
-    rows.push(fields)
-  }
-
-  return rows
-}
-
-/**
- * Reads a CSV file and returns { headers, rows } where each row is an object
- * mapping header names to field values.
- */
-function parseCSVFileAsRecords(filePath: string): { headers: string[]; rows: Record<string, string>[] } {
-  if (!fs.existsSync(filePath)) {
-    return { headers: [], rows: [] }
-  }
-
-  const raw = fs.readFileSync(filePath, 'utf-8')
-  const content = stripBOM(raw)
-  const lines = content.split(/\r?\n/)
-
-  let headers: string[] = []
-  const rows: Record<string, string>[] = []
-
-  for (const line of lines) {
-    const trimmed = line.trim()
-    if (trimmed.length === 0) continue
-    if (trimmed.startsWith('#')) continue
-
-    const fields = parseCSV(trimmed)
-
-    if (headers.length === 0) {
-      headers = fields
-      continue
-    }
-
-    const record: Record<string, string> = {}
-    for (let i = 0; i < headers.length; i++) {
-      record[headers[i]] = i < fields.length ? fields[i] : ''
-    }
-
-    rows.push(record)
-  }
-
-  return { headers, rows }
-}
-
-// ============================================
-// Validation / Parsing Helpers
-// ============================================
-
-function parseTime(timeStr: string): string {
-  // GTFS times can go past 24:00:00 (e.g., 25:35:00 for trips after midnight).
-  // We store them as-is since they're strings in our schema.
-  const trimmed = timeStr.trim()
-  const match = trimmed.match(/^(\d{1,2}):(\d{2}):(\d{2})$/)
-  if (!match) {
-    return trimmed
-  }
-  const h = match[1].padStart(2, '0')
-  const m = match[2]
-  const s = match[3]
-  return `${h}:${m}:${s}`
-}
-
-function parseDate(dateStr: string): string {
-  // GTFS dates are YYYYMMDD
-  const trimmed = dateStr.trim().replace(/-/g, '')
-  const match = trimmed.match(/^(\d{4})(\d{2})(\d{2})$/)
-  if (!match) {
-    return trimmed
-  }
-  return `${match[1]}${match[2]}${match[3]}`
-}
-
-function parseFloat2(str: string): number | null {
-  const trimmed = str.trim()
-  if (trimmed === '' || trimmed === undefined || trimmed === null) return null
-  const num = Number(trimmed)
-  if (isNaN(num)) return null
-  return num
-}
-
-function parseInt2(str: string): number | null {
-  const trimmed = str.trim()
-  if (trimmed === '' || trimmed === undefined || trimmed === null) return null
-  const num = parseInt(trimmed, 10)
-  if (isNaN(num)) return null
-  return num
-}
-
-function parseBoolean(str: string): boolean {
-  const trimmed = str.trim().toLowerCase()
-  return trimmed === '1' || trimmed === 'true' || trimmed === 'yes'
-}
-
-function validateLatitude(lat: number | null): boolean {
-  if (lat === null) return false
-  return lat >= -90 && lat <= 90
-}
-
-function validateLongitude(lon: number | null): boolean {
-  if (lon === null) return false
-  return lon >= -180 && lon <= 180
-}
-
-function validateTime(timeStr: string): boolean {
-  const trimmed = timeStr.trim()
-  // Accept GTFS extended times (can be > 24:00:00)
-  const match = trimmed.match(/^(\d{1,3}):(\d{2}):(\d{2})$/)
-  if (!match) return false
-  const h = parseInt(match[1], 10)
-  const m = parseInt(match[2], 10)
-  const s = parseInt(match[3], 10)
-  if (m < 0 || m > 59) return false
-  if (s < 0 || s > 59) return false
-  // GTFS allows hours > 24 for overnight trips
-  if (h < 0 || h > 99) return false
-  return true
-}
-
-function emptyToNull(val: string): string | null {
-  const trimmed = val.trim()
-  return trimmed === '' ? null : trimmed
-}
-
-// ============================================
-// ImportLog Helper
-// ============================================
-
-async function createImportLog(
-  filename: string,
-  recordsProcessed: number | null = null,
-  recordsCreated: number | null = null,
-  recordsUpdated: number | null = null,
-  errors: string | null = null
-): Promise<void> {
+async function recordImportLog(filename: string, stats: ImportStats) {
   try {
     await prisma.importLog.create({
       data: {
         filename,
-        recordsProcessed,
-        recordsCreated,
-        recordsUpdated,
-        errors,
+        recordsProcessed: stats.processed,
+        recordsCreated: stats.created,
+        recordsUpdated: stats.updated,
+        errors: stats.errors.length > 0 ? stats.errors.join('\n') : null,
         completedAt: new Date(),
       },
     })
-  } catch (err) {
-    console.error(`  [ImportLog] Failed to create log entry for ${filename}:`, err)
+  } catch (e) {
+    console.log(`  [WARN] Could not write ImportLog for ${filename}: ${e}`)
   }
+}
+
+/**
+ * Reads and parses a CSV file using csv-parse/sync.
+ * Returns array of objects. Empty result if file not found.
+ */
+function readCsvFile(filename: string): Record<string, string>[] {
+  const filePath = path.join(GTFS_DIR, filename)
+  if (!fs.existsSync(filePath)) {
+    console.log(`  [SKIP] File not found: ${filename}`)
+    return []
+  }
+  const content = fs.readFileSync(filePath, 'utf-8')
+  const records = parse(content, {
+    columns: true,
+    skip_empty_lines: true,
+    trim: true,
+    relax_quotes: true,
+    relax_column_count: true,
+  })
+  return records as Record<string, string>[]
+}
+
+function safeFloat(val: string | undefined | null, fallback = 0): number {
+  if (!val || val.trim() === '') return fallback
+  const n = parseFloat(val)
+  return isNaN(n) ? fallback : n
+}
+
+function safeInt(val: string | undefined | null, fallback = 0): number {
+  if (!val || val.trim() === '') return fallback
+  const n = parseInt(val, 10)
+  return isNaN(n) ? fallback : n
 }
 
 // ============================================
-// Batch Processing Helper
+// Import: Agency
 // ============================================
 
-async function processInBatches<T>(
-  items: T[],
-  batchSize: number,
-  processor: (batch: T[]) => Promise<{ created: number; updated: number }>
-): Promise<{ created: number; updated: number }> {
-  let totalCreated = 0
-  let totalUpdated = 0
-
-  for (let i = 0; i < items.length; i += batchSize) {
-    const batch = items.slice(i, i + batchSize)
-    const result = await processor(batch)
-    totalCreated += result.created
-    totalUpdated += result.updated
-  }
-
-  return { created: totalCreated, updated: totalUpdated }
-}
-
-// ============================================
-// Import Functions
-// ============================================
-
-async function importAgencies(): Promise<void> {
-  const filename = 'agency.txt'
-  const filePath = path.join(GTFS_DIR, filename)
-  console.log(`\n📋 Importing ${filename}...`)
-
-  if (!fs.existsSync(filePath)) {
-    console.log(`  ⚠️  File not found: ${filePath}`)
-    await createImportLog(filename, 0, 0, 0, 'File not found')
-    return
-  }
-
-  try {
-    const { rows } = parseCSVFileAsRecords(filePath)
-    console.log(`  Found ${rows.length} records`)
-
-    let created = 0
-    let updated = 0
-
-    const result = await processInBatches(rows, BATCH_SIZE, async (batch) => {
-      let bCreated = 0
-      let bUpdated = 0
-
-      for (const row of batch) {
-        const agencyId = row['agency_id']
-        const name = row['agency_name'] || row['agency_id']
-
-        if (!agencyId) {
-          console.log(`  ⚠️  Skipping agency row without agency_id`)
-          continue
-        }
-
-        if (!name) {
-          console.log(`  ⚠️  Skipping agency ${agencyId} without name`)
-          continue
-        }
-
-        const existing = await prisma.gtfsAgency.findUnique({ where: { agency_id: agencyId } })
-
-        if (existing) {
-          await prisma.gtfsAgency.update({
-            where: { agency_id: agencyId },
-            data: {
-              name: name,
-              url: row['agency_url'] || existing.url,
-              timezone: row['agency_timezone'] || existing.timezone,
-              phone: emptyToNull(row['agency_phone']),
-              lang: emptyToNull(row['agency_lang']),
-              email: emptyToNull(row['agency_email']),
-            },
-          })
-          bUpdated++
-        } else {
-          await prisma.gtfsAgency.create({
-            data: {
-              agency_id: agencyId,
-              name: name,
-              url: row['agency_url'] || '',
-              timezone: row['agency_timezone'] || 'America/Costa_Rica',
-              phone: emptyToNull(row['agency_phone']),
-              lang: emptyToNull(row['agency_lang']),
-              email: emptyToNull(row['agency_email']),
-            },
-          })
-          bCreated++
-        }
-      }
-
-      return { created: bCreated, updated: bUpdated }
-    })
-
-    created = result.created
-    updated = result.updated
-
-    console.log(`  ✅ Agencies: ${created} created, ${updated} updated`)
-    await createImportLog(filename, rows.length, created, updated)
-  } catch (err) {
-    const errMsg = err instanceof Error ? err.message : String(err)
-    console.error(`  ❌ Error importing ${filename}:`, errMsg)
-    await createImportLog(filename, null, null, null, errMsg)
-  }
-}
-
-async function importStops(): Promise<void> {
-  const filename = 'stops.txt'
-  const filePath = path.join(GTFS_DIR, filename)
-  console.log(`\n📍 Importing ${filename}...`)
-
-  if (!fs.existsSync(filePath)) {
-    console.log(`  ⚠️  File not found: ${filePath}`)
-    await createImportLog(filename, 0, 0, 0, 'File not found')
-    return
-  }
-
-  try {
-    const { rows } = parseCSVFileAsRecords(filePath)
-    console.log(`  Found ${rows.length} records`)
-
-    let skipped = 0
-
-    const result = await processInBatches(rows, BATCH_SIZE, async (batch) => {
-      let bCreated = 0
-      let bUpdated = 0
-
-      for (const row of batch) {
-        const stopId = row['stop_id']
-        if (!stopId) {
-          skipped++
-          continue
-        }
-
-        const name = row['stop_name']
-        if (!name) {
-          skipped++
-          continue
-        }
-
-        const lat = parseFloat2(row['stop_lat'])
-        const lon = parseFloat2(row['stop_lon'])
-
-        if (!validateLatitude(lat) || !validateLongitude(lon)) {
-          console.log(`  ⚠️  Skipping stop ${stopId}: invalid coordinates (lat=${row['stop_lat']}, lon=${row['stop_lon']})`)
-          skipped++
-          continue
-        }
-
-        const data = {
-          code: emptyToNull(row['stop_code']),
-          name: name,
-          desc: emptyToNull(row['stop_desc']),
-          lat: lat!,
-          lon: lon!,
-          zone_id: emptyToNull(row['zone_id']),
-          location_type: parseInt2(row['location_type']) ?? 0,
-          parent_station: emptyToNull(row['parent_station']),
-          wheelchair_boarding: parseInt2(row['wheelchair_boarding']) ?? 0,
-        }
-
-        const existing = await prisma.gtfsStop.findUnique({ where: { stop_id: stopId } })
-
-        if (existing) {
-          await prisma.gtfsStop.update({ where: { stop_id: stopId }, data })
-          bUpdated++
-        } else {
-          await prisma.gtfsStop.create({ data: { stop_id: stopId, ...data } })
-          bCreated++
-        }
-      }
-
-      return { created: bCreated, updated: bUpdated }
-    })
-
-    console.log(`  ✅ Stops: ${result.created} created, ${result.updated} updated, ${skipped} skipped`)
-    await createImportLog(filename, rows.length, result.created, result.updated, skipped > 0 ? `${skipped} skipped` : null)
-  } catch (err) {
-    const errMsg = err instanceof Error ? err.message : String(err)
-    console.error(`  ❌ Error importing ${filename}:`, errMsg)
-    await createImportLog(filename, null, null, null, errMsg)
-  }
-}
-
-async function importRoutes(): Promise<void> {
-  const filename = 'routes.txt'
-  const filePath = path.join(GTFS_DIR, filename)
-  console.log(`\n🛣️  Importing ${filename}...`)
-
-  if (!fs.existsSync(filePath)) {
-    console.log(`  ⚠️  File not found: ${filePath}`)
-    await createImportLog(filename, 0, 0, 0, 'File not found')
-    return
-  }
-
-  try {
-    const { rows } = parseCSVFileAsRecords(filePath)
-    console.log(`  Found ${rows.length} records`)
-
-    let skipped = 0
-
-    const result = await processInBatches(rows, BATCH_SIZE, async (batch) => {
-      let bCreated = 0
-      let bUpdated = 0
-
-      for (const row of batch) {
-        const routeId = row['route_id']
-        if (!routeId) {
-          skipped++
-          continue
-        }
-
-        const agencyId = row['agency_id']
-        if (!agencyId) {
-          console.log(`  ⚠️  Skipping route ${routeId}: no agency_id`)
-          skipped++
-          continue
-        }
-
-        const data = {
-          agency_id: agencyId,
-          short_name: emptyToNull(row['route_short_name']),
-          long_name: emptyToNull(row['route_long_name']),
-          type: parseInt2(row['route_type']) ?? 3,
-          color: emptyToNull(row['route_color']),
-          text_color: emptyToNull(row['route_text_color']),
-          sort_order: parseInt2(row['route_sort_order']),
-        }
-
-        const existing = await prisma.gtfsRoute.findUnique({ where: { route_id: routeId } })
-
-        if (existing) {
-          await prisma.gtfsRoute.update({ where: { route_id: routeId }, data })
-          bUpdated++
-        } else {
-          await prisma.gtfsRoute.create({ data: { route_id: routeId, ...data } })
-          bCreated++
-        }
-      }
-
-      return { created: bCreated, updated: bUpdated }
-    })
-
-    console.log(`  ✅ Routes: ${result.created} created, ${result.updated} updated, ${skipped} skipped`)
-    await createImportLog(filename, rows.length, result.created, result.updated, skipped > 0 ? `${skipped} skipped` : null)
-  } catch (err) {
-    const errMsg = err instanceof Error ? err.message : String(err)
-    console.error(`  ❌ Error importing ${filename}:`, errMsg)
-    await createImportLog(filename, null, null, null, errMsg)
-  }
-}
-
-async function importTrips(): Promise<void> {
-  const filename = 'trips.txt'
-  const filePath = path.join(GTFS_DIR, filename)
-  console.log(`\n🚌 Importing ${filename}...`)
-
-  if (!fs.existsSync(filePath)) {
-    console.log(`  ⚠️  File not found: ${filePath}`)
-    await createImportLog(filename, 0, 0, 0, 'File not found')
-    return
-  }
-
-  try {
-    const { rows } = parseCSVFileAsRecords(filePath)
-    console.log(`  Found ${rows.length} records`)
-
-    let skipped = 0
-
-    const result = await processInBatches(rows, BATCH_SIZE, async (batch) => {
-      let bCreated = 0
-      let bUpdated = 0
-
-      for (const row of batch) {
-        const tripId = row['trip_id']
-        if (!tripId) {
-          skipped++
-          continue
-        }
-
-        const routeId = row['route_id']
-        const serviceId = row['service_id']
-
-        if (!routeId || !serviceId) {
-          console.log(`  ⚠️  Skipping trip ${tripId}: missing route_id or service_id`)
-          skipped++
-          continue
-        }
-
-        const data = {
-          route_id: routeId,
-          service_id: serviceId,
-          headsign: emptyToNull(row['trip_headsign']),
-          short_name: emptyToNull(row['trip_short_name']),
-          direction_id: parseInt2(row['direction_id']),
-          block_id: emptyToNull(row['block_id']),
-          shape_id: emptyToNull(row['shape_id']),
-          wheelchair_accessible: parseInt2(row['wheelchair_accessible']) ?? 0,
-          bikes_allowed: parseInt2(row['bikes_allowed']) ?? 0,
-        }
-
-        const existing = await prisma.gtfsTrip.findUnique({ where: { trip_id: tripId } })
-
-        if (existing) {
-          await prisma.gtfsTrip.update({ where: { trip_id: tripId }, data })
-          bUpdated++
-        } else {
-          await prisma.gtfsTrip.create({ data: { trip_id: tripId, ...data } })
-          bCreated++
-        }
-      }
-
-      return { created: bCreated, updated: bUpdated }
-    })
-
-    console.log(`  ✅ Trips: ${result.created} created, ${result.updated} updated, ${skipped} skipped`)
-    await createImportLog(filename, rows.length, result.created, result.updated, skipped > 0 ? `${skipped} skipped` : null)
-  } catch (err) {
-    const errMsg = err instanceof Error ? err.message : String(err)
-    console.error(`  ❌ Error importing ${filename}:`, errMsg)
-    await createImportLog(filename, null, null, null, errMsg)
-  }
-}
-
-async function importStopTimes(): Promise<void> {
-  const filename = 'stop_times.txt'
-  const filePath = path.join(GTFS_DIR, filename)
-  console.log(`\n⏰ Importing ${filename}...`)
-
-  if (!fs.existsSync(filePath)) {
-    console.log(`  ⚠️  File not found: ${filePath}`)
-    await createImportLog(filename, 0, 0, 0, 'File not found')
-    return
-  }
-
-  try {
-    const { rows } = parseCSVFileAsRecords(filePath)
-    console.log(`  Found ${rows.length} records`)
-
-    let skipped = 0
-    let processed = 0
-
-    // Delete existing stop_times for a full re-import (since we use autoincrement IDs,
-    // upsert per row would be very slow with findUnique on all fields)
-    console.log(`  Clearing existing stop_times...`)
-    await prisma.gtfsStopTime.deleteMany({})
-    console.log(`  Cleared. Inserting new records...`)
-
-    for (let i = 0; i < rows.length; i += BATCH_SIZE) {
-      const batch = rows.slice(i, i + BATCH_SIZE)
-      const createData: Prisma.GtfsStopTimeCreateInput[] = []
-
-      for (const row of batch) {
-        const tripId = row['trip_id']
-        const stopId = row['stop_id']
-
-        if (!tripId || !stopId) {
-          skipped++
-          continue
-        }
-
-        const arrivalTime = parseTime(row['arrival_time'] || '')
-        const departureTime = parseTime(row['departure_time'] || '')
-        const stopSequence = parseInt2(row['stop_sequence'])
-
-        if (stopSequence === null) {
-          skipped++
-          continue
-        }
-
-        if (!validateTime(arrivalTime)) {
-          console.log(`  ⚠️  Skipping stop_time: invalid arrival_time "${row['arrival_time']}"`)
-          skipped++
-          continue
-        }
-
-        if (!validateTime(departureTime)) {
-          console.log(`  ⚠️  Skipping stop_time: invalid departure_time "${row['departure_time']}"`)
-          skipped++
-          continue
-        }
-
-        createData.push({
-          trip: { connect: { trip_id: tripId } },
-          stop: { connect: { stop_id: stopId } },
-          arrival_time: arrivalTime,
-          departure_time: departureTime,
-          stop_sequence: stopSequence,
-          stop_headsign: emptyToNull(row['stop_headsign']),
-          pickup_type: parseInt2(row['pickup_type']) ?? 0,
-          drop_off_type: parseInt2(row['drop_off_type']) ?? 0,
-          shape_dist_traveled: parseFloat2(row['shape_dist_traveled']),
-          timepoint: parseInt2(row['timepoint']) ?? 1,
-        })
-      }
-
-      if (createData.length > 0) {
-        await prisma.gtfsStopTime.createMany({ data: createData, skipDuplicates: true })
-        processed += createData.length
-      }
-
-      if (processed > 0 && processed % PROGRESS_INTERVAL < BATCH_SIZE) {
-        console.log(`  ... ${processed} stop_times processed`)
-      }
-    }
-
-    console.log(`  ✅ Stop times: ${processed} created, ${skipped} skipped`)
-    await createImportLog(filename, rows.length, processed, 0, skipped > 0 ? `${skipped} skipped` : null)
-  } catch (err) {
-    const errMsg = err instanceof Error ? err.message : String(err)
-    console.error(`  ❌ Error importing ${filename}:`, errMsg)
-    await createImportLog(filename, null, null, null, errMsg)
-  }
-}
-
-async function importCalendar(): Promise<void> {
-  const filename = 'calendar.txt'
-  const filePath = path.join(GTFS_DIR, filename)
-  console.log(`\n📅 Importing ${filename}...`)
-
-  if (!fs.existsSync(filePath)) {
-    console.log(`  ⚠️  File not found: ${filePath}`)
-    await createImportLog(filename, 0, 0, 0, 'File not found')
-    return
-  }
-
-  try {
-    const { rows } = parseCSVFileAsRecords(filePath)
-    console.log(`  Found ${rows.length} records`)
-
-    let skipped = 0
-
-    const result = await processInBatches(rows, BATCH_SIZE, async (batch) => {
-      let bCreated = 0
-      let bUpdated = 0
-
-      for (const row of batch) {
-        const serviceId = row['service_id']
-        if (!serviceId) {
-          skipped++
-          continue
-        }
-
-        const startDate = parseDate(row['start_date'] || '')
-        const endDate = parseDate(row['end_date'] || '')
-
-        if (!startDate || !endDate) {
-          console.log(`  ⚠️  Skipping calendar ${serviceId}: invalid dates`)
-          skipped++
-          continue
-        }
-
-        const data = {
-          monday: parseBoolean(row['monday'] || '0'),
-          tuesday: parseBoolean(row['tuesday'] || '0'),
-          wednesday: parseBoolean(row['wednesday'] || '0'),
-          thursday: parseBoolean(row['thursday'] || '0'),
-          friday: parseBoolean(row['friday'] || '0'),
-          saturday: parseBoolean(row['saturday'] || '0'),
-          sunday: parseBoolean(row['sunday'] || '0'),
-          start_date: startDate,
-          end_date: endDate,
-        }
-
-        const existing = await prisma.gtfsCalendar.findUnique({ where: { service_id: serviceId } })
-
-        if (existing) {
-          await prisma.gtfsCalendar.update({ where: { service_id: serviceId }, data })
-          bUpdated++
-        } else {
-          await prisma.gtfsCalendar.create({ data: { service_id: serviceId, ...data } })
-          bCreated++
-        }
-      }
-
-      return { created: bCreated, updated: bUpdated }
-    })
-
-    console.log(`  ✅ Calendar: ${result.created} created, ${result.updated} updated, ${skipped} skipped`)
-    await createImportLog(filename, rows.length, result.created, result.updated, skipped > 0 ? `${skipped} skipped` : null)
-  } catch (err) {
-    const errMsg = err instanceof Error ? err.message : String(err)
-    console.error(`  ❌ Error importing ${filename}:`, errMsg)
-    await createImportLog(filename, null, null, null, errMsg)
-  }
-}
-
-async function importCalendarDates(): Promise<void> {
-  const filename = 'calendar_dates.txt'
-  const filePath = path.join(GTFS_DIR, filename)
-  console.log(`\n📆 Importing ${filename}...`)
-
-  if (!fs.existsSync(filePath)) {
-    console.log(`  ⚠️  File not found: ${filePath}`)
-    await createImportLog(filename, 0, 0, 0, 'File not found')
-    return
-  }
-
-  try {
-    const { rows } = parseCSVFileAsRecords(filePath)
-    console.log(`  Found ${rows.length} records`)
-
-    let skipped = 0
-
-    // Clear and re-import for calendar_dates since we use autoincrement IDs
-    console.log(`  Clearing existing calendar_dates...`)
-    await prisma.gtfsCalendarDate.deleteMany({})
-    console.log(`  Cleared. Inserting new records...`)
-
-    let processed = 0
-
-    for (let i = 0; i < rows.length; i += BATCH_SIZE) {
-      const batch = rows.slice(i, i + BATCH_SIZE)
-      const createData: Prisma.GtfsCalendarDateCreateInput[] = []
-
-      for (const row of batch) {
-        const serviceId = row['service_id']
-        const date = parseDate(row['date'] || '')
-        const exceptionType = parseInt2(row['exception_type'])
-
-        if (!serviceId || !date || exceptionType === null) {
-          skipped++
-          continue
-        }
-
-        createData.push({
-          service_id: serviceId,
-          date: date,
-          exception_type: exceptionType,
-        })
-      }
-
-      if (createData.length > 0) {
-        await prisma.gtfsCalendarDate.createMany({ data: createData, skipDuplicates: true })
-        processed += createData.length
-      }
-    }
-
-    console.log(`  ✅ Calendar dates: ${processed} created, ${skipped} skipped`)
-    await createImportLog(filename, rows.length, processed, 0, skipped > 0 ? `${skipped} skipped` : null)
-  } catch (err) {
-    const errMsg = err instanceof Error ? err.message : String(err)
-    console.error(`  ❌ Error importing ${filename}:`, errMsg)
-    await createImportLog(filename, null, null, null, errMsg)
-  }
-}
-
-async function importShapes(): Promise<void> {
-  const filename = 'shapes.txt'
-  const filePath = path.join(GTFS_DIR, filename)
-  console.log(`\n📐 Importing ${filename}...`)
-
-  if (!fs.existsSync(filePath)) {
-    console.log(`  ⚠️  File not found: ${filePath}`)
-    await createImportLog(filename, 0, 0, 0, 'File not found')
-    return
-  }
-
-  try {
-    const { rows } = parseCSVFileAsRecords(filePath)
-    console.log(`  Found ${rows.length} records`)
-
-    let skipped = 0
-
-    // Clear and re-import for shapes (autoincrement IDs, large file)
-    console.log(`  Clearing existing shapes...`)
-    await prisma.gtfsShape.deleteMany({})
-    console.log(`  Cleared. Inserting new records...`)
-
-    let processed = 0
-
-    for (let i = 0; i < rows.length; i += BATCH_SIZE) {
-      const batch = rows.slice(i, i + BATCH_SIZE)
-      const createData: Prisma.GtfsShapeCreateInput[] = []
-
-      for (const row of batch) {
-        const shapeId = row['shape_id']
-        if (!shapeId) {
-          skipped++
-          continue
-        }
-
-        const lat = parseFloat2(row['shape_pt_lat'])
-        const lon = parseFloat2(row['shape_pt_lon'])
-        const sequence = parseInt2(row['shape_pt_sequence'])
-
-        if (!validateLatitude(lat) || !validateLongitude(lon) || sequence === null) {
-          skipped++
-          continue
-        }
-
-        createData.push({
-          shape_id: shapeId,
-          shape_pt_lat: lat!,
-          shape_pt_lon: lon!,
-          shape_pt_sequence: sequence,
-          shape_dist_traveled: parseFloat2(row['shape_dist_traveled']),
-        })
-      }
-
-      if (createData.length > 0) {
-        await prisma.gtfsShape.createMany({ data: createData, skipDuplicates: true })
-        processed += createData.length
-      }
-
-      if (processed > 0 && processed % PROGRESS_INTERVAL < BATCH_SIZE) {
-        console.log(`  ... ${processed} shapes processed`)
-      }
-    }
-
-    console.log(`  ✅ Shapes: ${processed} created, ${skipped} skipped`)
-    await createImportLog(filename, rows.length, processed, 0, skipped > 0 ? `${skipped} skipped` : null)
-  } catch (err) {
-    const errMsg = err instanceof Error ? err.message : String(err)
-    console.error(`  ❌ Error importing ${filename}:`, errMsg)
-    await createImportLog(filename, null, null, null, errMsg)
-  }
-}
-
-async function importFareAttributes(): Promise<void> {
-  const filename = 'fare_attributes.txt'
-  const filePath = path.join(GTFS_DIR, filename)
-  console.log(`\n💰 Importing ${filename}...`)
-
-  if (!fs.existsSync(filePath)) {
-    console.log(`  ⚠️  File not found: ${filePath}`)
-    await createImportLog(filename, 0, 0, 0, 'File not found')
-    return
-  }
-
-  try {
-    const { rows } = parseCSVFileAsRecords(filePath)
-    console.log(`  Found ${rows.length} records`)
-
-    let skipped = 0
-
-    const result = await processInBatches(rows, BATCH_SIZE, async (batch) => {
-      let bCreated = 0
-      let bUpdated = 0
-
-      for (const row of batch) {
-        const fareId = row['fare_id']
-        if (!fareId) {
-          skipped++
-          continue
-        }
-
-        const price = parseFloat2(row['price'])
-        if (price === null) {
-          console.log(`  ⚠️  Skipping fare ${fareId}: invalid price`)
-          skipped++
-          continue
-        }
-
-        const data = {
-          price: price,
-          currency_type: row['currency_type'] || 'CRC',
-          payment_method: parseInt2(row['payment_method']) ?? 0,
-          transfers: parseInt2(row['transfers']) ?? 0,
-          transfer_duration: parseInt2(row['transfer_duration']),
-        }
-
-        const existing = await prisma.gtfsFareAttribute.findUnique({ where: { fare_id: fareId } })
-
-        if (existing) {
-          await prisma.gtfsFareAttribute.update({ where: { fare_id: fareId }, data })
-          bUpdated++
-        } else {
-          await prisma.gtfsFareAttribute.create({ data: { fare_id: fareId, ...data } })
-          bCreated++
-        }
-      }
-
-      return { created: bCreated, updated: bUpdated }
-    })
-
-    console.log(`  ✅ Fare attributes: ${result.created} created, ${result.updated} updated, ${skipped} skipped`)
-    await createImportLog(filename, rows.length, result.created, result.updated, skipped > 0 ? `${skipped} skipped` : null)
-  } catch (err) {
-    const errMsg = err instanceof Error ? err.message : String(err)
-    console.error(`  ❌ Error importing ${filename}:`, errMsg)
-    await createImportLog(filename, null, null, null, errMsg)
-  }
-}
-
-async function importFareRules(): Promise<void> {
-  const filename = 'fare_rules.txt'
-  const filePath = path.join(GTFS_DIR, filename)
-  console.log(`\n🎟️  Importing ${filename}...`)
-
-  if (!fs.existsSync(filePath)) {
-    console.log(`  ⚠️  File not found: ${filePath}`)
-    await createImportLog(filename, 0, 0, 0, 'File not found')
-    return
-  }
-
-  try {
-    const { rows } = parseCSVFileAsRecords(filePath)
-    console.log(`  Found ${rows.length} records`)
-
-    let skipped = 0
-
-    // Clear and re-import for fare_rules (autoincrement IDs)
-    console.log(`  Clearing existing fare_rules...`)
-    await prisma.gtfsFareRule.deleteMany({})
-    console.log(`  Cleared. Inserting new records...`)
-
-    let processed = 0
-
-    for (let i = 0; i < rows.length; i += BATCH_SIZE) {
-      const batch = rows.slice(i, i + BATCH_SIZE)
-      const createData: Prisma.GtfsFareRuleCreateInput[] = []
-
-      for (const row of batch) {
-        const fareId = row['fare_id']
-        if (!fareId) {
-          skipped++
-          continue
-        }
-
-        const routeId = emptyToNull(row['route_id'])
-
-        const data: Prisma.GtfsFareRuleCreateInput = {
-          fare: { connect: { fare_id: fareId } },
-          route_id: routeId,
-          origin_id: emptyToNull(row['origin_id']),
-          destination_id: emptyToNull(row['destination_id']),
-          contains_id: emptyToNull(row['contains_id']),
-        }
-
-        // Only connect route if routeId is provided
-        if (routeId) {
-          data.route = { connect: { route_id: routeId } }
-        }
-
-        createData.push(data)
-      }
-
-      if (createData.length > 0) {
-        await prisma.gtfsFareRule.createMany({
-          data: createData.map((d) => ({
-            fare_id: d.fare_id as string,
-            route_id: d.route_id,
-            origin_id: d.origin_id,
-            destination_id: d.destination_id,
-            contains_id: d.contains_id,
-          })),
-          skipDuplicates: true,
-        })
-        processed += createData.length
-      }
-    }
-
-    console.log(`  ✅ Fare rules: ${processed} created, ${skipped} skipped`)
-    await createImportLog(filename, rows.length, processed, 0, skipped > 0 ? `${skipped} skipped` : null)
-  } catch (err) {
-    const errMsg = err instanceof Error ? err.message : String(err)
-    console.error(`  ❌ Error importing ${filename}:`, errMsg)
-    await createImportLog(filename, null, null, null, errMsg)
-  }
-}
-
-// ============================================
-// Custom File Imports
-// ============================================
-
-async function importCompanies(): Promise<void> {
-  const filename = 'empresas.csv'
-  const filePath = path.join(GTFS_DIR, filename)
-  console.log(`\n🏢 Importing ${filename}...`)
-
-  if (!fs.existsSync(filePath)) {
-    console.log(`  ⚠️  File not found: ${filePath}`)
-    await createImportLog(filename, 0, 0, 0, 'File not found')
-    return
-  }
-
-  try {
-    const { rows } = parseCSVFileAsRecords(filePath)
-    console.log(`  Found ${rows.length} records`)
-
-    let skipped = 0
-
-    const result = await processInBatches(rows, BATCH_SIZE, async (batch) => {
-      let bCreated = 0
-      let bUpdated = 0
-
-      for (const row of batch) {
-        const name = row['name']
-        if (!name) {
-          skipped++
-          continue
-        }
-
-        // Try to find existing company by name
-        const existing = await prisma.company.findFirst({ where: { name } })
-
-        const data = {
-          phone: emptyToNull(row['phone']),
-          email: emptyToNull(row['email']),
-          website: emptyToNull(row['website']),
-          logoUrl: emptyToNull(row['logoUrl']),
-          description: emptyToNull(row['description']),
-          primaryColor: emptyToNull(row['primaryColor']),
-          secondaryColor: emptyToNull(row['secondaryColor']),
-          isActive: true,
-        }
-
-        if (existing) {
-          await prisma.company.update({ where: { id: existing.id }, data })
-          bUpdated++
-        } else {
-          await prisma.company.create({ data: { name, ...data } })
-          bCreated++
-        }
-      }
-
-      return { created: bCreated, updated: bUpdated }
-    })
-
-    console.log(`  ✅ Companies: ${result.created} created, ${result.updated} updated, ${skipped} skipped`)
-    await createImportLog(filename, rows.length, result.created, result.updated, skipped > 0 ? `${skipped} skipped` : null)
-  } catch (err) {
-    const errMsg = err instanceof Error ? err.message : String(err)
-    console.error(`  ❌ Error importing ${filename}:`, errMsg)
-    await createImportLog(filename, null, null, null, errMsg)
-  }
-}
-
-async function importTarifas(): Promise<void> {
-  const filename = 'tarifas.csv'
-  const filePath = path.join(GTFS_DIR, filename)
-  console.log(`\n💲 Importing ${filename}...`)
-
-  if (!fs.existsSync(filePath)) {
-    console.log(`  ⚠️  File not found: ${filePath}`)
-    await createImportLog(filename, 0, 0, 0, 'File not found')
-    return
-  }
-
-  try {
-    const { rows } = parseCSVFileAsRecords(filePath)
-    console.log(`  Found ${rows.length} records`)
-
-    let updated = 0
-    let skipped = 0
-
-    for (const row of rows) {
-      const routeId = row['route_id']
-      if (!routeId) {
-        skipped++
+async function importAgencies(): Promise<ImportStats> {
+  const stats = makeStats()
+  const rows = readCsvFile('agency.txt')
+  if (rows.length === 0) return stats
+
+  console.log(`  Importing ${rows.length} agencies...`)
+
+  for (const row of rows) {
+    stats.processed++
+    try {
+      const agency_id = row.agency_id
+      if (!agency_id) {
+        stats.errors.push(`Row ${stats.processed}: missing agency_id`)
         continue
       }
-
-      const existing = await prisma.gtfsRoute.findUnique({ where: { route_id: routeId } })
-      if (!existing) {
-        console.log(`  ⚠️  Skipping tarifa: route ${routeId} not found`)
-        skipped++
-        continue
+      const existing = await prisma.gtfsAgency.findUnique({ where: { agency_id } })
+      const data = {
+        name: row.agency_name || agency_id,
+        url: row.agency_url || '',
+        timezone: row.agency_timezone || 'America/Costa_Rica',
+        phone: row.agency_phone || null,
+        lang: row.agency_lang || null,
+        email: row.agency_email || null,
       }
-
-      // Tarifas updates pricing-related info on routes.
-      // Since our GtfsRoute model doesn't have price fields directly,
-      // we log it and store any relevant data.
-      // We could extend the model later or use RouteConfig.
-      // For now, we just record that we processed it.
-      updated++
-    }
-
-    console.log(`  ✅ Tarifas: ${updated} routes updated, ${skipped} skipped`)
-    await createImportLog(filename, rows.length, 0, updated, skipped > 0 ? `${skipped} skipped` : null)
-  } catch (err) {
-    const errMsg = err instanceof Error ? err.message : String(err)
-    console.error(`  ❌ Error importing ${filename}:`, errMsg)
-    await createImportLog(filename, null, null, null, errMsg)
-  }
-}
-
-async function importColores(): Promise<void> {
-  const filename = 'colores.csv'
-  const filePath = path.join(GTFS_DIR, filename)
-  console.log(`\n🎨 Importing ${filename}...`)
-
-  if (!fs.existsSync(filePath)) {
-    console.log(`  ⚠️  File not found: ${filePath}`)
-    await createImportLog(filename, 0, 0, 0, 'File not found')
-    return
-  }
-
-  try {
-    const { rows } = parseCSVFileAsRecords(filePath)
-    console.log(`  Found ${rows.length} records`)
-
-    let updated = 0
-    let skipped = 0
-
-    const result = await processInBatches(rows, BATCH_SIZE, async (batch) => {
-      let bUpdated = 0
-      let bSkipped = 0
-
-      for (const row of batch) {
-        const routeId = row['route_id']
-        if (!routeId) {
-          bSkipped++
-          continue
-        }
-
-        const color = emptyToNull(row['color'])
-        const textColor = emptyToNull(row['textColor'])
-
-        if (!color && !textColor) {
-          bSkipped++
-          continue
-        }
-
-        const existing = await prisma.gtfsRoute.findUnique({ where: { route_id: routeId } })
-        if (!existing) {
-          console.log(`  ⚠️  Skipping color: route ${routeId} not found`)
-          bSkipped++
-          continue
-        }
-
-        await prisma.gtfsRoute.update({
-          where: { route_id: routeId },
-          data: {
-            ...(color ? { color } : {}),
-            ...(textColor ? { text_color: textColor } : {}),
-          },
-        })
-        bUpdated++
-      }
-
-      return { created: 0, updated: bUpdated }
-    })
-
-    updated = result.updated
-    skipped = rows.length - updated
-
-    console.log(`  ✅ Colores: ${updated} routes updated, ${skipped} skipped`)
-    await createImportLog(filename, rows.length, 0, updated, skipped > 0 ? `${skipped} skipped` : null)
-  } catch (err) {
-    const errMsg = err instanceof Error ? err.message : String(err)
-    console.error(`  ❌ Error importing ${filename}:`, errMsg)
-    await createImportLog(filename, null, null, null, errMsg)
-  }
-}
-
-async function importLogos(): Promise<void> {
-  const filename = 'logos.csv'
-  const filePath = path.join(GTFS_DIR, filename)
-  console.log(`\n🖼️  Importing ${filename}...`)
-
-  if (!fs.existsSync(filePath)) {
-    console.log(`  ⚠️  File not found: ${filePath}`)
-    await createImportLog(filename, 0, 0, 0, 'File not found')
-    return
-  }
-
-  try {
-    const { rows } = parseCSVFileAsRecords(filePath)
-    console.log(`  Found ${rows.length} records`)
-
-    let skipped = 0
-
-    // logos.csv maps agency_id to logoUrl, but GtfsAgency doesn't have a logoUrl field.
-    // We update the matching Company record's logoUrl if one exists by agency name.
-
-    let updated = 0
-
-    for (const row of rows) {
-      const agencyId = row['agency_id']
-      const logoUrl = emptyToNull(row['logoUrl'])
-
-      if (!agencyId || !logoUrl) {
-        skipped++
-        continue
-      }
-
-      const agency = await prisma.gtfsAgency.findUnique({ where: { agency_id: agencyId } })
-      if (!agency) {
-        console.log(`  ⚠️  Skipping logo: agency ${agencyId} not found`)
-        skipped++
-        continue
-      }
-
-      // Try to update a Company with the same name
-      const company = await prisma.company.findFirst({ where: { name: agency.name } })
-      if (company) {
-        await prisma.company.update({
-          where: { id: company.id },
-          data: { logoUrl },
-        })
-        updated++
+      if (existing) {
+        await prisma.gtfsAgency.update({ where: { agency_id }, data })
+        stats.updated++
       } else {
-        console.log(`  ⚠️  No company found matching agency "${agency.name}" for logo update`)
-        skipped++
+        await prisma.gtfsAgency.create({ data: { agency_id, ...data } })
+        stats.created++
+      }
+    } catch (e) {
+      stats.errors.push(`Agency ${row.agency_id}: ${e}`)
+    }
+  }
+
+  logStats('agencies', stats)
+  return stats
+}
+
+// ============================================
+// Import: Calendar
+// ============================================
+
+async function importCalendar(): Promise<ImportStats> {
+  const stats = makeStats()
+  const rows = readCsvFile('calendar.txt')
+  if (rows.length === 0) return stats
+
+  console.log(`  Importing ${rows.length} calendar entries...`)
+
+  for (const row of rows) {
+    stats.processed++
+    try {
+      const service_id = row.service_id
+      if (!service_id) {
+        stats.errors.push(`Row ${stats.processed}: missing service_id`)
+        continue
+      }
+      const toBool = (v: string) => v === '1'
+      const data = {
+        monday: toBool(row.monday),
+        tuesday: toBool(row.tuesday),
+        wednesday: toBool(row.wednesday),
+        thursday: toBool(row.thursday),
+        friday: toBool(row.friday),
+        saturday: toBool(row.saturday),
+        sunday: toBool(row.sunday),
+        start_date: row.start_date || '20240101',
+        end_date: row.end_date || '20261231',
+      }
+      const existing = await prisma.gtfsCalendar.findUnique({ where: { service_id } })
+      if (existing) {
+        await prisma.gtfsCalendar.update({ where: { service_id }, data })
+        stats.updated++
+      } else {
+        await prisma.gtfsCalendar.create({ data: { service_id, ...data } })
+        stats.created++
+      }
+    } catch (e) {
+      stats.errors.push(`Calendar ${row.service_id}: ${e}`)
+    }
+  }
+
+  logStats('calendar', stats)
+  return stats
+}
+
+// ============================================
+// Import: Calendar Dates
+// ============================================
+
+async function importCalendarDates(): Promise<ImportStats> {
+  const stats = makeStats()
+  const rows = readCsvFile('calendar_dates.txt')
+  if (rows.length === 0) return stats
+
+  console.log(`  Importing ${rows.length} calendar date exceptions...`)
+
+  await prisma.$transaction(async (tx) => {
+    for (const row of rows) {
+      stats.processed++
+      try {
+        const service_id = row.service_id
+        const date = row.date
+        if (!service_id || !date) {
+          stats.errors.push(`Row ${stats.processed}: missing service_id or date`)
+          continue
+        }
+        const exception_type = safeInt(row.exception_type, 1)
+        const dedup = await tx.gtfsCalendarDate.findFirst({
+          where: { service_id, date, exception_type },
+        })
+        if (dedup) {
+          stats.updated++
+        } else {
+          await tx.gtfsCalendarDate.create({
+            data: { service_id, date, exception_type },
+          })
+          stats.created++
+        }
+      } catch (e) {
+        stats.errors.push(`CalendarDate ${row.service_id}/${row.date}: ${e}`)
       }
     }
+  })
 
-    console.log(`  ✅ Logos: ${updated} companies updated, ${skipped} skipped`)
-    await createImportLog(filename, rows.length, 0, updated, skipped > 0 ? `${skipped} skipped` : null)
-  } catch (err) {
-    const errMsg = err instanceof Error ? err.message : String(err)
-    console.error(`  ❌ Error importing ${filename}:`, errMsg)
-    await createImportLog(filename, null, null, null, errMsg)
-  }
+  logStats('calendar_dates', stats)
+  return stats
 }
 
 // ============================================
-// RouteConfig Seeding
+// Import: Routes
 // ============================================
 
-async function seedRouteConfig(): Promise<void> {
-  console.log(`\n⚙️  Seeding RouteConfig...`)
+async function importRoutes(): Promise<ImportStats> {
+  const stats = makeStats()
+  const rows = readCsvFile('routes.txt')
+  if (rows.length === 0) return stats
 
-  const configs = [
-    {
-      key: 'timeWeight',
-      value: '0.40',
-      description: 'Weight for travel time in route scoring',
-    },
-    {
-      key: 'walkDistanceWeight',
-      value: '0.25',
-      description: 'Weight for walking distance in route scoring',
-    },
-    {
-      key: 'transfersWeight',
-      value: '0.20',
-      description: 'Weight for number of transfers in route scoring',
-    },
-    {
-      key: 'costWeight',
-      value: '0.15',
-      description: 'Weight for cost/price in route scoring',
-    },
-  ]
+  console.log(`  Importing ${rows.length} routes...`)
 
-  let created = 0
-  let updated = 0
-
-  for (const config of configs) {
-    const existing = await prisma.routeConfig.findUnique({ where: { key: config.key } })
-
-    if (existing) {
-      await prisma.routeConfig.update({
-        where: { key: config.key },
-        data: { value: config.value, description: config.description },
-      })
-      updated++
-    } else {
-      await prisma.routeConfig.create({ data: config })
-      created++
+  for (const row of rows) {
+    stats.processed++
+    try {
+      const route_id = row.route_id
+      const agency_id = row.agency_id
+      if (!route_id || !agency_id) {
+        stats.errors.push(`Row ${stats.processed}: missing route_id or agency_id`)
+        continue
+      }
+      const data = {
+        agency_id,
+        short_name: row.route_short_name || null,
+        long_name: row.route_long_name || null,
+        type: safeInt(row.route_type, 3),
+        color: row.route_color || null,
+        text_color: row.route_text_color || null,
+        sort_order: row.route_sort_order ? safeInt(row.route_sort_order) : null,
+      }
+      const existing = await prisma.gtfsRoute.findUnique({ where: { route_id } })
+      if (existing) {
+        await prisma.gtfsRoute.update({ where: { route_id }, data })
+        stats.updated++
+      } else {
+        await prisma.gtfsRoute.create({ data: { route_id, ...data } })
+        stats.created++
+      }
+    } catch (e) {
+      stats.errors.push(`Route ${row.route_id}: ${e}`)
     }
   }
 
-  console.log(`  ✅ RouteConfig: ${created} created, ${updated} updated`)
-  await createImportLog('RouteConfig (seed)', configs.length, created, updated)
+  logStats('routes', stats)
+  return stats
 }
 
 // ============================================
-// Main
+// Import: Stops
+// ============================================
+
+async function importStops(): Promise<ImportStats> {
+  const stats = makeStats()
+  const rows = readCsvFile('stops.txt')
+  if (rows.length === 0) return stats
+
+  console.log(`  Importing ${rows.length} stops...`)
+
+  for (const row of rows) {
+    stats.processed++
+    try {
+      const stop_id = row.stop_id
+      const stop_name = row.stop_name
+      if (!stop_id || !stop_name) {
+        stats.errors.push(`Row ${stats.processed}: missing stop_id or stop_name`)
+        continue
+      }
+      const lat = safeFloat(row.stop_lat)
+      const lon = safeFloat(row.stop_lon)
+      if (lat === 0 && lon === 0) {
+        stats.errors.push(`Stop ${stop_id}: invalid coordinates (${row.stop_lat}, ${row.stop_lon})`)
+        continue
+      }
+      const data = {
+        code: row.stop_code || null,
+        name: stop_name,
+        desc: row.stop_desc || null,
+        lat,
+        lon,
+        zone_id: row.zone_id || null,
+        location_type: safeInt(row.location_type, 0),
+        parent_station: row.parent_station || null,
+        wheelchair_boarding: safeInt(row.wheelchair_boarding, 0),
+      }
+      const existing = await prisma.gtfsStop.findUnique({ where: { stop_id } })
+      if (existing) {
+        await prisma.gtfsStop.update({ where: { stop_id }, data })
+        stats.updated++
+      } else {
+        await prisma.gtfsStop.create({ data: { stop_id, ...data } })
+        stats.created++
+      }
+    } catch (e) {
+      stats.errors.push(`Stop ${row.stop_id}: ${e}`)
+    }
+  }
+
+  logStats('stops', stats)
+  return stats
+}
+
+// ============================================
+// Import: Trips
+// ============================================
+
+async function importTrips(): Promise<ImportStats> {
+  const stats = makeStats()
+  const rows = readCsvFile('trips.txt')
+  if (rows.length === 0) return stats
+
+  console.log(`  Importing ${rows.length} trips...`)
+
+  for (const row of rows) {
+    stats.processed++
+    try {
+      const trip_id = row.trip_id
+      const route_id = row.route_id
+      const service_id = row.service_id
+      if (!trip_id || !route_id || !service_id) {
+        stats.errors.push(`Row ${stats.processed}: missing trip_id, route_id, or service_id`)
+        continue
+      }
+      const data = {
+        route_id,
+        service_id,
+        headsign: row.trip_headsign || null,
+        short_name: row.trip_short_name || null,
+        direction_id: row.direction_id ? safeInt(row.direction_id) : null,
+        block_id: row.block_id || null,
+        shape_id: row.shape_id || null,
+        wheelchair_accessible: safeInt(row.wheelchair_accessible, 0),
+        bikes_allowed: safeInt(row.bikes_allowed, 0),
+      }
+      const existing = await prisma.gtfsTrip.findUnique({ where: { trip_id } })
+      if (existing) {
+        await prisma.gtfsTrip.update({ where: { trip_id }, data })
+        stats.updated++
+      } else {
+        await prisma.gtfsTrip.create({ data: { trip_id, ...data } })
+        stats.created++
+      }
+    } catch (e) {
+      stats.errors.push(`Trip ${row.trip_id}: ${e}`)
+    }
+  }
+
+  logStats('trips', stats)
+  return stats
+}
+
+// ============================================
+// Import: Stop Times
+// ============================================
+
+async function importStopTimes(): Promise<ImportStats> {
+  const stats = makeStats()
+  const rows = readCsvFile('stop_times.txt')
+  if (rows.length === 0) return stats
+
+  console.log(`  Importing ${rows.length} stop times (in batches)...`)
+
+  // Delete existing stop times and re-insert for idempotency
+  await prisma.gtfsStopTime.deleteMany({})
+  console.log(`  Cleared existing stop_times for fresh import.`)
+
+  const BATCH = 500
+  for (let i = 0; i < rows.length; i += BATCH) {
+    const batch = rows.slice(i, i + BATCH)
+    try {
+      await prisma.$transaction(async (tx) => {
+        for (const row of batch) {
+          stats.processed++
+          try {
+            const trip_id = row.trip_id
+            const stop_id = row.stop_id
+            if (!trip_id || !stop_id) {
+              stats.errors.push(`Row ${stats.processed}: missing trip_id or stop_id`)
+              continue
+            }
+            await tx.gtfsStopTime.create({
+              data: {
+                trip_id,
+                stop_id,
+                arrival_time: row.arrival_time || '00:00:00',
+                departure_time: row.departure_time || '00:00:00',
+                stop_sequence: safeInt(row.stop_sequence, 0),
+                stop_headsign: row.stop_headsign || null,
+                pickup_type: safeInt(row.pickup_type, 0),
+                drop_off_type: safeInt(row.drop_off_type, 0),
+                shape_dist_traveled: row.shape_dist_traveled
+                  ? safeFloat(row.shape_dist_traveled)
+                  : null,
+                timepoint: safeInt(row.timepoint, 1),
+              },
+            })
+            stats.created++
+          } catch (e) {
+            stats.errors.push(`StopTime ${row.trip_id}/${row.stop_id}: ${e}`)
+          }
+        }
+      })
+    } catch (e) {
+      console.log(`  [WARN] Batch ${Math.floor(i / BATCH) + 1} failed: ${e}`)
+    }
+  }
+
+  logStats('stop_times', stats)
+  return stats
+}
+
+// ============================================
+// Import: Shapes
+// ============================================
+
+async function importShapes(): Promise<ImportStats> {
+  const stats = makeStats()
+  const rows = readCsvFile('shapes.txt')
+  if (rows.length === 0) return stats
+
+  console.log(`  Importing ${rows.length} shape points (in batches)...`)
+
+  // Delete existing shapes and re-insert for idempotency
+  await prisma.gtfsShape.deleteMany({})
+  console.log(`  Cleared existing shapes for fresh import.`)
+
+  const BATCH = 500
+  for (let i = 0; i < rows.length; i += BATCH) {
+    const batch = rows.slice(i, i + BATCH)
+    try {
+      await prisma.$transaction(async (tx) => {
+        for (const row of batch) {
+          stats.processed++
+          try {
+            const shape_id = row.shape_id
+            if (!shape_id) {
+              stats.errors.push(`Row ${stats.processed}: missing shape_id`)
+              continue
+            }
+            await tx.gtfsShape.create({
+              data: {
+                shape_id,
+                shape_pt_lat: safeFloat(row.shape_pt_lat),
+                shape_pt_lon: safeFloat(row.shape_pt_lon),
+                shape_pt_sequence: safeInt(row.shape_pt_sequence, 0),
+                shape_dist_traveled: row.shape_dist_traveled
+                  ? safeFloat(row.shape_dist_traveled)
+                  : null,
+              },
+            })
+            stats.created++
+          } catch (e) {
+            stats.errors.push(`Shape ${row.shape_id}/${row.shape_pt_sequence}: ${e}`)
+          }
+        }
+      })
+    } catch (e) {
+      console.log(`  [WARN] Batch ${Math.floor(i / BATCH) + 1} failed: ${e}`)
+    }
+  }
+
+  logStats('shapes', stats)
+  return stats
+}
+
+// ============================================
+// Import: Fare Attributes
+// ============================================
+
+async function importFareAttributes(): Promise<ImportStats> {
+  const stats = makeStats()
+  const rows = readCsvFile('fare_attributes.txt')
+  if (rows.length === 0) return stats
+
+  console.log(`  Importing ${rows.length} fare attributes...`)
+
+  for (const row of rows) {
+    stats.processed++
+    try {
+      const fare_id = row.fare_id
+      if (!fare_id) {
+        stats.errors.push(`Row ${stats.processed}: missing fare_id`)
+        continue
+      }
+      const data = {
+        price: safeFloat(row.price, 0),
+        currency_type: row.currency_type || 'CRC',
+        payment_method: safeInt(row.payment_method, 0),
+        transfers: safeInt(row.transfers, 0),
+        transfer_duration: row.transfer_duration ? safeInt(row.transfer_duration) : null,
+      }
+      const existing = await prisma.gtfsFareAttribute.findUnique({ where: { fare_id } })
+      if (existing) {
+        await prisma.gtfsFareAttribute.update({ where: { fare_id }, data })
+        stats.updated++
+      } else {
+        await prisma.gtfsFareAttribute.create({ data: { fare_id, ...data } })
+        stats.created++
+      }
+    } catch (e) {
+      stats.errors.push(`FareAttribute ${row.fare_id}: ${e}`)
+    }
+  }
+
+  logStats('fare_attributes', stats)
+  return stats
+}
+
+// ============================================
+// Import: Fare Rules
+// ============================================
+
+async function importFareRules(): Promise<ImportStats> {
+  const stats = makeStats()
+  const rows = readCsvFile('fare_rules.txt')
+  if (rows.length === 0) return stats
+
+  console.log(`  Importing ${rows.length} fare rules...`)
+
+  // Delete existing and re-insert for idempotency
+  await prisma.gtfsFareRule.deleteMany({})
+  console.log(`  Cleared existing fare_rules for fresh import.`)
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      for (const row of rows) {
+        stats.processed++
+        try {
+          const fare_id = row.fare_id
+          if (!fare_id) {
+            stats.errors.push(`Row ${stats.processed}: missing fare_id`)
+            continue
+          }
+          await tx.gtfsFareRule.create({
+            data: {
+              fare_id,
+              route_id: row.route_id || null,
+              origin_id: row.origin_id || null,
+              destination_id: row.destination_id || null,
+              contains_id: row.contains_id || null,
+            },
+          })
+          stats.created++
+        } catch (e) {
+          stats.errors.push(`FareRule ${row.fare_id}/${row.route_id}: ${e}`)
+        }
+      }
+    })
+  } catch (e) {
+    console.log(`  [WARN] Fare rules transaction failed: ${e}`)
+  }
+
+  logStats('fare_rules', stats)
+  return stats
+}
+
+// ============================================
+// Import: Custom - Empresas (Company)
+// ============================================
+
+async function importEmpresas(): Promise<ImportStats> {
+  const stats = makeStats()
+  const rows = readCsvFile('empresas.csv')
+  if (rows.length === 0) return stats
+
+  console.log(`  Importing ${rows.length} empresas (companies)...`)
+
+  for (const row of rows) {
+    stats.processed++
+    try {
+      const name = row.name
+      if (!name) {
+        stats.errors.push(`Row ${stats.processed}: missing company name`)
+        continue
+      }
+      const existing = await prisma.company.findFirst({ where: { name } })
+      const data = {
+        phone: row.phone || null,
+        email: row.email || null,
+        website: row.website || null,
+        logoUrl: row.logo || null,
+        description: row.description || null,
+        primaryColor: null,
+        secondaryColor: null,
+        isActive: true,
+      }
+      if (existing) {
+        await prisma.company.update({ where: { id: existing.id }, data })
+        stats.updated++
+      } else {
+        await prisma.company.create({ data: { name, ...data } })
+        stats.created++
+      }
+    } catch (e) {
+      stats.errors.push(`Company ${row.name}: ${e}`)
+    }
+  }
+
+  logStats('empresas', stats)
+  return stats
+}
+
+// ============================================
+// Import: Custom - Colores (RouteColor)
+// ============================================
+
+async function importColores(): Promise<ImportStats> {
+  const stats = makeStats()
+  const rows = readCsvFile('colores.csv')
+  if (rows.length === 0) return stats
+
+  console.log(`  Importing ${rows.length} route colors...`)
+
+  for (const row of rows) {
+    stats.processed++
+    try {
+      const route_id = row.route_id
+      if (!route_id) {
+        stats.errors.push(`Row ${stats.processed}: missing route_id`)
+        continue
+      }
+      const color = row.color
+      const textColor = row.text_color
+      if (!color || !textColor) {
+        stats.errors.push(`Row ${stats.processed}: missing color or text_color for ${route_id}`)
+        continue
+      }
+      // Verify route exists
+      const routeExists = await prisma.gtfsRoute.findUnique({ where: { route_id } })
+      if (!routeExists) {
+        stats.errors.push(`Route ${route_id} not found, skipping color`)
+        continue
+      }
+      const existing = await prisma.routeColor.findUnique({ where: { routeId: route_id } })
+      if (existing) {
+        await prisma.routeColor.update({
+          where: { routeId: route_id },
+          data: { color, textColor },
+        })
+        stats.updated++
+      } else {
+        await prisma.routeColor.create({
+          data: { routeId: route_id, color, textColor },
+        })
+        stats.created++
+      }
+    } catch (e) {
+      stats.errors.push(`RouteColor ${row.route_id}: ${e}`)
+    }
+  }
+
+  logStats('colores', stats)
+  return stats
+}
+
+// ============================================
+// Import: Custom - Tarifas (StopRoute linking)
+// ============================================
+
+async function importTarifas(): Promise<ImportStats> {
+  const stats = makeStats()
+  const rows = readCsvFile('tarifas.csv')
+  if (rows.length === 0) return stats
+
+  console.log(`  Importing ${rows.length} tarifas (fare-route links)...`)
+
+  // Delete existing StopRoutes and re-insert for idempotency
+  await prisma.stopRoute.deleteMany({})
+  console.log(`  Cleared existing stop_routes for fresh import.`)
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      for (const row of rows) {
+        stats.processed++
+        try {
+          const route_id = row.route_id
+          if (!route_id) {
+            stats.errors.push(`Row ${stats.processed}: missing route_id`)
+            continue
+          }
+          // Verify route exists
+          const route = await tx.gtfsRoute.findUnique({ where: { route_id } })
+          if (!route) {
+            stats.errors.push(`Route ${route_id} not found for tarifa`)
+            continue
+          }
+
+          // Get the first stop of this route from stop_times to create a StopRoute entry
+          const firstStopTime = await tx.gtfsStopTime.findFirst({
+            where: { trip_id: { in: route.trips ? undefined : [] } },
+            orderBy: { stop_sequence: 'asc' },
+          })
+
+          // Find any trip for this route to get stops
+          const anyTrip = await tx.gtfsTrip.findFirst({ where: { route_id } })
+          if (!anyTrip) {
+            stats.errors.push(`No trips found for route ${route_id}`)
+            continue
+          }
+
+          const stopTimes = await tx.gtfsStopTime.findMany({
+            where: { trip_id: anyTrip.trip_id },
+            orderBy: { stop_sequence: 'asc' },
+          })
+
+          for (let idx = 0; idx < stopTimes.length; idx++) {
+            await tx.stopRoute.create({
+              data: {
+                stopId: stopTimes[idx].stop_id,
+                routeId: route_id,
+                company: route.agency_id,
+                sequence: idx + 1,
+              },
+            })
+            stats.created++
+          }
+        } catch (e) {
+          stats.errors.push(`Tarifa ${row.route_id}: ${e}`)
+        }
+      }
+    })
+  } catch (e) {
+    console.log(`  [WARN] Tarifas transaction failed: ${e}`)
+  }
+
+  logStats('tarifas', stats)
+  return stats
+}
+
+// ============================================
+// Main Import Runner
 // ============================================
 
 async function main() {
-  console.log('========================================')
-  console.log('  RutaTica GTFS Importer')
-  console.log('========================================')
-  console.log(`  GTFS Directory: ${GTFS_DIR}`)
-  console.log(`  Batch Size: ${BATCH_SIZE}`)
-  console.log(`  Started at: ${new Date().toISOString()}`)
-  console.log('========================================')
-
-  // Verify GTFS directory exists
-  if (!fs.existsSync(GTFS_DIR)) {
-    console.error(`\n❌ GTFS directory not found: ${GTFS_DIR}`)
-    console.error('   Create the directory and place GTFS files there, or use --gtfs-dir <path>')
-    await createImportLog('INIT', 0, 0, 0, `GTFS directory not found: ${GTFS_DIR}`)
-    return
-  }
-
-  // List files in GTFS directory
-  const files = fs.readdirSync(GTFS_DIR).filter((f) => {
-    const ext = path.extname(f).toLowerCase()
-    return ext === '.txt' || ext === '.csv'
-  })
-  console.log(`\n📁 Found ${files.length} data files in ${GTFS_DIR}:`)
-  for (const f of files) {
-    const stat = fs.statSync(path.join(GTFS_DIR, f))
-    const sizeKB = (stat.size / 1024).toFixed(1)
-    console.log(`   - ${f} (${sizeKB} KB)`)
-  }
-
   const startTime = Date.now()
 
-  // Import GTFS files in dependency order
-  // 1. Agencies (no dependencies)
-  await importAgencies()
+  console.log('============================================')
+  console.log('  RutaTica GTFS Importer')
+  console.log(`  GTFS Data Directory: ${GTFS_DIR}`)
+  console.log('============================================\n')
 
-  // 2. Calendar (no dependencies)
-  await importCalendar()
+  if (!fs.existsSync(GTFS_DIR)) {
+    console.error(`ERROR: GTFS directory not found: ${GTFS_DIR}`)
+    process.exit(1)
+  }
 
-  // 3. Calendar dates (depends on service_id, but no FK constraint)
-  await importCalendarDates()
+  const files = fs.readdirSync(GTFS_DIR)
+  console.log(`  Files found: ${files.join(', ')}\n`)
 
-  // 4. Stops (no dependencies)
-  await importStops()
+  // Import order matters: agencies first, then calendar, then routes, then trips/stops
+  const importers = [
+    { label: 'agency.txt', fn: importAgencies },
+    { label: 'calendar.txt', fn: importCalendar },
+    { label: 'calendar_dates.txt', fn: importCalendarDates },
+    { label: 'routes.txt', fn: importRoutes },
+    { label: 'stops.txt', fn: importStops },
+    { label: 'trips.txt', fn: importTrips },
+    { label: 'stop_times.txt', fn: importStopTimes },
+    { label: 'shapes.txt', fn: importShapes },
+    { label: 'fare_attributes.txt', fn: importFareAttributes },
+    { label: 'fare_rules.txt', fn: importFareRules },
+    { label: 'empresas.csv', fn: importEmpresas },
+    { label: 'colores.csv', fn: importColores },
+    { label: 'tarifas.csv', fn: importTarifas },
+  ]
 
-  // 5. Routes (depends on agencies)
-  await importRoutes()
+  const totals = makeStats()
 
-  // 6. Fare attributes (no dependencies)
-  await importFareAttributes()
-
-  // 7. Fare rules (depends on fare_attributes and routes)
-  await importFareRules()
-
-  // 8. Shapes (no DB dependencies)
-  await importShapes()
-
-  // 9. Trips (depends on routes and calendar)
-  await importTrips()
-
-  // 10. Stop times (depends on trips and stops)
-  await importStopTimes()
-
-  // Import custom files
-  await importCompanies()
-  await importTarifas()
-  await importColores()
-  await importLogos()
-
-  // Seed RouteConfig
-  await seedRouteConfig()
+  for (const importer of importers) {
+    console.log(`--- ${importer.label} ---`)
+    const stats = await importer.fn()
+    totals.processed += stats.processed
+    totals.created += stats.created
+    totals.updated += stats.updated
+    totals.errors.push(...stats.errors)
+    await recordImportLog(importer.label, stats)
+    console.log()
+  }
 
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1)
 
-  console.log('\n========================================')
-  console.log(`  ✅ Import completed in ${elapsed}s`)
-  console.log(`  Finished at: ${new Date().toISOString()}`)
-  console.log('========================================')
+  console.log('============================================')
+  console.log('  Import Complete')
+  console.log('============================================')
+  console.log(`  Total processed: ${totals.processed}`)
+  console.log(`  Total created:   ${totals.created}`)
+  console.log(`  Total updated:   ${totals.updated}`)
+  console.log(`  Total errors:    ${totals.errors.length}`)
+  console.log(`  Elapsed time:    ${elapsed}s`)
+  console.log('============================================')
+
+  if (totals.errors.length > 0) {
+    console.log(`\n  WARNING: ${totals.errors.length} errors occurred during import.`)
+    console.log('  Check ImportLog table for details.\n')
+  }
 }
 
 main()
-  .catch((err) => {
-    console.error('\n❌ Fatal error in GTFS import:', err)
+  .catch((e) => {
+    console.error('Fatal import error:', e)
     process.exit(1)
   })
   .finally(async () => {

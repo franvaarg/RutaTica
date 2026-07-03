@@ -1,0 +1,7 @@
+fare_id,price,currency_type,payment_method,transfers,transfer_duration
+fare_regular,350,CRC,0,0,
+fare_medio,550,CRC,0,0,
+fare_largo,750,CRC,0,0,
+fare_interurbano,1000,CRC,0,1,
+fare_express,3500,CRC,0,0,
+fare_limón,5000,CRC,0,0,

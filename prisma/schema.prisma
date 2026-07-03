@@ -55,10 +55,12 @@ model GtfsRoute {
   text_color String?
   sort_order Int?
 
-  agency  GtfsAgency  @relation(fields: [agency_id], references: [agency_id])
-  trips   GtfsTrip[]
+  agency     GtfsAgency  @relation(fields: [agency_id], references: [agency_id])
+  trips      GtfsTrip[]
   stopRoutes StopRoute[]
-  fareRules GtfsFareRule[]
+  fareRules  GtfsFareRule[]
+  routeColor RouteColor?
+  routeLogo  RouteLogo?
 
   @@index([agency_id])
 }
@@ -183,6 +185,8 @@ model StopRoute {
 
   stop  GtfsStop  @relation(fields: [stopId], references: [stop_id])
   route GtfsRoute @relation(fields: [routeId], references: [route_id])
+
+  @@index([stopId, routeId])
 }
 
 model Favorite {
@@ -219,6 +223,24 @@ model RouteConfig {
   key         String  @unique
   value       String
   description String?
+}
+
+model RouteColor {
+  id        String  @id @default(cuid())
+  routeId   String  @unique
+  color     String
+  textColor String
+
+  route GtfsRoute @relation(fields: [routeId], references: [route_id])
+}
+
+model RouteLogo {
+  id          String  @id @default(cuid())
+  routeId     String  @unique
+  logoUrl     String
+  description String?
+
+  route GtfsRoute @relation(fields: [routeId], references: [route_id])
 }
 
 model ImportLog {

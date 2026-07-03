@@ -1,0 +1,19 @@
+route_id,agency_id,route_short_name,route_long_name,route_type,route_color,route_text_color
+R101,TVSA,101,San José - Alajuela,3,E31837,FFFFFF
+R201,TUSA,201,San José - Heredia,3,0052B4,FFFFFF
+R301,TVSA,301,San José - Cartago,3,007A33,FFFFFF
+R102,TUCR,102,San José - Desamparados,3,FF6600,FFFFFF
+R103,TVSA,103,San José - Escazú,3,8B5CF6,FFFFFF
+R104,TUSA,104,San José - Santa Ana,3,0891B2,FFFFFF
+R305,TUCR,305,San José - Puriscal,3,B45309,FFFFFF
+R106,TVSA,106,San José - San Pedro,3,DC2626,FFFFFF
+R401,TUSA,401,Alajuela - Heredia,3,16A34A,FFFFFF
+R302,TVSA,302,Cartago - Turrialba,3,7C3AED,FFFFFF
+R202,TUCR,202,Heredia - Barva,3,CA8A04,FFFFFF
+R107,TVSA,107,San José - Guadalupe,3,059669,FFFFFF
+R108,TUSA,108,San José - Tibás,3,4F46E5,FFFFFF
+R109,TUCR,109,San José - Goicoechea,3,9333EA,FFFFFF
+R501,TVSA,501,San José - Limón (Express),3,0369A1,FFFFFF
+R110,TUSA,110,San José - Moravia,3,C2410C,FFFFFF
+R111,TVSA,111,San José - Montes de Oca,3,15803D,FFFFFF
+R112,TUCR,112,Heredia - San José por autopista,3,1D4ED8,FFFFFF

@@ -43,6 +43,14 @@ interface PlanatedRoute {
     city: string | null
     distance: number
   }>
+  // GTFS-specific fields
+  _shapePoints?: Array<{ lat: number; lon: number }>
+  _score?: number
+  _departTime?: string
+  _arriveTime?: string
+  _transfers?: number
+  _walkingDistanceKm?: number
+  _boardingStopDistanceKm?: number
 }
 
 interface Location {
@@ -80,6 +88,13 @@ interface BusStop {
   lon: number
 }
 
+interface PopularDestination {
+  name: string
+  lat: number
+  lon: number
+  displayName: string
+}
+
 export default function BusPlannerApp() {
   const [currentLocation, setCurrentLocation] = useState<Location | null>(null)
   const [currentAddress, setCurrentAddress] = useState<string>('')
@@ -114,7 +129,8 @@ export default function BusPlannerApp() {
   const [trackingPanelVisible, setTrackingPanelVisible] = useState(true)
 
   // Estados para control del mapa
-  const [mapCenter, setMapCenter] = useState<[number, number] | null>(null)
+  // Ubicación por defecto: San José, Costa Rica
+  const [mapCenter, setMapCenter] = useState<[number, number]>([9.9281, -84.0907])
   const [mapZoom, setMapZoom] = useState(14)
   const [isUserInteracting, setIsUserInteracting] = useState(false)
   const [lastUserActivity, setLastUserActivity] = useState(0)
@@ -122,10 +138,37 @@ export default function BusPlannerApp() {
 
   // Estado para diálogo de inicio de viaje
   const [showStartTripDialog, setShowStartTripDialog] = useState(false)
+  const [popularDestinations, setPopularDestinations] = useState<PopularDestination[]>([])
 
   useEffect(() => {
     getCurrentLocation()
+    fetchPopularDestinations()
   }, [])
+
+  // Fetch popular destinations from GTFS stops
+  const fetchPopularDestinations = async () => {
+    try {
+      const response = await fetch('/api/stops?limit=8')
+      const data = await response.json()
+      if (data.stops && data.stops.length > 0) {
+        // Pick diverse stops that serve routes as good destinations
+        const dests = data.stops
+          .filter((s: any) => s.name && (s.routeCount || 0) > 0)
+          .slice(0, 8)
+          .map((s: any) => ({
+            name: s.name,
+            lat: s.lat,
+            lon: s.lon,
+            displayName: s.name,
+          }))
+        if (dests.length > 0) {
+          setPopularDestinations(dests)
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching popular destinations:', err)
+    }
+  }
 
   // Auto-centrar el mapa después de 15 segundos de inactividad
   useEffect(() => {
@@ -475,10 +518,18 @@ export default function BusPlannerApp() {
   }
 
   const handlePlanRoute = async () => {
-    if (!destination.trim() || !currentLocation) {
-      setError('Por favor ingresa un destino y espera a obtener tu ubicación')
+    if (!selectedDestination) {
+      if (!destination.trim()) {
+        setError('Por favor ingresa un destino')
+      } else {
+        setError('Por favor selecciona un destino de la lista')
+      }
       return
     }
+
+    // Usar ubicación actual o San José como origen por defecto
+    const originLat = currentLocation?.latitude ?? 9.9281
+    const originLon = currentLocation?.longitude ?? -84.0907
 
     setPlanning(true)
     setLoadingRoute(true)
@@ -488,69 +539,124 @@ export default function BusPlannerApp() {
     setBusStops(null)
 
     try {
-      const response = await fetch(
-        `/api/routes/plan?lat=${currentLocation.latitude}&lon=${currentLocation.longitude}&destination=${encodeURIComponent(destination)}`
-      )
+      const params = new URLSearchParams({
+        originLat: originLat.toString(),
+        originLon: originLon.toString(),
+        destLat: selectedDestination.lat.toString(),
+        destLon: selectedDestination.lon.toString(),
+      })
+
+      const response = await fetch(`/api/best-route?${params}`)
+      if (!response.ok) throw new Error('Error al buscar rutas')
+
       const data = await response.json()
 
-      if (data.success) {
-        setPlannedRoutes(data.routes)
-        setNearestStop(data.nearestStop)
+      if (data.routes && data.routes.length > 0) {
+        const mappedRoutes: PlanatedRoute[] = data.routes.map((r: any) => ({
+          id: r.route?.routeId || Math.random().toString(),
+          company: r.route?.company || 'N/A',
+          routeNumber: r.route?.shortName || 'N/A',
+          origin: r.boardingStop?.name || 'Origen',
+          destination: r.alightingStop?.name || 'Destino',
+          price: r.costCRC || 0,
+          currency: 'CRC',
+          distanceKm: r.walkingDistanceKm ? r.walkingDistanceKm : null,
+          durationMin: r.totalTimeMinutes || null,
+          boardingStop: {
+            name: r.boardingStop?.name || '',
+            city: null,
+            coordinates: r.boardingStop ? { latitude: r.boardingStop.lat, longitude: r.boardingStop.lon } : undefined,
+          },
+          destinationStop: {
+            name: r.alightingStop?.name || '',
+            city: null,
+            coordinates: r.alightingStop ? { latitude: r.alightingStop.lat, longitude: r.alightingStop.lon } : undefined,
+          },
+          nearbyStops: [],
+          // GTFS-specific fields for map rendering and enhanced cards
+          _shapePoints: r.shapePoints || [],
+          _score: r.score || 0,
+          _departTime: r.departTime || '',
+          _arriveTime: r.arriveTime || '',
+          _transfers: r.transfers || 0,
+          _walkingDistanceKm: r.walkingDistanceKm || 0,
+          _boardingStopDistanceKm: r.boardingStop?.distanceKm || 0,
+        }))
+
+        setPlannedRoutes(mappedRoutes)
         setHasPlanned(true)
+        setSelectedRoute(mappedRoutes[0])
 
-        if (data.routes.length > 0) {
-          setSelectedRoute(data.routes[0])
+        // Build route path using GTFS shape data
+        const newRoutePath: RoutePath = {}
+        const bestRoute = data.routes[0]
 
-          // Obtener rutas reales de las calles usando OSRM
-          const route = data.routes[0]
-          const newRoutePath: RoutePath = {}
+        // Walking from user location to boarding stop
+        if (currentLocation && bestRoute.boardingStop) {
+          newRoutePath.walking = [
+            [currentLocation.latitude, currentLocation.longitude],
+            [bestRoute.boardingStop.lat, bestRoute.boardingStop.lon],
+          ]
+        }
 
-          // Ruta caminando desde ubicación actual hasta parada de embarque
-          if (route.boardingStop?.coordinates && currentLocation) {
-            const walkingRoute = await getOSRMRoute(
-              [currentLocation.latitude, currentLocation.longitude],
-              [route.boardingStop.coordinates.latitude, route.boardingStop.coordinates.longitude],
-              'walking'
-            )
-            if (walkingRoute) {
-              newRoutePath.walking = walkingRoute
-            }
-          }
+        // Bus route using GTFS shape points
+        if (bestRoute.shapePoints && bestRoute.shapePoints.length > 0) {
+          newRoutePath.bus = bestRoute.shapePoints.map((p: any) => [p.lat, p.lon] as [number, number])
+        }
 
-          // Ruta en autobús desde parada de embarque hasta destino
-          if (route.boardingStop?.coordinates && route.destinationStop?.coordinates) {
-            const busRoute = await getOSRMRoute(
-              [route.boardingStop.coordinates.latitude, route.boardingStop.coordinates.longitude],
-              [route.destinationStop.coordinates.latitude, route.destinationStop.coordinates.longitude],
-              'driving'
-            )
-            if (busRoute) {
-              newRoutePath.bus = busRoute
-            }
-          }
-
-          setRoutePath(newRoutePath)
-
-          // Ajustar mapa para mostrar toda la ruta
-          fitRouteToBounds(newRoutePath)
-
-          // Obtener paradas de autobús de OpenStreetMap alrededor de la ruta
-          const bounds = getRouteBounds(newRoutePath)
-          if (bounds) {
-            const stops = await getBusStopsFromOSM(bounds)
-            setBusStops(stops)
+        // Walking from alighting stop to destination
+        if (bestRoute.alightingStop && selectedDestination) {
+          // Extend bus path or add separate walking segment
+          const destCoord: [number, number] = [selectedDestination.lat, selectedDestination.lon]
+          const alightingCoord: [number, number] = [bestRoute.alightingStop.lat, bestRoute.alightingStop.lon]
+          // If no shape points, just use straight bus line
+          if (!newRoutePath.bus || newRoutePath.bus.length === 0) {
+            newRoutePath.bus = [alightingCoord, destCoord]
           }
         }
 
-        if (data.routes.length === 0) {
-          setError('No se encontraron rutas hacia ese destino. Intenta con otro destino.')
+        setRoutePath(newRoutePath)
+
+        // Fit map to show the full route
+        if (data.origin && data.destination) {
+          fitRouteToBounds({
+            direct: [
+              [data.origin.lat, data.origin.lon],
+              [data.destination.lat, data.destination.lon]
+            ]
+          })
+        } else {
+          fitRouteToBounds(newRoutePath)
+        }
+
+        // Load nearby GTFS stops for the map
+        const bounds = getRouteBounds(newRoutePath)
+        if (bounds) {
+          try {
+            const response2 = await fetch(
+              `/api/stops?lat=${(bounds.north + bounds.south) / 2}&lon=${(bounds.east + bounds.west) / 2}&radius=10`
+            )
+            const stopsData = await response2.json()
+            if (stopsData.success && stopsData.stops) {
+              setBusStops(stopsData.stops.map((s: any) => ({
+                id: s.stop_id,
+                name: s.name,
+                lat: s.lat,
+                lon: s.lon,
+              })))
+            }
+          } catch (err) {
+            console.error('Error loading map stops:', err)
+          }
         }
       } else {
-        setError(data.error || 'Error al planificar la ruta')
+        setPlannedRoutes([])
+        setHasPlanned(true)
+        setError('No se encontraron rutas para tu destino. Intenta con otra ubicación.')
       }
-    } catch (error) {
-      console.error('Error al planificar ruta:', error)
-      setError('Error de conexión. Por favor intenta de nuevo.')
+    } catch (err: any) {
+      console.error('Error al planificar ruta:', err)
+      setError('Error al buscar rutas. Por favor intenta de nuevo.')
     } finally {
       setPlanning(false)
       setLoadingRoute(false)
@@ -721,30 +827,28 @@ export default function BusPlannerApp() {
       className="relative h-screen w-screen overflow-hidden bg-gray-100"
       onClick={() => isTracking && setTrackingPanelVisible(!trackingPanelVisible)}
     >
-      {/* Full Screen Map */}
-      {currentLocation && mapCenter && (
-        <div className="absolute inset-0 z-0">
-          <BusMap
-            center={mapCenter}
-            zoom={mapZoom}
-            userLocation={[currentLocation.latitude, currentLocation.longitude]}
-            nearestStop={nearestStop}
-            plannedRoutes={plannedRoutes}
-            plannedRoutesLength={plannedRoutes.length}
-            selectedRoute={selectedRoute}
-            destinationCoordinates={selectedDestination ? {
-              name: selectedDestination.name || 'Destino',
-              latitude: selectedDestination.lat,
-              longitude: selectedDestination.lon,
-              displayName: selectedDestination.displayName
-            } : null}
-            routePath={routePath}
-            busStops={busStops}
-            isTracking={isTracking}
-            onMapInteraction={handleMapInteraction}
-          />
-        </div>
-      )}
+      {/* Full Screen Map - Siempre visible */}
+      <div className="absolute inset-0 z-0">
+        <BusMap
+          center={mapCenter}
+          zoom={mapZoom}
+          userLocation={currentLocation ? [currentLocation.latitude, currentLocation.longitude] : undefined}
+          nearestStop={nearestStop}
+          plannedRoutes={plannedRoutes}
+          plannedRoutesLength={plannedRoutes.length}
+          selectedRoute={selectedRoute}
+          destinationCoordinates={selectedDestination ? {
+            name: selectedDestination.name || 'Destino',
+            latitude: selectedDestination.lat,
+            longitude: selectedDestination.lon,
+            displayName: selectedDestination.displayName
+          } : null}
+          routePath={routePath}
+          busStops={busStops}
+          isTracking={isTracking}
+          onMapInteraction={handleMapInteraction}
+        />
+      </div>
 
       {/* Loading Overlay - Solo muestra cuando no hay ubicación */}
       {!currentLocation && loadingLocation && (
@@ -1063,7 +1167,7 @@ export default function BusPlannerApp() {
                       {/* Buscar Ruta Button */}
                       <Button
                         onClick={handlePlanRoute}
-                        disabled={!currentLocation || !destination.trim() || planning}
+                        disabled={!destination.trim() || planning}
                         className="w-full h-11 text-base font-semibold bg-[#E31837] hover:bg-[#C41230] shadow-md"
                       >
                         {planning ? (
@@ -1123,6 +1227,19 @@ export default function BusPlannerApp() {
                               }`}
                               onClick={() => {
                                 setSelectedRoute(route)
+                                // Update map route path when selecting a different route
+                                if (route._shapePoints && route._shapePoints.length > 0) {
+                                  const newRoutePath: RoutePath = {}
+                                  if (currentLocation && route.boardingStop?.coordinates) {
+                                    newRoutePath.walking = [
+                                      [currentLocation.latitude, currentLocation.longitude],
+                                      [route.boardingStop.coordinates.latitude, route.boardingStop.coordinates.longitude],
+                                    ]
+                                  }
+                                  newRoutePath.bus = route._shapePoints.map(p => [p.lat, p.lon] as [number, number])
+                                  setRoutePath(newRoutePath)
+                                  fitRouteToBounds(newRoutePath)
+                                }
                               }}
                             >
                               <CardContent className="p-4">
@@ -1141,31 +1258,66 @@ export default function BusPlannerApp() {
                                       </div>
                                     </div>
                                     <div className="flex items-center gap-2">
-                                      <div className="flex items-center gap-1 text-[#E31837] font-bold text-lg">
-                                        <DollarSign className="w-5 h-5" />
-                                        {formatPrice(route.price)}
-                                      </div>
+                                      {/* Rank-based quality indicator - first route is best */}
+                                      {plannedRoutes.indexOf(route) === 0 && (
+                                        <Badge className="text-xs bg-green-100 text-green-700 border-none">
+                                          <Star className="w-3 h-3 mr-1" />
+                                          Mejor opción
+                                        </Badge>
+                                      )}
+                                      {plannedRoutes.indexOf(route) === 1 && (
+                                        <Badge variant="secondary" className="text-xs bg-yellow-100 text-yellow-700 border-none">
+                                          Buena
+                                        </Badge>
+                                      )}
                                     </div>
                                   </div>
 
-                                  {/* Distance Indicator - Prominent */}
+                                  {/* Key Metrics Row */}
                                   <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-lg p-4 shadow-md">
                                     <div className="flex items-center justify-between text-white">
                                       <div className="flex items-center gap-2">
-                                        <MapPin className="w-6 h-6" />
-                                        <span className="text-sm font-medium">Distancia total</span>
+                                        <Clock className="w-6 h-6" />
+                                        <span className="text-sm font-medium">Tiempo total</span>
                                       </div>
                                       <div className="flex items-baseline gap-1">
                                         <span className="text-3xl font-bold">
-                                          {route.distanceKm ? route.distanceKm.toFixed(1) : '--'}
+                                          {route.durationMin ? formatDuration(route.durationMin) : '--'}
                                         </span>
-                                        <span className="text-xl font-semibold">km</span>
                                       </div>
                                     </div>
-                                    {formatDuration(route.durationMin) && (
-                                      <div className="mt-2 pt-2 border-t border-white/20 flex items-center gap-2 text-white/90">
-                                        <Clock className="w-4 h-4" />
-                                        <span className="text-sm">Tiempo estimado: {formatDuration(route.durationMin)}</span>
+                                    <div className="mt-2 pt-2 border-t border-white/20 flex items-center justify-between text-white/90">
+                                      <div className="flex items-center gap-2">
+                                        <DollarSign className="w-4 h-4" />
+                                        <span className="text-sm font-medium">{formatPrice(route.price)}</span>
+                                      </div>
+                                      {route._walkingDistanceKm !== undefined && route._walkingDistanceKm > 0 && (
+                                        <div className="flex items-center gap-2">
+                                          <Navigation className="w-4 h-4" />
+                                          <span className="text-sm">{route._walkingDistanceKm.toFixed(1)} km caminando</span>
+                                        </div>
+                                      )}
+                                    </div>
+                                    {/* Departure / Arrival times */}
+                                    {(route._departTime || route._arriveTime) && (
+                                      <div className="mt-2 pt-2 border-t border-white/20 flex items-center justify-between text-white/90">
+                                        {route._departTime && (
+                                          <div className="flex items-center gap-1">
+                                            <span className="text-xs opacity-75">Sale:</span>
+                                            <span className="text-sm font-semibold">{route._departTime}</span>
+                                          </div>
+                                        )}
+                                        {route._arriveTime && (
+                                          <div className="flex items-center gap-1">
+                                            <span className="text-xs opacity-75">Llega:</span>
+                                            <span className="text-sm font-semibold">{route._arriveTime}</span>
+                                          </div>
+                                        )}
+                                        {route._transfers !== undefined && route._transfers > 0 && (
+                                          <Badge className="bg-white/20 text-white border-none text-xs">
+                                            {route._transfers} transbordo{route._transfers > 1 ? 's' : ''}
+                                          </Badge>
+                                        )}
                                       </div>
                                     )}
                                   </div>
@@ -1184,9 +1336,11 @@ export default function BusPlannerApp() {
                                         {route.boardingStop.city && (
                                           <p className="text-xs text-[#6B7280]">{route.boardingStop.city}</p>
                                         )}
-                                        <p className="text-xs text-[#0052B4] mt-1 font-medium">
-                                          {route.nearbyStops[0]?.distance.toFixed(1)} km de tu ubicación
-                                        </p>
+                                        {route._boardingStopDistanceKm !== undefined && route._boardingStopDistanceKm > 0 && (
+                                          <p className="text-xs text-[#0052B4] mt-1 font-medium">
+                                            {route._boardingStopDistanceKm.toFixed(2)} km de tu ubicación
+                                          </p>
+                                        )}
                                       </div>
                                     </div>
 
@@ -1244,25 +1398,57 @@ export default function BusPlannerApp() {
                   )}
 
                   {/* Popular Destinations */}
-                  {!hasPlanned && !error && currentLocation && (
+                  {!hasPlanned && !error && (
                     <div className="space-y-3">
                       <h3 className="font-bold text-lg text-[#374151]">Destinos Populares</h3>
                       <div className="grid grid-cols-2 gap-3">
-                        {['Liberia', 'Puntarenas', 'Limón', 'Alajuela', 'Ciudad Quesada', 'Guápiles'].map((dest) => (
-                          <Button
-                            key={dest}
-                            variant="outline"
-                            onClick={() => {
-                              setDestination(dest)
-                              handlePlanRoute()
-                            }}
-                            disabled={!currentLocation || planning}
-                            className="h-auto py-3 flex flex-col items-center gap-2 border border-[#E5E7EB] hover:border-[#FECACA] hover:bg-red-50 text-[#374151]"
-                          >
-                            <MapPin className="w-5 h-5 text-[#E31837]" />
-                            <span className="font-semibold text-sm">{dest}</span>
-                          </Button>
-                        ))}
+                        {popularDestinations.length > 0 ? (
+                          popularDestinations.map((dest) => (
+                            <Button
+                              key={dest.name}
+                              variant="outline"
+                              onClick={() => {
+                                const name = dest.displayName || dest.name
+                                setDestination(name)
+                                setSelectedDestination({
+                                  name: name,
+                                  lat: dest.lat,
+                                  lon: dest.lon,
+                                  displayName: name,
+                                })
+                                // Show direct route on map
+                                if (currentLocation) {
+                                  getDirectRouteToDestination(
+                                    [currentLocation.latitude, currentLocation.longitude],
+                                    [dest.lat, dest.lon]
+                                  )
+                                }
+                              }}
+                              disabled={!currentLocation || planning}
+                              className="h-auto py-3 flex flex-col items-center gap-2 border border-[#E5E7EB] hover:border-[#FECACA] hover:bg-red-50 text-[#374151]"
+                            >
+                              <MapPin className="w-5 h-5 text-[#E31837]" />
+                              <span className="font-semibold text-sm leading-tight text-center line-clamp-2">{dest.displayName || dest.name}</span>
+                            </Button>
+                          ))
+                        ) : (
+                          <>
+                            {['Alajuela', 'Heredia', 'Cartago', 'Escazú', 'Desamparados', 'Limón'].map((dest) => (
+                              <Button
+                                key={dest}
+                                variant="outline"
+                                onClick={() => {
+                                  setDestination(dest)
+                                }}
+                                disabled={!currentLocation || planning}
+                                className="h-auto py-3 flex flex-col items-center gap-2 border border-[#E5E7EB] hover:border-[#FECACA] hover:bg-red-50 text-[#374151]"
+                              >
+                                <MapPin className="w-5 h-5 text-[#E31837]" />
+                                <span className="font-semibold text-sm">{dest}</span>
+                              </Button>
+                            ))}
+                          </>
+                        )}
                       </div>
                     </div>
                   )}

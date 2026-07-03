@@ -1,4 +1,55 @@
 ---
+Task ID: 1
+Agent: Z.ai Code (via main conversation)
+Task: Create realistic GTFS sample data for Costa Rica bus routes and complete GTFS importer
+
+Work Log:
+- Enhanced Prisma schema with:
+  - Added @@index([stopId, routeId]) on StopRoute model
+  - Added RouteColor model: id, routeId (@unique), color, textColor, relation to GtfsRoute
+  - Added RouteLogo model: id, routeId (@unique), logoUrl, description, relation to GtfsRoute
+  - Added routeColor and routeLogo relation fields on GtfsRoute
+- Installed csv-parse and @types/csv-parse packages
+- Created gtfs-data/ directory with 13 data files:
+  - agency.txt: 3 agencies (Transvia S.A., Transportes Unidos S.A., Transportes Urbanos de Costa Rica)
+  - routes.txt: 18 realistic Costa Rica bus routes (R101-R112) with colors and agencies
+  - stops.txt: 88 stops with real Costa Rica coordinates across San José, Alajuela, Heredia, Cartago, Desamparados, Escazú, Santa Ana, Puriscal, Limón, etc.
+  - trips.txt: 72 trips (at least 2 per route, weekday/saturday directions)
+  - stop_times.txt: 396 stop times with realistic schedules (5:00 AM - 9:00 PM range)
+  - calendar.txt: 3 service calendars (weekday, saturday, sunday) valid 2024-2026
+  - calendar_dates.txt: 13 holiday exceptions (national holidays added as service exceptions)
+  - shapes.txt: 169 shape points for 5 main routes (San José-Alajuela, San José-Heredia, San José-Cartago, San José-Desamparados, San José-Escazú) with real lat/lon sequences
+  - fare_attributes.txt: 6 fare types (regular ₡350, medio ₡550, largo ₡750, interurbano ₡1000, express ₡3500, Limón ₡5000)
+  - fare_rules.txt: 19 fare rules linking fares to routes
+  - empresas.csv: 3 company records with phone, email, website, logo, description
+  - tarifas.csv: 18 route fare mappings in CRC
+  - colores.csv: 18 route color configurations
+- Created complete GTFS importer script (scripts/import-gtfs.ts):
+  - Uses csv-parse/sync for robust CSV parsing with relax_column_count
+  - 13 import functions, one per file type
+  - Upsert logic for idempotency (agencies, routes, stops, trips, calendar, fares, companies, colors)
+  - Delete-and-reinsert for bulk tables (stop_times, shapes, fare_rules, stop_routes)
+  - Transaction-per-batch for atomicity
+  - Progress logging with created/updated/error counts
+  - ImportLog recording for each file
+  - Custom file support: empresas→Company, colores→RouteColor, tarifas→StopRoute
+  - CLI argument --gtfs-dir for custom data directory
+- Updated package.json: import-gtfs script now uses "bun run scripts/import-gtfs.ts"
+- Pushed schema with db:push (added RouteColor and RouteLogo tables)
+- Ran import successfully: 0 errors, fully idempotent
+- Verified database: 3 agencies, 18 routes, 88 stops, 72 trips, 396 stop_times, 169 shapes, 3 calendars, 13 calendar_dates, 6 fares, 19 fare_rules, 3 companies, 18 route_colors, 121 stop_routes, 34 import_logs
+
+Stage Summary:
+- Complete GTFS sample dataset created with 18 realistic Costa Rica bus routes
+- 88 stops with real GPS coordinates across the Greater Metropolitan Area and beyond
+- 72 trips with detailed schedules covering weekday, Saturday, and Sunday services
+- 5 route shapes with realistic lat/lon sequences following Costa Rica roads
+- Fare structure with 6 tiers from ₡350 (urban) to ₡5000 (San José-Limón express)
+- Robust GTFS importer using csv-parse with upsert idempotency and transactional imports
+- Prisma schema enhanced with RouteColor, RouteLogo models and StopRoute composite index
+- Import runs in 0.5s with 0 errors and is fully re-runnable (idempotent)
+
+---
 Task ID: 10
 Agent: Z.ai Code (via main conversation)
 Task: Verificar funcionalidad de viaje completa implementada
@@ -475,3 +526,74 @@ Stage Summary:
 - 7 extended application tables for company config, user data, and import tracking
 - All old non-GTFS models removed
 - Database migrated and Prisma Client regenerated successfully
+
+---
+Task ID: 2
+Agent: Z.ai Code (API & Algorithm Agent)
+Task: Create complete API endpoints and the Best Route search algorithm
+
+Work Log:
+
+### Utility Files Created
+- **src/lib/spatial.ts**: Haversine distance, bounding box + haversine nearest-stop finder, bearing, midpoint, walking time estimator
+- **src/lib/route-scoring.ts**: Weighted multi-factor scoring (time 0.4, walking 0.25, transfers 0.2, cost 0.15), configurable via RouteConfig table, normalization to 0-1
+- **src/lib/time-utils.ts**: GTFS time parsing (handles >24h), service ID detection by day, next departure finder, calendar exception checking
+
+### API Endpoints (16 total)
+- **GET /api/routes**: List routes with agency, colors, trip/stop counts, search filter
+- **GET /api/stops**: Enhanced with haversine distance sorting, bounding box geo-filter
+- **GET /api/companies**: All companies with route counts
+- **GET /api/nearest-stop**: Bounding box + haversine nearest stop finder
+- **GET /api/trip/[tripId]**: Full trip details with stops and shape
+- **GET /api/fare/[routeId]**: Fare info for a route
+- **POST/GET/DELETE /api/favorites**: CRUD for user favorites
+- **POST/GET /api/history**: Search history management
+- **GET/POST /api/settings**: User settings with upsert
+- **GET /api/shape/[shapeId]**: Shape coordinates
+- **GET /api/best-route**: Core routing algorithm (see below)
+- **GET /api/routes/plan**: Updated to delegate to best-route with Nominatim geocoding
+
+### Best Route Algorithm (/api/best-route)
+1. Find nearest origin/destination stops within 1km using bounding box + haversine
+2. Find direct routes via StopRoute intersection (routes serving both origin and destination stops)
+3. For each direct route: find next trip after departAfter, compute travel time, walking distances, fare
+4. If <3 direct routes found: search 1-transfer routes via common intermediate stops (max 20 candidates evaluated)
+5. Score all options using normalized weighted scoring (configurable weights)
+6. Return top 5 sorted by score ascending (lower = better)
+
+### Preserved Routes
+- /api/routes/search, /api/routes/nearby, /api/locations/search kept as-is
+
+---
+Task ID: 3
+Agent: Z.ai Code (Task 3)
+Task: Update frontend to use GTFS-based /api/best-route endpoint instead of OSRM routing
+
+Work Log:
+- Read and analyzed current page.tsx (1337 lines) and map.tsx (797 lines)
+- Read best-route API response format (RouteResult with shapePoints, departTime, arriveTime, score, etc.)
+- Extended PlanatedRoute interface with GTFS-specific fields: _shapePoints, _score, _departTime, _arriveTime, _transfers, _walkingDistanceKm, _boardingStopDistanceKm
+- Added PopularDestination interface and state for fetching real GTFS stops
+- Replaced handlePlanRoute function: now calls /api/best-route with lat/lon params instead of /api/routes/plan with text destination
+- New handlePlanRoute maps GTFS RouteResult[] to PlanatedRoute[], builds routePath using GTFS shapePoints for bus segment and straight-line walking segments
+- Route selection (onClick) now updates both selectedRoute and routePath with the clicked route's shapePoints
+- Updated route result cards to show:
+  - Rank-based quality indicator ("Mejor opción" / "Buena")
+  - Time as primary metric (replacing distance)
+  - Price and walking distance in secondary row
+  - Departure/arrival times from GTFS schedule
+  - Transfer count badge
+  - Boarding stop distance from _boardingStopDistanceKm
+- Replaced hardcoded popular destinations (Liberia, Puntarenas, etc.) with real GTFS stops fetched from /api/stops?limit=8
+- Popular destination buttons now set selectedDestination with coordinates for immediate routing
+- Added fallback hardcoded destinations when API fails
+- Map component unchanged - already renders routePath.bus as green polyline (now with GTFS shape data)
+- Removed OSRM dependency from route planning (kept getDirectRouteToDestination for direct preview line)
+- Verified: lint passes, dev server compiles successfully, /api/stops and /api/best-route return 200
+
+### Key Changes Summary:
+1. **handlePlanRoute**: Calls `/api/best-route?originLat&originLon&destLat&destLon` (was: `/api/routes/plan?lat&lon&destination`)
+2. **Route data source**: GTFS shape points from database (was: OSRM routing)
+3. **Route cards**: Show time, schedule, transfers, walking distance, rank quality (was: just distance)
+4. **Popular destinations**: Real GTFS stops from API (was: hardcoded city names)
+5. **All existing features preserved**: GPS tracking, trip start/stop, location autocomplete, bottom nav, header, sheet/menu, map rendering

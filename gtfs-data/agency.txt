@@ -1,0 +1,4 @@
+agency_id,agency_name,agency_url,agency_timezone,agency_phone,agency_lang,agency_email
+TVSA,Transvia S.A.,https://www.transviasa.com,America/Costa_Rica,2202-2020,es,info@transviasa.com
+TUSA,Transportes Unidos S.A.,https://www.transportesunidos.com,America/Costa_Rica,2221-3636,es,contacto@transportesunidos.com
+TUCR,Transportes Urbanos de Costa Rica,https://www.tucr.co.cr,America/Costa_Rica,2256-7890,es,admin@tucr.co.cr
