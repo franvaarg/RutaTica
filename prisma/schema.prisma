@@ -1,9 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -13,88 +7,227 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+// ============================================
+// GTFS Core Tables
+// ============================================
+
+model GtfsAgency {
+  agency_id String  @id
+  name      String
+  url       String
+  timezone  String
+  phone     String?
+  lang      String?
+  email     String?
+
+  routes GtfsRoute[]
 }
 
-model Post {
-  id        String   @id @default(cuid())
-  title     String
-  content   String?
-  published Boolean  @default(false)
-  authorId  String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+model GtfsCalendar {
+  service_id String  @id
+  monday     Boolean @default(false)
+  tuesday    Boolean @default(false)
+  wednesday  Boolean @default(false)
+  thursday   Boolean @default(false)
+  friday     Boolean @default(false)
+  saturday   Boolean @default(false)
+  sunday     Boolean @default(false)
+  start_date String
+  end_date   String
+
+  trips GtfsTrip[]
 }
 
-model BusCompany {
-  id          String     @id @default(cuid())
-  name        String
-  phone       String?
-  email       String?
-  website     String?
-  logoUrl     String?
-  description String?
-  isActive    Boolean    @default(true)
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
-  routes      BusRoute[]
+model GtfsCalendarDate {
+  id            Int    @id @default(autoincrement())
+  service_id    String
+  date          String
+  exception_type Int
 }
 
-model BusRoute {
-  id          String       @id @default(cuid())
-  companyId   String
-  routeNumber String
-  origin      String
-  destination String
-  distanceKm  Float?
-  durationMin Int?
-  isActive    Boolean      @default(true)
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-  company     BusCompany   @relation(fields: [companyId], references: [id])
-  prices      RoutePrice[]
-  stops       RouteStop[]
+model GtfsRoute {
+  route_id   String  @id
+  agency_id  String
+  short_name String?
+  long_name  String?
+  type       Int     @default(3)
+  color      String?
+  text_color String?
+  sort_order Int?
+
+  agency  GtfsAgency  @relation(fields: [agency_id], references: [agency_id])
+  trips   GtfsTrip[]
+  stopRoutes StopRoute[]
+  fareRules GtfsFareRule[]
+
+  @@index([agency_id])
 }
 
-model Stop {
-  id          String      @id @default(cuid())
-  name        String
-  latitude    Float
-  longitude   Float
-  city        String?
-  isActive    Boolean     @default(true)
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
-  routes      RouteStop[]
+model GtfsStop {
+  stop_id           String  @id
+  code              String?
+  name              String
+  desc              String?
+  lat               Float
+  lon               Float
+  zone_id           String?
+  location_type     Int     @default(0)
+  parent_station    String?
+  wheelchair_boarding Int   @default(0)
+
+  stopTimes  GtfsStopTime[]
+  stopRoutes StopRoute[]
+
+  @@index([lat, lon])
 }
 
-model RouteStop {
-  id        String   @id @default(cuid())
-  routeId   String
+model GtfsTrip {
+  trip_id            String  @id
+  route_id           String
+  service_id         String
+  headsign           String?
+  short_name         String?
+  direction_id       Int?
+  block_id           String?
+  shape_id           String?
+  wheelchair_accessible Int  @default(0)
+  bikes_allowed      Int     @default(0)
+
+  route    GtfsRoute    @relation(fields: [route_id], references: [route_id])
+  calendar GtfsCalendar  @relation(fields: [service_id], references: [service_id])
+  stopTimes GtfsStopTime[]
+
+  @@index([route_id])
+  @@index([service_id])
+  @@index([shape_id])
+}
+
+model GtfsStopTime {
+  id                  Int     @id @default(autoincrement())
+  trip_id             String
+  stop_id             String
+  arrival_time        String
+  departure_time      String
+  stop_sequence       Int
+  stop_headsign       String?
+  pickup_type         Int     @default(0)
+  drop_off_type       Int     @default(0)
+  shape_dist_traveled Float?
+  timepoint           Int     @default(1)
+
+  trip GtfsTrip @relation(fields: [trip_id], references: [trip_id], onDelete: Cascade)
+  stop GtfsStop @relation(fields: [stop_id], references: [stop_id])
+
+  @@index([trip_id])
+  @@index([stop_id])
+  @@index([arrival_time])
+}
+
+model GtfsShape {
+  id                  Int    @id @default(autoincrement())
+  shape_id            String
+  shape_pt_lat        Float
+  shape_pt_lon        Float
+  shape_pt_sequence   Int
+  shape_dist_traveled Float?
+
+  @@index([shape_id])
+}
+
+model GtfsFareAttribute {
+  fare_id          String  @id
+  price            Float
+  currency_type    String
+  payment_method   Int     @default(0)
+  transfers        Int     @default(0)
+  transfer_duration Int?
+
+  fareRules GtfsFareRule[]
+}
+
+model GtfsFareRule {
+  id             Int     @id @default(autoincrement())
+  fare_id        String
+  route_id       String?
+  origin_id      String?
+  destination_id String?
+  contains_id    String?
+
+  fare GtfsFareAttribute @relation(fields: [fare_id], references: [fare_id], onDelete: Cascade)
+  route GtfsRoute?       @relation(fields: [route_id], references: [route_id])
+}
+
+// ============================================
+// Extended Tables
+// ============================================
+
+model Company {
+  id            String  @id @default(cuid())
+  name          String
+  phone         String?
+  email         String?
+  website       String?
+  logoUrl       String?
+  description   String?
+  primaryColor  String?
+  secondaryColor String?
+  isActive      Boolean @default(true)
+}
+
+model StopRoute {
+  id        String  @id @default(cuid())
   stopId    String
-  sequence  Int      // Orden de la parada en la ruta
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  route     BusRoute @relation(fields: [routeId], references: [id], onDelete: Cascade)
-  stop      Stop     @relation(fields: [stopId], references: [id], onDelete: Cascade)
+  routeId   String
+  company   String?
+  sequence  Int
+
+  stop  GtfsStop  @relation(fields: [stopId], references: [stop_id])
+  route GtfsRoute @relation(fields: [routeId], references: [route_id])
 }
 
-model RoutePrice {
+model Favorite {
+  id          String   @id @default(cuid())
+  userId      String
+  stopName    String
+  routeNumber String
+  destination String
+  createdAt   DateTime @default(now())
+}
+
+model SearchHistory {
   id        String   @id @default(cuid())
-  routeId   String
-  price     Float
-  currency  String   @default("CRC")
-  seatType  String   @default("regular") // regular, premium, ejecutivo, etc.
-  validFrom DateTime
-  validTo   DateTime?
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
+  userId    String
+  originName String
+  originLat  Float
+  originLon  Float
+  destName   String
+  destLat    Float
+  destLon    Float
+  createdAt  DateTime @default(now())
+}
+
+model AppSetting {
+  id        String   @id @default(cuid())
+  userId    String
+  key       String
+  value     String
   updatedAt DateTime @updatedAt
-  route     BusRoute @relation(fields: [routeId], references: [id])
+}
+
+model RouteConfig {
+  id          String  @id @default(cuid())
+  key         String  @unique
+  value       String
+  description String?
+}
+
+model ImportLog {
+  id               String    @id @default(cuid())
+  filename         String
+  recordsProcessed Int?
+  recordsCreated   Int?
+  recordsUpdated   Int?
+  errors           String?
+  startedAt        DateTime  @default(now())
+  completedAt      DateTime?
 }

@@ -430,3 +430,48 @@ Stage Summary:
 - El mapa se actualiza correctamente cuando cambian las props center y zoom
 - Los usuarios que nieguen el acceso a GPS no verán el botón (evitando confusión)
 - Todos los cambios compilados exitosamente
+
+---
+Task ID: gtfs-schema-migration
+Agent: Z.ai Code (main conversation)
+Task: Replace entire Prisma schema with complete GTFS-based schema
+
+Work Log:
+- Read existing schema (User, Post, BusCompany, BusRoute, Stop, RouteStop, RoutePrice models)
+- Wrote complete new Prisma schema with 17 models replacing the old 7 models
+- GTFS Core Tables (10 models):
+  - GtfsAgency: agency_id (PK), name, url, timezone, phone, lang, email
+  - GtfsCalendar: service_id (PK), monday-sunday (Boolean), start_date, end_date
+  - GtfsCalendarDate: id (autoincrement), service_id, date, exception_type
+  - GtfsRoute: route_id (PK), agency_id (FK→GtfsAgency), short_name, long_name, type, color, text_color, sort_order
+  - GtfsStop: stop_id (PK), code, name, desc, lat, lon, zone_id, location_type, parent_station, wheelchair_boarding
+  - GtfsTrip: trip_id (PK), route_id (FK→GtfsRoute), service_id (FK→GtfsCalendar), headsign, short_name, direction_id, block_id, shape_id, wheelchair_accessible, bikes_allowed
+  - GtfsStopTime: id (autoincrement), trip_id (FK→GtfsTrip), stop_id (FK→GtfsStop), arrival_time, departure_time, stop_sequence, stop_headsign, pickup_type, drop_off_type, shape_dist_traveled, timepoint
+  - GtfsShape: id (autoincrement), shape_id, shape_pt_lat, shape_pt_lon, shape_pt_sequence, shape_dist_traveled
+  - GtfsFareAttribute: fare_id (PK), price, currency_type, payment_method, transfers, transfer_duration
+  - GtfsFareRule: id (autoincrement), fare_id (FK→GtfsFareAttribute), route_id (FK→GtfsRoute, optional), origin_id, destination_id, contains_id
+- Extended Tables (7 models):
+  - Company: id (cuid), name, phone, email, website, logoUrl, description, primaryColor, secondaryColor, isActive
+  - StopRoute: id (cuid), stopId (FK→GtfsStop), routeId (FK→GtfsRoute), company, sequence
+  - Favorite: id (cuid), userId, stopName, routeNumber, destination, createdAt
+  - SearchHistory: id (cuid), userId, originName, originLat, originLon, destName, destLat, destLon, createdAt
+  - AppSetting: id (cuid), userId, key, value, updatedAt
+  - RouteConfig: id (cuid), key (@unique), value, description
+  - ImportLog: id (cuid), filename, recordsProcessed, recordsCreated, recordsUpdated, errors, startedAt, completedAt
+- Indexes created:
+  - GtfsStop: @@index([lat, lon])
+  - GtfsStopTime: @@index([trip_id]), @@index([stop_id]), @@index([arrival_time])
+  - GtfsTrip: @@index([route_id]), @@index([service_id]), @@index([shape_id])
+  - GtfsShape: @@index([shape_id])
+  - GtfsRoute: @@index([agency_id])
+- Removed all old models (User, Post, BusCompany, BusRoute, Stop, RouteStop, RoutePrice)
+- Fixed issue: @db.Real not supported by Prisma SQLite connector; used plain Float (maps to REAL natively)
+- Pushed schema with --accept-data-loss (old BusCompany, BusRoute, RoutePrice, RouteStop, Stop tables had data)
+- Prisma Client regenerated successfully
+
+Stage Summary:
+- Complete GTFS-based schema with 17 models deployed to SQLite
+- 10 GTFS core tables with proper relations and indexes
+- 7 extended application tables for company config, user data, and import tracking
+- All old non-GTFS models removed
+- Database migrated and Prisma Client regenerated successfully
