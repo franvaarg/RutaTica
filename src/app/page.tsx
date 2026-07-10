@@ -495,10 +495,9 @@ export default function BusPlannerApp() {
       setDestination(location.name || '')
       setError(null)
 
-      // Obtener ruta directa al destino seleccionado
-      if (currentLocation) {
-        getDirectRouteToDestination([currentLocation.latitude, currentLocation.longitude], [lat, lon])
-      }
+      // Cerrar menú y buscar ruta automáticamente
+      setIsMenuOpen(false)
+      handlePlanRoute({ lat, lon, name: location.name || 'Destino' })
     } catch (error) {
       console.error('Error al seleccionar destino:', error)
       setError('Error al procesar la ubicación seleccionada')
@@ -520,8 +519,9 @@ export default function BusPlannerApp() {
     }
   }
 
-  const handlePlanRoute = async () => {
-    if (!selectedDestination) {
+  const handlePlanRoute = async (destOverride?: { lat: number; lon: number; name: string }) => {
+    const dest = destOverride || selectedDestination
+    if (!dest) {
       if (!destination.trim()) {
         setError('Por favor ingresa un destino')
       } else {
@@ -545,8 +545,8 @@ export default function BusPlannerApp() {
       const params = new URLSearchParams({
         originLat: originLat.toString(),
         originLon: originLon.toString(),
-        destLat: selectedDestination.lat.toString(),
-        destLon: selectedDestination.lon.toString(),
+        destLat: dest.lat.toString(),
+        destLon: dest.lon.toString(),
       })
 
       const response = await fetch(`/api/best-route?${params}`)
@@ -620,11 +620,11 @@ export default function BusPlannerApp() {
         }
 
         // Walking from alighting stop to destination (OSRM walking)
-        if (bestRoute.alightingStop && selectedDestination) {
+        if (bestRoute.alightingStop) {
           routePromises.push(
             getOSRMRoute(
               [bestRoute.alightingStop.lat, bestRoute.alightingStop.lon],
-              [selectedDestination.lat, selectedDestination.lon],
+              [dest.lat, dest.lon],
               'foot'
             ).then((coords) => {
               if (coords) {
@@ -632,7 +632,7 @@ export default function BusPlannerApp() {
               } else {
                 newRoutePath.walking2 = [
                   [bestRoute.alightingStop.lat, bestRoute.alightingStop.lon],
-                  [selectedDestination.lat, selectedDestination.lon],
+                  [dest.lat, dest.lon],
                 ]
               }
             })
@@ -1091,26 +1091,6 @@ export default function BusPlannerApp() {
                           disabled={!currentLocation || planning}
                         />
                       </div>
-
-                      {selectedDestination && (
-                        <Button
-                          onClick={handlePlanRoute}
-                          disabled={planning}
-                          className="w-full h-11 text-base font-semibold bg-[#E31837] hover:bg-[#C41230] shadow-md"
-                        >
-                          {planning ? (
-                            <>
-                              <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                              Calculando ruta...
-                            </>
-                          ) : (
-                            <>
-                              <Navigation className="w-5 h-5 mr-2" />
-                              Buscar Ruta
-                            </>
-                          )}
-                        </Button>
-                      )}
                     </CardContent>
                   </Card>
 
