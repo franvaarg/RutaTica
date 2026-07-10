@@ -1092,28 +1092,30 @@ export default function BusPlannerApp() {
                         />
                       </div>
 
-                      <Button
-                        onClick={handlePlanRoute}
-                        disabled={!destination.trim() || planning}
-                        className="w-full h-11 text-base font-semibold bg-[#E31837] hover:bg-[#C41230] shadow-md"
-                      >
-                        {planning ? (
-                          <>
-                            <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                            Calculando ruta...
-                          </>
-                        ) : (
-                          <>
-                            <Navigation className="w-5 h-5 mr-2" />
-                            Buscar Ruta
-                          </>
-                        )}
-                      </Button>
+                      {selectedDestination && (
+                        <Button
+                          onClick={handlePlanRoute}
+                          disabled={planning}
+                          className="w-full h-11 text-base font-semibold bg-[#E31837] hover:bg-[#C41230] shadow-md"
+                        >
+                          {planning ? (
+                            <>
+                              <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                              Calculando ruta...
+                            </>
+                          ) : (
+                            <>
+                              <Navigation className="w-5 h-5 mr-2" />
+                              Buscar Ruta
+                            </>
+                          )}
+                        </Button>
+                      )}
                     </CardContent>
                   </Card>
 
-                  {/* Quick Access Buttons */}
-                  {!hasPlanned && (
+                  {/* Quick Access Buttons - Solo si no hay destino seleccionado */}
+                  {!hasPlanned && !selectedDestination && (
                     <div className="grid grid-cols-2 gap-3">
                       <Card className="shadow-sm hover:shadow-md transition-shadow cursor-pointer border border-[#E5E7EB]">
                         <CardContent className="p-4 flex flex-col items-center justify-center text-center">
@@ -1164,8 +1166,8 @@ export default function BusPlannerApp() {
 
                   {/* Route results shown in bottom panel outside Sheet */}
 
-                  {/* Popular Destinations */}
-                  {!hasPlanned && !error && (
+                  {/* Popular Destinations - Solo si no hay destino seleccionado */}
+                  {!hasPlanned && !error && !selectedDestination && (
                     <div className="space-y-3">
                       <h3 className="font-bold text-lg text-[#374151]">Destinos Populares</h3>
                       <div className="grid grid-cols-2 gap-3">
