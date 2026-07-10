@@ -979,7 +979,7 @@ export default function BusPlannerApp() {
                     </div>
                   )}
 
-                  {/* Current Location Info */}
+                                    {/* Current Location Info */}
                   {!hasPlanned && currentLocation && (
                     <Card className="shadow-sm border border-[#E5E7EB]">
                       <CardContent className="p-4 space-y-3">
@@ -1031,6 +1031,45 @@ export default function BusPlannerApp() {
                     </Card>
                   )}
 
+                  {/* Destination Card - Debajo de origen */}
+                  <Card className="shadow-md border border-[#E5E7EB]">
+                    <CardContent className="p-4 space-y-4">
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <div className="w-6 h-6 bg-[#E31837] rounded-full flex items-center justify-center">
+                            <Navigation className="w-3.5 h-3.5 text-white" />
+                          </div>
+                          <span className="font-semibold text-sm text-[#374151]">Destino</span>
+                        </div>
+                        <LocationAutocomplete
+                          value={destination}
+                          onChange={setDestination}
+                          onSelect={handleDestinationSelect}
+                          placeholder="Escribe el destino..."
+                          disabled={!currentLocation || planning}
+                        />
+                      </div>
+
+                      <Button
+                        onClick={handlePlanRoute}
+                        disabled={!destination.trim() || planning}
+                        className="w-full h-11 text-base font-semibold bg-[#E31837] hover:bg-[#C41230] shadow-md"
+                      >
+                        {planning ? (
+                          <>
+                            <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                            Calculando ruta...
+                          </>
+                        ) : (
+                          <>
+                            <Navigation className="w-5 h-5 mr-2" />
+                            Buscar Ruta
+                          </>
+                        )}
+                      </Button>
+                    </CardContent>
+                  </Card>
+
                   {/* Quick Access Buttons */}
                   {!hasPlanned && (
                     <div className="grid grid-cols-2 gap-3">
@@ -1071,47 +1110,6 @@ export default function BusPlannerApp() {
                       </Card>
                     </div>
                   )}
-
-                  {/* Destination Card */}
-                  <Card className="shadow-md border border-[#E5E7EB]">
-                    <CardContent className="p-4 space-y-4">
-                      {/* Destino */}
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-2">
-                          <div className="w-6 h-6 bg-[#E31837] rounded-full flex items-center justify-center">
-                            <Navigation className="w-3.5 h-3.5 text-white" />
-                          </div>
-                          <span className="font-semibold text-sm text-[#374151]">Destino</span>
-                        </div>
-                        <LocationAutocomplete
-                          value={destination}
-                          onChange={setDestination}
-                          onSelect={handleDestinationSelect}
-                          placeholder="Escribe el destino..."
-                          disabled={!currentLocation || planning}
-                        />
-                      </div>
-
-                      {/* Buscar Ruta Button */}
-                      <Button
-                        onClick={handlePlanRoute}
-                        disabled={!destination.trim() || planning}
-                        className="w-full h-11 text-base font-semibold bg-[#E31837] hover:bg-[#C41230] shadow-md"
-                      >
-                        {planning ? (
-                          <>
-                            <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                            Calculando ruta...
-                          </>
-                        ) : (
-                          <>
-                            <Navigation className="w-5 h-5 mr-2" />
-                            Buscar Ruta
-                          </>
-                        )}
-                      </Button>
-                    </CardContent>
-                  </Card>
 
                   {/* Error Message */}
                   {error && !hasPlanned && (
