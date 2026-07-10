@@ -76,9 +76,10 @@ interface SelectedLocation {
 }
 
 interface RoutePath {
-  walking?: [number, number][]
-  bus?: [number, number][]
-  direct?: [number, number][]
+  walking?: [number, number][]   // Caminar: ubicación usuario → parada de subida
+  bus?: [number, number][]      // Autobús: parada subida → parada bajada
+  walking2?: [number, number][]  // Caminar: parada bajada → destino final
+  direct?: [number, number][]   // Línea directa (fallback)
 }
 
 interface BusStop {
@@ -418,6 +419,9 @@ export default function BusPlannerApp() {
     if (routePath.bus) {
       allPoints.push(...routePath.bus)
     }
+    if (routePath.walking2) {
+      allPoints.push(...routePath.walking2)
+    }
     if (routePath.direct) {
       allPoints.push(...routePath.direct)
     }
@@ -587,34 +591,72 @@ export default function BusPlannerApp() {
         setSelectedRoute(mappedRoutes[0])
         setIsMenuOpen(false) // Close drawer to show results on map
 
-        // Build route path using GTFS shape data
+        // Build route path using GTFS shape data + OSRM for walking segments
         const newRoutePath: RoutePath = {}
         const bestRoute = data.routes[0]
 
-        // Walking from user location to boarding stop
+        // Fetch walking and bus routes in parallel
+        const routePromises: Promise<void>[] = []
+
+        // Walking from user location to boarding stop (OSRM walking)
         if (currentLocation && bestRoute.boardingStop) {
-          newRoutePath.walking = [
-            [currentLocation.latitude, currentLocation.longitude],
-            [bestRoute.boardingStop.lat, bestRoute.boardingStop.lon],
-          ]
+          routePromises.push(
+            getOSRMRoute(
+              [currentLocation.latitude, currentLocation.longitude],
+              [bestRoute.boardingStop.lat, bestRoute.boardingStop.lon],
+              'foot'
+            ).then((coords) => {
+              if (coords) {
+                newRoutePath.walking = coords
+              } else {
+                // Fallback: straight line
+                newRoutePath.walking = [
+                  [currentLocation.latitude, currentLocation.longitude],
+                  [bestRoute.boardingStop.lat, bestRoute.boardingStop.lon],
+                ]
+              }
+            })
+          )
         }
 
-        // Bus route using GTFS shape points
+        // Walking from alighting stop to destination (OSRM walking)
+        if (bestRoute.alightingStop && selectedDestination) {
+          routePromises.push(
+            getOSRMRoute(
+              [bestRoute.alightingStop.lat, bestRoute.alightingStop.lon],
+              [selectedDestination.lat, selectedDestination.lon],
+              'foot'
+            ).then((coords) => {
+              if (coords) {
+                newRoutePath.walking2 = coords
+              } else {
+                newRoutePath.walking2 = [
+                  [bestRoute.alightingStop.lat, bestRoute.alightingStop.lon],
+                  [selectedDestination.lat, selectedDestination.lon],
+                ]
+              }
+            })
+          )
+        }
+
+        // Bus route: use GTFS shape points, or OSRM driving as fallback
         if (bestRoute.shapePoints && bestRoute.shapePoints.length > 0) {
           newRoutePath.bus = bestRoute.shapePoints.map((p: any) => [p.lat, p.lon] as [number, number])
+        } else if (bestRoute.boardingStop && bestRoute.alightingStop) {
+          routePromises.push(
+            getOSRMRoute(
+              [bestRoute.boardingStop.lat, bestRoute.boardingStop.lon],
+              [bestRoute.alightingStop.lat, bestRoute.alightingStop.lon],
+              'driving'
+            ).then((coords) => {
+              if (coords) {
+                newRoutePath.bus = coords
+              }
+            })
+          )
         }
 
-        // Walking from alighting stop to destination
-        if (bestRoute.alightingStop && selectedDestination) {
-          // Extend bus path or add separate walking segment
-          const destCoord: [number, number] = [selectedDestination.lat, selectedDestination.lon]
-          const alightingCoord: [number, number] = [bestRoute.alightingStop.lat, bestRoute.alightingStop.lon]
-          // If no shape points, just use straight bus line
-          if (!newRoutePath.bus || newRoutePath.bus.length === 0) {
-            newRoutePath.bus = [alightingCoord, destCoord]
-          }
-        }
-
+        await Promise.all(routePromises)
         setRoutePath(newRoutePath)
 
         // Fit map to show the full route
@@ -1278,20 +1320,61 @@ export default function BusPlannerApp() {
                       ? 'ring-2 ring-[#E31837] shadow-md border border-[#FECACA]'
                       : 'border border-[#E5E7EB] hover:border-[#FECACA]'
                   }`}
-                  onClick={() => {
+                  onClick={async () => {
                     setSelectedRoute(route)
-                    if (route._shapePoints && route._shapePoints.length > 0) {
-                      const newRoutePath: RoutePath = {}
-                      if (currentLocation && route.boardingStop?.coordinates) {
-                        newRoutePath.walking = [
+                    const rp: RoutePath = {}
+                    const promises: Promise<void>[] = []
+
+                    // Walking to boarding stop
+                    if (currentLocation && route.boardingStop?.coordinates) {
+                      promises.push(
+                        getOSRMRoute(
                           [currentLocation.latitude, currentLocation.longitude],
                           [route.boardingStop.coordinates.latitude, route.boardingStop.coordinates.longitude],
-                        ]
-                      }
-                      newRoutePath.bus = route._shapePoints.map(p => [p.lat, p.lon] as [number, number])
-                      setRoutePath(newRoutePath)
-                      fitRouteToBounds(newRoutePath)
+                          'foot'
+                        ).then((coords) => {
+                          rp.walking = coords || [
+                            [currentLocation.latitude, currentLocation.longitude],
+                            [route.boardingStop.coordinates.latitude, route.boardingStop.coordinates.longitude],
+                          ]
+                        })
+                      )
                     }
+
+                    // Bus segment
+                    if (route._shapePoints && route._shapePoints.length > 0) {
+                      rp.bus = route._shapePoints.map(p => [p.lat, p.lon] as [number, number])
+                    } else if (route.boardingStop?.coordinates && route.destinationStop?.coordinates) {
+                      promises.push(
+                        getOSRMRoute(
+                          [route.boardingStop.coordinates.latitude, route.boardingStop.coordinates.longitude],
+                          [route.destinationStop.coordinates.latitude, route.destinationStop.coordinates.longitude],
+                          'driving'
+                        ).then((coords) => {
+                          if (coords) rp.bus = coords
+                        })
+                      )
+                    }
+
+                    // Walking from alighting stop to destination
+                    if (selectedDestination && route.destinationStop?.coordinates) {
+                      promises.push(
+                        getOSRMRoute(
+                          [route.destinationStop.coordinates.latitude, route.destinationStop.coordinates.longitude],
+                          [selectedDestination.lat, selectedDestination.lon],
+                          'foot'
+                        ).then((coords) => {
+                          rp.walking2 = coords || [
+                            [route.destinationStop.coordinates.latitude, route.destinationStop.coordinates.longitude],
+                            [selectedDestination.lat, selectedDestination.lon],
+                          ]
+                        })
+                      )
+                    }
+
+                    await Promise.all(promises)
+                    setRoutePath(rp)
+                    fitRouteToBounds(rp)
                   }}
                 >
                   <CardContent className="p-4">

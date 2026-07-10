@@ -167,6 +167,7 @@ interface BusMapProps {
   routePath?: {
     walking?: [number, number][]
     bus?: [number, number][]
+    walking2?: [number, number][]
     direct?: [number, number][]
   } | null
   busStops?: Array<{
@@ -542,6 +543,16 @@ const BusMap = ({
           positions: routePath.bus,
           color: '#16a34a', // Verde para autobús
           weight: 6,
+        })
+      }
+
+      // Segmento 3: Camino a pie desde parada de bajada hasta destino final
+      if (routePath.walking2 && routePath.walking2.length > 0) {
+        polylines.push({
+          positions: routePath.walking2,
+          color: '#0052B4', // Azul para caminar
+          weight: 5,
+          dashArray: '10, 10',
         })
       }
     }
