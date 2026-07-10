@@ -979,32 +979,6 @@ export default function BusPlannerApp() {
                     </div>
                   )}
 
-                  {/* Search Bar */}
-                  <Card className="shadow-sm border border-[#E5E7EB]">
-                    <CardContent className="p-3">
-                      <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#9CA3AF]" />
-                        <Input
-                          placeholder="Buscar destino"
-                          className="pl-10 pr-10 h-10 border border-[#E5E7EB] focus:border-[#0052B4] text-sm"
-                          value={destination}
-                          onChange={(e) => setDestination(e.target.value)}
-                          onKeyDown={(e) => e.key === 'Enter' && handlePlanRoute()}
-                        />
-                        {destination && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => setDestination('')}
-                            className="absolute right-10 top-1/2 -translate-y-1/2 h-6 w-6 text-[#9CA3AF] hover:text-gray-600"
-                          >
-                            <X className="w-4 h-4" />
-                          </Button>
-                        )}
-                      </div>
-                    </CardContent>
-                  </Card>
-
                   {/* Current Location Info */}
                   {!hasPlanned && currentLocation && (
                     <Card className="shadow-sm border border-[#E5E7EB]">
