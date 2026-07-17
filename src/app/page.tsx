@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { MapPin, Bus, Navigation, Clock, DollarSign, ArrowRight, Loader2, Map, Home, Star, Bell, Menu, Search, Heart, User, Wallet, X, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -105,6 +105,7 @@ export default function BusPlannerApp() {
   const [plannedRoutes, setPlannedRoutes] = useState<PlanatedRoute[]>([])
   const [selectedRoute, setSelectedRoute] = useState<PlanatedRoute | null>(null)
   const [routePath, setRoutePath] = useState<RoutePath | null>(null)
+  const routePathRef = useRef<RoutePath | null>(null)
   const [busStops, setBusStops] = useState<BusStop[] | null>(null)
   const [hasPlanned, setHasPlanned] = useState(false)
   const [loadingLocation, setLoadingLocation] = useState(false)
@@ -140,10 +141,33 @@ export default function BusPlannerApp() {
   // Estado para diálogo de inicio de viaje
   const [popularDestinations, setPopularDestinations] = useState<PopularDestination[]>([])
 
+  // Estado para auto-ocultar panel de rutas
+  const [routePanelDismissed, setRoutePanelDismissed] = useState(false)
+  const routePanelTimerRef = useRef<NodeJS.Timeout | null>(null)
+
   useEffect(() => {
     getCurrentLocation()
     fetchPopularDestinations()
   }, [])
+
+  // Auto-ocultar panel de rutas después de 5 segundos
+  useEffect(() => {
+    if (hasPlanned && plannedRoutes.length > 0 && !routePanelDismissed) {
+      // Limpiar timer previo si existe
+      if (routePanelTimerRef.current) {
+        clearTimeout(routePanelTimerRef.current)
+      }
+      routePanelTimerRef.current = setTimeout(() => {
+        setRoutePanelDismissed(true)
+      }, 5000)
+    }
+    return () => {
+      if (routePanelTimerRef.current) {
+        clearTimeout(routePanelTimerRef.current)
+        routePanelTimerRef.current = null
+      }
+    }
+  }, [hasPlanned, plannedRoutes.length, routePanelDismissed])
 
   // Fetch popular destinations from GTFS stops
   const fetchPopularDestinations = async () => {
@@ -513,7 +537,9 @@ export default function BusPlannerApp() {
       setLoadingDirectRoute(true)
       const route = await getOSRMRoute(start, end, 'driving')
       if (route) {
-        setRoutePath({ direct: route })
+        const rp = { direct: route }
+        setRoutePath(rp)
+        routePathRef.current = rp
       }
     } catch (error) {
       console.error('Error al obtener ruta directa:', error)
@@ -544,11 +570,16 @@ export default function BusPlannerApp() {
     const originLat = currentLocation?.latitude ?? 9.9281
     const originLon = currentLocation?.longitude ?? -84.0907
 
+    // Guardar la ruta actual antes de limpiar para preservarla si no hay rutas de bus
+    const previousRoutePath = routePathRef.current
+    const previousSelectedRoute = selectedRoute
+
     setPlanning(true)
     setLoadingRoute(true)
     setError(null)
     setSelectedRoute(null)
     setRoutePath(null)
+    routePathRef.current = null
     setBusStops(null)
 
     try {
@@ -666,6 +697,7 @@ export default function BusPlannerApp() {
 
         await Promise.all(routePromises)
         setRoutePath(newRoutePath)
+        routePathRef.current = newRoutePath
 
         // Fit map to show the full route
         fitRouteToBounds(newRoutePath)
@@ -691,11 +723,29 @@ export default function BusPlannerApp() {
           }
         }
       } else {
-        setPlannedRoutes([])
-        setHasPlanned(true)
-        setError('No se encontraron rutas para tu destino. Intenta con otra ubicación.')
+        // No se encontraron rutas de bus — conservar la ruta directa que ya estaba dibujada
+        if (previousRoutePath) {
+          setRoutePath(previousRoutePath)
+          routePathRef.current = previousRoutePath
+          if (previousSelectedRoute) {
+            setSelectedRoute(previousSelectedRoute)
+          }
+          // No mostrar panel de rutas ni error, la ruta directa se mantiene en el mapa
+        } else {
+          setPlannedRoutes([])
+          setHasPlanned(true)
+          setError('No se encontraron rutas para tu destino. Intenta con otra ubicación.')
+        }
       }
     } catch {
+      // En caso de error, restaurar la ruta previa si existe
+      if (previousRoutePath) {
+        setRoutePath(previousRoutePath)
+        routePathRef.current = previousRoutePath
+        if (previousSelectedRoute) {
+          setSelectedRoute(previousSelectedRoute)
+        }
+      }
       setError('Error al buscar rutas. Por favor intenta de nuevo.')
     } finally {
       setPlanning(false)
@@ -704,6 +754,12 @@ export default function BusPlannerApp() {
   }
 
   const handleResetSearch = () => {
+    // Limpiar timer de auto-ocultar panel
+    if (routePanelTimerRef.current) {
+      clearTimeout(routePanelTimerRef.current)
+      routePanelTimerRef.current = null
+    }
+
     // Detener seguimiento si está activo
     if (trackingId) {
       navigator.geolocation.clearWatch(trackingId)
@@ -722,8 +778,10 @@ export default function BusPlannerApp() {
     setPlannedRoutes([])
     setSelectedRoute(null)
     setRoutePath(null)
+    routePathRef.current = null
     setBusStops(null)
     setHasPlanned(false)
+    setRoutePanelDismissed(false)
     setError(null)
 
     // Resetear mapa
@@ -1260,7 +1318,7 @@ export default function BusPlannerApp() {
       </header>
 
       {/* Bottom Route Results Panel - Visible after search */}
-      {hasPlanned && (
+      {hasPlanned && !routePanelDismissed && (
         <div className="absolute bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur-sm border-t border-[#E5E7EB] shadow-[0_-4px_20px_rgba(0,0,0,0.1)]">
           {/* Drag handle */}
           <div className="flex justify-center pt-2 pb-1">
@@ -1367,6 +1425,7 @@ export default function BusPlannerApp() {
 
                     await Promise.all(promises)
                     setRoutePath(rp)
+                    routePathRef.current = rp
                     fitRouteToBounds(rp)
                   }}
                 >

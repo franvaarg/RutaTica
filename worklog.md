@@ -687,3 +687,23 @@ Stage Summary:
 - "No se encontraron rutas" for unreachable destinations (Boca Arenal) - no map lines
 - "Ruta por definir" banner ready for cases where OSRM data is unavailable
 - Origin card now shows immediately with San José default
+---
+Task ID: 1
+Agent: Main
+Task: Fix route preservation on Iniciar Viaje + auto-dismiss route panel
+
+Work Log:
+- Read page.tsx to understand handlePlanRoute flow and state management
+- Identified root cause: handlePlanRoute cleared routePath (line 550-551) before checking API response, so when API returned no bus routes, the previously drawn direct route was lost
+- Added routePathRef (useRef) to always have the latest routePath value (closure capture was unreliable with async 400ms delay)
+- Updated all setRoutePath calls to also update routePathRef.current
+- Modified handlePlanRoute: saves previousRoutePath from ref before clearing; if API returns no routes, restores previousRoutePath instead of showing error
+- Added routePanelDismissed state and routePanelTimerRef for auto-dismiss
+- Added useEffect that starts 5-second timer when hasPlanned && plannedRoutes.length > 0
+- Updated bottom panel condition: hasPlanned && !routePanelDismissed
+- Updated handleResetSearch to clear timer and reset routePanelDismissed
+
+Stage Summary:
+- Fix 1 (Route Preservation): When Iniciar Viaje finds no bus routes, the previously drawn direct OSRM route is preserved on the map. Tested with Boca Arenal (no bus routes) - route stays visible.
+- Fix 2 (Auto-dismiss): Route options panel auto-hides after 5 seconds, letting user see the full map with the drawn route. Tested with Alajuela (5 routes found) - panel appears then dismisses.
+- Both fixes verified with agent-browser + VLM screenshot analysis
