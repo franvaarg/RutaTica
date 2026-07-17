@@ -285,9 +285,9 @@ export default function BusPlannerApp() {
     setError(null)
     try {
       if (!navigator.geolocation) {
-        setError('La geolocalización no está soportada en tu navegador')
-        setLoadingLocation(false)
-        setLoadingAddress(false)
+        // Usar San José como ubicación por defecto
+        setCurrentLocation({ latitude: 9.9281, longitude: -84.0907 })
+        setCurrentAddress('San José, Costa Rica (ubicación aproximada)')
         return
       }
 
@@ -296,9 +296,9 @@ export default function BusPlannerApp() {
           resolve,
           reject,
           {
-            enableHighAccuracy: false, // Cambiar a false para mejor rendimiento
-            timeout: 5000, // Reducir timeout a 5 segundos
-            maximumAge: 30000, // Permitir caché de 30 segundos
+            enableHighAccuracy: false,
+            timeout: 10000,
+            maximumAge: 60000,
           }
         )
       })
@@ -307,7 +307,6 @@ export default function BusPlannerApp() {
       setCurrentLocation({ latitude, longitude })
       setMapCenter([latitude, longitude])
 
-      // Cargar dirección en segundo plano sin bloquear
       setLoadingAddress(true)
       getAddressFromCoordinates(latitude, longitude)
         .then((address) => {
@@ -315,13 +314,16 @@ export default function BusPlannerApp() {
         })
         .catch((error) => {
           console.error('Error al obtener dirección:', error)
+          setCurrentAddress(`${latitude.toFixed(4)}, ${longitude.toFixed(4)}`)
         })
         .finally(() => {
           setLoadingAddress(false)
         })
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error al obtener ubicación:', error)
-      setError('No se pudo obtener tu ubicación. Por favor activa el GPS y permite el acceso.')
+      // Usar San José como fallback en vez de bloquear la app
+      setCurrentLocation({ latitude: 9.9281, longitude: -84.0907 })
+      setCurrentAddress('San José, Costa Rica (ubicación aproximada)')
     } finally {
       setLoadingLocation(false)
     }
@@ -1088,7 +1090,7 @@ export default function BusPlannerApp() {
                           onChange={setDestination}
                           onSelect={handleDestinationSelect}
                           placeholder="Escribe el destino..."
-                          disabled={!currentLocation || planning}
+                          disabled={planning}
                         />
                       </div>
 
@@ -1193,7 +1195,7 @@ export default function BusPlannerApp() {
                                   )
                                 }
                               }}
-                              disabled={!currentLocation || planning}
+                              disabled={planning}
                               className="h-auto py-3 flex flex-col items-center gap-2 border border-[#E5E7EB] hover:border-[#FECACA] hover:bg-red-50 text-[#374151]"
                             >
                               <MapPin className="w-5 h-5 text-[#E31837]" />
@@ -1209,7 +1211,7 @@ export default function BusPlannerApp() {
                                 onClick={() => {
                                   setDestination(dest)
                                 }}
-                                disabled={!currentLocation || planning}
+                                disabled={planning}
                                 className="h-auto py-3 flex flex-col items-center gap-2 border border-[#E5E7EB] hover:border-[#FECACA] hover:bg-red-50 text-[#374151]"
                               >
                                 <MapPin className="w-5 h-5 text-[#E31837]" />
