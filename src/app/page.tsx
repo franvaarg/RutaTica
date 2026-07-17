@@ -319,9 +319,8 @@ export default function BusPlannerApp() {
         .finally(() => {
           setLoadingAddress(false)
         })
-    } catch (error: any) {
-      console.error('Error al obtener ubicación:', error)
-      // Usar San José como fallback en vez de bloquear la app
+    } catch {
+      // GPS no disponible o denegado — usar San José como ubicación por defecto
       setCurrentLocation({ latitude: 9.9281, longitude: -84.0907 })
       setCurrentAddress('San José, Costa Rica (ubicación aproximada)')
     } finally {
