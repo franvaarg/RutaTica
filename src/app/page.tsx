@@ -531,6 +531,9 @@ export default function BusPlannerApp() {
       return
     }
 
+    // Cerrar menú inmediatamente para evitar crash del Sheet durante re-renders
+    setIsMenuOpen(false)
+
     // Usar ubicación actual o San José como origen por defecto
     const originLat = currentLocation?.latitude ?? 9.9281
     const originLon = currentLocation?.longitude ?? -84.0907
@@ -590,7 +593,6 @@ export default function BusPlannerApp() {
         setPlannedRoutes(mappedRoutes)
         setHasPlanned(true)
         setSelectedRoute(mappedRoutes[0])
-        setIsMenuOpen(false) // Close drawer to show results on map
 
         // Build route path using GTFS shape data + OSRM for walking segments
         const newRoutePath: RoutePath = {}
@@ -688,18 +690,16 @@ export default function BusPlannerApp() {
                 lon: s.lon,
               })))
             }
-          } catch (err) {
-            console.error('Error loading map stops:', err)
+          } catch {
+            // Error loading map stops - non-critical
           }
         }
       } else {
         setPlannedRoutes([])
         setHasPlanned(true)
         setError('No se encontraron rutas para tu destino. Intenta con otra ubicación.')
-        setIsMenuOpen(false)
       }
-    } catch (err: any) {
-      console.error('Error al planificar ruta:', err)
+    } catch {
       setError('Error al buscar rutas. Por favor intenta de nuevo.')
     } finally {
       setPlanning(false)
