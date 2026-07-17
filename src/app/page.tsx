@@ -97,8 +97,8 @@ interface PopularDestination {
 }
 
 export default function BusPlannerApp() {
-  const [currentLocation, setCurrentLocation] = useState<Location | null>(null)
-  const [currentAddress, setCurrentAddress] = useState<string>('')
+  const [currentLocation, setCurrentLocation] = useState<Location | null>({ latitude: 9.9281, longitude: -84.0907 })
+  const [currentAddress, setCurrentAddress] = useState<string>('San José, Costa Rica (ubicación aproximada)')
   const [nearestStop, setNearestStop] = useState<NearestStop | null>(null)
   const [destination, setDestination] = useState('')
   const [selectedDestination, setSelectedDestination] = useState<SelectedLocation | null>(null)
@@ -1334,10 +1334,7 @@ export default function BusPlannerApp() {
                           [route.boardingStop.coordinates.latitude, route.boardingStop.coordinates.longitude],
                           'foot'
                         ).then((coords) => {
-                          rp.walking = coords || [
-                            [currentLocation.latitude, currentLocation.longitude],
-                            [route.boardingStop.coordinates.latitude, route.boardingStop.coordinates.longitude],
-                          ]
+                          if (coords && coords.length > 2) rp.walking = coords
                         })
                       )
                     }
@@ -1363,10 +1360,7 @@ export default function BusPlannerApp() {
                           [selectedDestination.lat, selectedDestination.lon],
                           'foot'
                         ).then((coords) => {
-                          rp.walking2 = coords || [
-                            [route.destinationStop.coordinates.latitude, route.destinationStop.coordinates.longitude],
-                            [selectedDestination.lat, selectedDestination.lon],
-                          ]
+                          if (coords && coords.length > 2) rp.walking2 = coords
                         })
                       )
                     }
@@ -1486,6 +1480,14 @@ export default function BusPlannerApp() {
                   </CardContent>
                 </Card>
               ))}
+
+              {/* Ruta por definir - cuando no hay datos OSRM para la ruta seleccionada */}
+              {selectedRoute && routePath && !routePath.walking && !routePath.bus && !routePath.walking2 && !routePath.direct && (
+                <div className="flex items-center gap-2 px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-lg">
+                  <Navigation className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                  <p className="text-xs text-amber-700 font-medium">Ruta por definir — no se pudo trazar el camino por las calles</p>
+                </div>
+              )}
 
               {/* Empezar Viaje Button */}
               {selectedRoute && (

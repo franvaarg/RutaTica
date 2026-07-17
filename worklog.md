@@ -659,3 +659,31 @@ Stage Summary:
 - All 3 OSRM segments (walking, bus driving, walking2) now use OSRM API for street-following routes
 - Sheet crash eliminated by delaying state changes until after exit animation
 - GTFS shape points no longer used for map rendering (kept in _shapePoints for data reference)
+
+---
+Task ID: remove-straight-lines-ruta-por-definir
+Agent: Z.ai Code (via main conversation)
+Task: Remove all straight-line fallbacks, show "Ruta por definir" when no OSRM data available
+
+Work Log:
+- Live test: San José → Boca Arenal: API returned no routes, no straight lines drawn (previously had red straight line), shows "No se encontraron rutas" message correctly
+- Live test: San José → Alajuela: API returned 5 routes, OSRM calls all succeeded (200), SVG DOM verification confirmed green bus polyline (#16a34a, width 6) and blue walking2 polyline (#0052B4, dashed) drawn with many OSRM coordinates
+- Removed 6 straight-line fallback sources:
+  1. handlePlanRoute walking fallback (2-point array)
+  2. handlePlanRoute walking2 fallback (2-point array)
+  3. Route card onClick walking fallback (coords || [...])
+  4. Route card onClick walking2 fallback (coords || [...])
+  5. Map component: selectedRoute straight-line fallback (3 polylines)
+  6. Map component: origin→destination straight-line fallback
+- Added `coords.length > 2` check to all walking segments to filter out OSRM same-point responses
+- Map component: only draws direct route (red dashed) when it has >2 points from OSRM
+- Added "Ruta por definir" amber banner in route results panel (shows when selectedRoute exists but routePath has no OSRM segments)
+- Set default initial state for currentLocation (San José) and currentAddress so origin card shows immediately without waiting for geolocation
+- Fixed OSRM profile type: 'walking'|'driving' → 'foot'|'driving'
+
+Stage Summary:
+- Zero straight lines drawn in any scenario
+- OSRM street-following routes verified via SVG DOM attributes
+- "No se encontraron rutas" for unreachable destinations (Boca Arenal) - no map lines
+- "Ruta por definir" banner ready for cases where OSRM data is unavailable
+- Origin card now shows immediately with San José default

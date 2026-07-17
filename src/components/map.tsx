@@ -556,33 +556,8 @@ const BusMap = ({
         })
       }
     }
-    // Fallback: Si no hay ruta con caminos reales pero hay ruta seleccionada, usar líneas rectas
-    else if (selectedRoute && userLocation) {
-      if (selectedRoute.boardingStop?.coordinates) {
-        polylines.push({
-          positions: [
-            userLocation,
-            [selectedRoute.boardingStop.coordinates.latitude, selectedRoute.boardingStop.coordinates.longitude]
-          ],
-          color: '#0052B4',
-          weight: 5,
-          dashArray: '10, 10',
-        })
-      }
-
-      if (selectedRoute.boardingStop?.coordinates && selectedRoute.destinationStop?.coordinates) {
-        polylines.push({
-          positions: [
-            [selectedRoute.boardingStop.coordinates.latitude, selectedRoute.boardingStop.coordinates.longitude],
-            [selectedRoute.destinationStop.coordinates.latitude, selectedRoute.destinationStop.coordinates.longitude]
-          ],
-          color: '#16a34a',
-          weight: 6,
-        })
-      }
-    }
-    // Si no hay ruta seleccionada pero hay destino seleccionado con camino directo
-    else if (routePath?.direct && routePath.direct.length > 0) {
+    // Ruta directa OSRM (cuando se selecciona un destino antes de planificar)
+    else if (routePath?.direct && routePath.direct.length > 2) {
       polylines.push({
         positions: routePath.direct,
         color: '#E31837', // Rojo para conexión directa
@@ -590,18 +565,7 @@ const BusMap = ({
         dashArray: '5, 5',
       })
     }
-    // Fallback: Línea directa simple
-    else if (userLocation && destinationCoordinates) {
-      polylines.push({
-        positions: [
-          userLocation,
-          [destinationCoordinates.latitude, destinationCoordinates.longitude]
-        ],
-        color: '#E31837',
-        weight: 4,
-        dashArray: '5, 5',
-      })
-    }
+    // Sin datos de ruta: NO dibujar líneas rectas — se mostrará "Ruta por definir"
 
     return polylines
   }
