@@ -636,3 +636,26 @@ Stage Summary:
 - Sheet crash fixed by closing Sheet immediately before state changes
 - `console.error` with error objects removed from catch blocks to prevent potential crashes
 - All verified working end-to-end via agent-browser
+
+---
+Task ID: fix-straight-lines-and-sheet-crash
+Agent: Z.ai Code (via main conversation)
+Task: Fix route drawing straight lines after Iniciar Viaje, fix SheetPrimitive.Content crash
+
+Work Log:
+- Full live test with VLM analysis: BEFORE fix routes followed streets (direct OSRM driving), AFTER Iniciar Viaje routes were straight lines cutting across blocks
+- Root cause 1 (straight lines): Bus segment used GTFS shape points which had a bad coordinate at index 20 (lat=9.0350 instead of ~9.9500), creating a massive jump. Even without the bad data, GTFS shapes are approximate, not road-following
+- Fix 1: Changed bus segment to ALWAYS use OSRM driving API instead of GTFS shape points, both in handlePlanRoute and route card onClick handler
+- Root cause 2 (Sheet crash): React 19 batches setIsMenuOpen(false) with other setState calls, so Sheet children re-render during exit animation causing SheetPrimitive.Content to crash
+- Fix 2: Added 400ms await after setIsMenuOpen(false) to let Sheet closing animation (300ms) complete before any heavy state changes
+- Root cause 3 (OSRM type mismatch): getOSRMRoute type was 'walking'|'driving' but OSRM API uses 'foot' for walking
+- Fix 3: Changed type to 'foot'|'driving'
+- Fix 4: Route IDs now unique using routeId + boardingStop + alightingStop + random suffix
+- Fix 5: Added SheetTitle and SheetDescription (sr-only) for accessibility
+- Fix 6: Changed fitRouteToBounds to use actual routePath instead of just origin/destination points
+- Final verification: 0 console errors, 0 crashes, routes follow streets (VLM confirmed YES)
+
+Stage Summary:
+- All 3 OSRM segments (walking, bus driving, walking2) now use OSRM API for street-following routes
+- Sheet crash eliminated by delaying state changes until after exit animation
+- GTFS shape points no longer used for map rendering (kept in _shapePoints for data reference)

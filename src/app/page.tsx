@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
-import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
+import { Sheet, SheetContent, SheetTrigger, SheetTitle, SheetDescription } from '@/components/ui/sheet'
 import BusMap from '@/components/map'
 import LocationAutocomplete from '@/components/location-autocomplete'
 
@@ -344,7 +344,8 @@ export default function BusPlannerApp() {
   }
 
   // Función para obtener ruta de OSRM (Open Source Routing Machine)
-  const getOSRMRoute = async (start: [number, number], end: [number, number], profile: 'walking' | 'driving' = 'driving') => {
+  // OSRM profiles: 'foot' (walking), 'driving' (car)
+  const getOSRMRoute = async (start: [number, number], end: [number, number], profile: 'foot' | 'driving' = 'driving') => {
     try {
       const url = `https://router.project-osrm.org/route/v1/${profile}/${start[1]},${start[0]};${end[1]},${end[0]}?overview=full&geometries=geojson`
       const response = await fetch(url)
@@ -531,8 +532,13 @@ export default function BusPlannerApp() {
       return
     }
 
-    // Cerrar menú inmediatamente para evitar crash del Sheet durante re-renders
+    // Cerrar menú inmediatamente
     setIsMenuOpen(false)
+
+    // Esperar a que la animación de cierre del Sheet termine (300ms + margen)
+    // Esto evita que los cambios de estado re-rendericen los hijos del Sheet
+    // durante la animación de salida, lo cual causa crash en SheetPrimitive.Content
+    await new Promise(resolve => setTimeout(resolve, 400))
 
     // Usar ubicación actual o San José como origen por defecto
     const originLat = currentLocation?.latitude ?? 9.9281
@@ -560,7 +566,7 @@ export default function BusPlannerApp() {
 
       if (data.routes && data.routes.length > 0) {
         const mappedRoutes: PlanatedRoute[] = data.routes.map((r: any) => ({
-          id: r.route?.routeId || Math.random().toString(),
+          id: `${r.route?.routeId || 'R'}-${r.boardingStop?.name || 'A'}-${r.alightingStop?.name || 'B'}-${Math.random().toString(36).slice(2, 6)}`,
           company: r.route?.company || 'N/A',
           routeNumber: r.route?.shortName || 'N/A',
           origin: r.boardingStop?.name || 'Origen',
@@ -642,10 +648,9 @@ export default function BusPlannerApp() {
           )
         }
 
-        // Bus route: use GTFS shape points, or OSRM driving as fallback
-        if (bestRoute.shapePoints && bestRoute.shapePoints.length > 0) {
-          newRoutePath.bus = bestRoute.shapePoints.map((p: any) => [p.lat, p.lon] as [number, number])
-        } else if (bestRoute.boardingStop && bestRoute.alightingStop) {
+        // Bus route: always use OSRM driving to follow actual streets
+        // GTFS shape points are approximate and may contain bad coordinates
+        if (bestRoute.boardingStop && bestRoute.alightingStop) {
           routePromises.push(
             getOSRMRoute(
               [bestRoute.boardingStop.lat, bestRoute.boardingStop.lon],
@@ -663,16 +668,7 @@ export default function BusPlannerApp() {
         setRoutePath(newRoutePath)
 
         // Fit map to show the full route
-        if (data.origin && data.destination) {
-          fitRouteToBounds({
-            direct: [
-              [data.origin.lat, data.origin.lon],
-              [data.destination.lat, data.destination.lon]
-            ]
-          })
-        } else {
-          fitRouteToBounds(newRoutePath)
-        }
+        fitRouteToBounds(newRoutePath)
 
         // Load nearby GTFS stops for the map
         const bounds = getRouteBounds(newRoutePath)
@@ -987,6 +983,8 @@ export default function BusPlannerApp() {
                 </Button>
               </SheetTrigger>
               <SheetContent side="left" className="w-full sm:w-96 overflow-y-auto">
+                <SheetTitle className="sr-only">Menú de RutaTica</SheetTitle>
+                <SheetDescription className="sr-only">Planifica tu viaje en autobús por Costa Rica</SheetDescription>
                 <div className="mt-8 space-y-4">
                   {/* Header Content */}
                   <div className="flex items-center gap-2 pb-4 border-b">
@@ -1344,10 +1342,8 @@ export default function BusPlannerApp() {
                       )
                     }
 
-                    // Bus segment
-                    if (route._shapePoints && route._shapePoints.length > 0) {
-                      rp.bus = route._shapePoints.map(p => [p.lat, p.lon] as [number, number])
-                    } else if (route.boardingStop?.coordinates && route.destinationStop?.coordinates) {
+                    // Bus segment: always use OSRM driving to follow actual streets
+                    if (route.boardingStop?.coordinates && route.destinationStop?.coordinates) {
                       promises.push(
                         getOSRMRoute(
                           [route.boardingStop.coordinates.latitude, route.boardingStop.coordinates.longitude],
