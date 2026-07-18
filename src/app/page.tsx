@@ -1039,15 +1039,9 @@ export default function BusPlannerApp() {
                 <SheetDescription className="sr-only">Planifica tu viaje en autobús por Costa Rica</SheetDescription>
                 <div className="mt-8 space-y-4">
                   {/* Header Content */}
-                  <div className="flex items-center gap-2 pb-4 border-b">
-                    <div className="flex items-center justify-center w-10 h-10 bg-red-100 rounded-full">
-                      <Bus className="w-6 h-6 text-red-600" />
-                    </div>
+                  <div className="flex items-center gap-3 pb-4 border-b">
+                    <img src="/RutaTica_icono.jpg" alt="RutaTica" className="h-9 w-auto object-contain" />
                     <div>
-                      <h1 className="text-xl font-bold leading-tight">
-                        <span className="text-[#0052B4]">Ruta</span>
-                        <span className="text-[#E31837]">Tica</span>
-                      </h1>
                       <p className="text-xs text-gray-500">Toda Costa Rica en una APP</p>
                     </div>
                   </div>
@@ -1326,18 +1320,10 @@ export default function BusPlannerApp() {
             </Sheet>
 
             <div className="flex items-center gap-2">
-              <div className="flex items-center justify-center w-10 h-10 bg-red-100 rounded-full">
-                <Bus className="w-6 h-6 text-red-600" />
-              </div>
-              <div>
-                <h1 className="text-xl font-bold leading-tight">
-                  <span className="text-[#0052B4]">Ruta</span>
-                  <span className="text-[#E31837]">Tica</span>
-                </h1>
-                <p className="text-xs text-gray-500">
-                  {isTracking ? '🚌 Viaje en curso' : hasPlanned ? `Ruta a ${destination}` : '¿A dónde vamos hoy?'}
-                </p>
-              </div>
+              <img src="/RutaTica_icono.jpg" alt="RutaTica" className="h-8 w-auto object-contain" />
+              <p className="text-xs text-gray-500">
+                {isTracking ? '🚌 Viaje en curso' : hasPlanned ? `Ruta a ${destination}` : '¿A dónde vamos hoy?'}
+              </p>
             </div>
 
             <div className="flex items-center gap-2">
@@ -1364,21 +1350,21 @@ export default function BusPlannerApp() {
       {hasPlanned && !routePanelDismissed && !isTracking && (
         <div className="absolute bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur-sm border-t border-[#E5E7EB] shadow-[0_-4px_20px_rgba(0,0,0,0.1)]">
           {/* Compact Header */}
-          <div className="px-3 py-2 flex items-center justify-between border-b border-[#E5E7EB]">
-            <h2 className="text-sm font-bold flex items-center gap-1.5 text-gray-800">
-              <Bus className="w-4 h-4 text-red-600" />
+          <div className="px-3 py-1.5 flex items-center justify-between border-b border-[#E5E7EB]">
+            <h2 className="text-xs font-bold flex items-center gap-1 text-gray-800">
+              <Bus className="w-3.5 h-3.5 text-red-600" />
               Rutas
               {plannedRoutes.length > 0 && (
-                <Badge className="bg-red-600 text-white border-none text-xs px-1.5">{plannedRoutes.length}</Badge>
+                <Badge className="bg-red-600 text-white border-none text-[10px] px-1 py-0">{plannedRoutes.length}</Badge>
               )}
             </h2>
             <Button
               variant="ghost"
               size="sm"
               onClick={() => setRoutePanelDismissed(true)}
-              className="text-xs text-gray-500 hover:text-red-600 h-7 w-7 p-0"
+              className="text-gray-400 hover:text-red-600 h-6 w-6 p-0"
             >
-              <X className="w-4 h-4" />
+              <X className="w-3.5 h-3.5" />
             </Button>
           </div>
 
@@ -1407,7 +1393,7 @@ export default function BusPlannerApp() {
 
           {/* Route cards - compact scrollable */}
           {plannedRoutes.length > 0 && (
-            <div className="max-h-[35vh] overflow-y-auto px-3 pb-3 space-y-2 scrollbar-thin">
+            <div className="max-h-[30vh] overflow-y-auto px-2.5 pb-2 space-y-1.5 scrollbar-thin">
               {plannedRoutes.map((route) => (
                 <Card
                   key={route.id}
@@ -1466,30 +1452,30 @@ export default function BusPlannerApp() {
                     fitRouteToBounds(rp)
                   }}
                 >
-                  <CardContent className="p-3">
-                    <div className="space-y-2">
+                  <CardContent className="p-2">
+                    <div className="space-y-1.5">
                       {/* Route Header */}
                       <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <div className="w-8 h-8 bg-red-50 rounded-full flex items-center justify-center">
-                            <Bus className="w-4 h-4 text-[#E31837]" />
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-6 h-6 bg-red-50 rounded-full flex items-center justify-center">
+                            <Bus className="w-3 h-3 text-[#E31837]" />
                           </div>
                           <div>
-                            <span className="font-bold text-sm text-[#374151]">{route.routeNumber}</span>
-                            <Badge variant="outline" className="ml-1.5 text-[10px] border-[#BFDBFE] text-[#0052B4]">
+                            <span className="font-bold text-xs text-[#374151]">{route.routeNumber}</span>
+                            <Badge variant="outline" className="ml-1 text-[9px] px-1 py-0 border-[#BFDBFE] text-[#0052B4]">
                               {route.company}
                             </Badge>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1">
                           {plannedRoutes.indexOf(route) === 0 && (
-                            <Badge className="text-xs bg-green-100 text-green-700 border-none">
-                              <Star className="w-3 h-3 mr-1" />
-                              Mejor opción
+                            <Badge className="text-[10px] px-1.5 py-0 bg-green-100 text-green-700 border-none">
+                              <Star className="w-2.5 h-2.5 mr-0.5" />
+                              Mejor
                             </Badge>
                           )}
                           {plannedRoutes.indexOf(route) === 1 && (
-                            <Badge variant="secondary" className="text-xs bg-yellow-100 text-yellow-700 border-none">
+                            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-yellow-100 text-yellow-700 border-none">
                               Buena
                             </Badge>
                           )}
@@ -1497,41 +1483,41 @@ export default function BusPlannerApp() {
                       </div>
 
                       {/* Key Metrics - Compact */}
-                      <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-lg p-2.5 shadow-sm">
+                      <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-md p-2 shadow-sm">
                         <div className="flex items-center justify-between text-white">
-                          <div className="flex items-center gap-1.5">
-                            <Clock className="w-4 h-4" />
-                            <span className="text-xs font-medium">Tiempo</span>
+                          <div className="flex items-center gap-1">
+                            <Clock className="w-3 h-3" />
+                            <span className="text-[10px] font-medium">Tiempo</span>
                           </div>
-                          <span className="text-lg font-bold">
+                          <span className="text-sm font-bold">
                             {route.durationMin ? formatDuration(route.durationMin) : '--'}
                           </span>
                         </div>
-                        <div className="mt-1.5 pt-1.5 border-t border-white/20 flex items-center justify-between text-white/90">
-                          <div className="flex items-center gap-1">
-                            <DollarSign className="w-3.5 h-3.5" />
-                            <span className="text-xs">{formatPrice(route.price)}</span>
+                        <div className="mt-1 pt-1 border-t border-white/20 flex items-center justify-between text-white/90">
+                          <div className="flex items-center gap-0.5">
+                            <DollarSign className="w-3 h-3" />
+                            <span className="text-[10px]">{formatPrice(route.price)}</span>
                           </div>
                           {route._walkingDistanceKm !== undefined && route._walkingDistanceKm > 0 && (
-                            <span className="text-xs">{route._walkingDistanceKm.toFixed(1)} km a pie</span>
+                            <span className="text-[10px]">{route._walkingDistanceKm.toFixed(1)} km a pie</span>
                           )}
                         </div>
                       </div>
 
                       {/* Route Path Details - Compact */}
-                      <div className="bg-gradient-to-r from-blue-50 to-red-50 rounded-lg p-2.5 flex items-center gap-2">
+                      <div className="bg-gradient-to-r from-blue-50 to-red-50 rounded-md p-2 flex items-center gap-1.5">
                         <div className="flex flex-col items-center">
-                          <div className="w-2.5 h-2.5 rounded-full bg-[#0052B4]" />
-                          <div className="w-0.5 h-5 bg-blue-200" />
-                          <div className="w-2.5 h-2.5 rounded-full bg-[#E31837]" />
+                          <div className="w-2 h-2 rounded-full bg-[#0052B4]" />
+                          <div className="w-0.5 h-4 bg-blue-200" />
+                          <div className="w-2 h-2 rounded-full bg-[#E31837]" />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-xs font-semibold text-[#374151] truncate">{route.boardingStop.name}</p>
-                          <div className="flex items-center gap-1 my-0.5">
-                            <ArrowRight className="w-3 h-3 text-[#9CA3AF] flex-shrink-0" />
-                            <span className="text-[10px] text-[#6B7280]">{route._boardingStopDistanceKm ? `${route._boardingStopDistanceKm.toFixed(1)} km` : ''}</span>
+                          <p className="text-[11px] font-semibold text-[#374151] truncate">{route.boardingStop.name}</p>
+                          <div className="flex items-center gap-0.5 my-0">
+                            <ArrowRight className="w-2.5 h-2.5 text-[#9CA3AF] flex-shrink-0" />
+                            <span className="text-[9px] text-[#6B7280]">{route._boardingStopDistanceKm ? `${route._boardingStopDistanceKm.toFixed(1)} km` : ''}</span>
                           </div>
-                          <p className="text-xs font-semibold text-[#374151] truncate">
+                          <p className="text-[11px] font-semibold text-[#374151] truncate">
                             {route.destinationStop?.name || route.destination}
                           </p>
                         </div>
@@ -1553,9 +1539,9 @@ export default function BusPlannerApp() {
               {selectedRoute && !isTracking && (
                 <Button
                   onClick={(e) => { e.stopPropagation(); handleStartTrip() }}
-                  className="w-full h-10 text-sm font-semibold bg-[#10B981] hover:bg-[#059669] shadow-sm"
+                  className="w-full h-9 text-xs font-semibold bg-[#10B981] hover:bg-[#059669] shadow-sm"
                 >
-                  <Navigation className="w-4 h-4 mr-1.5" />
+                  <Navigation className="w-3.5 h-3.5 mr-1" />
                   Empezar Viaje
                 </Button>
               )}

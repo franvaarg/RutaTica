@@ -726,3 +726,24 @@ Stage Summary:
 - Direct route is preserved and wrapped in a synthetic PlanatedRoute
 - GPS tracking, distance calculation, and elapsed timer all function correctly
 - Auto-dismiss only applies to multiple route options (not single direct route)
+---
+Task ID: 1
+Agent: main
+Task: Update logo with RutaTica_icono.jpg, make route popup compact, verify trip info in menu
+
+Work Log:
+- Copied uploaded /home/z/my-project/upload/RutaTica_icono.jpg to /home/z/my-project/public/RutaTica_icono.jpg
+- Analyzed the logo image via VLM — it's a 146×39px text-based logo ("Ruta" blue, "Tica" red), not a square icon
+- Replaced Bus icon circles in both header (line ~1323) and Sheet menu (line ~1043) with `<img>` tag using the logo
+- Removed the duplicate "RutaTica" text next to the logo since the image already contains the text
+- Confirmed "Empezar Viaje" already closes popup (setRoutePanelDismissed(true) in handleStartTrip)
+- Confirmed trip tracking info ("Detener Viaje" + trip stats) already inside Sheet menu
+- Made route popup more compact: reduced header padding (py-2→py-1.5), icon sizes, font sizes, card padding (p-3→p-2), badge sizes, gradient bar padding, path details spacing, button height (h-10→h-9), and scrollable area height (35vh→30vh)
+- Verified via agent-browser + VLM: logo renders correctly in both header and menu
+
+Stage Summary:
+- Logo updated: both header and Sheet menu now show the custom RutaTica image logo
+- Route popup is more compact with tighter spacing throughout
+- "Empezar Viaje" closes popup (was already implemented)
+- Trip info inside menu (was already implemented)
+- All verified via browser screenshots + VLM analysis
