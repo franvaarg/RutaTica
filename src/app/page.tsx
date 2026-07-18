@@ -862,7 +862,8 @@ export default function BusPlannerApp() {
     setIsTracking(true)
     setTripStartTime(new Date())
     setElapsedTime(0)
-    setTrackingPanelVisible(false) // Esconder panel al empezar
+    setTrackingPanelVisible(false)
+    setRoutePanelDismissed(true) // Cerrar panel de rutas al empezar viaje
 
     // Calcular distancia inicial al destino
     const destCoords = selectedRoute.destinationStop?.coordinates
@@ -985,47 +986,6 @@ export default function BusPlannerApp() {
         </div>
       )}
 
-      {/* Panel de seguimiento de viaje - Centrado horizontalmente */}
-      {isTracking && trackingPanelVisible && (
-        <div className="absolute bottom-24 left-1/2 transform -translate-x-1/2 z-40 max-w-[240px] w-full">
-          <Card className="bg-white/95 backdrop-blur-sm shadow-lg border-2 border-[#E31837]">
-            <CardContent className="p-3">
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 bg-[#10B981] rounded-full flex items-center justify-center">
-                    <Bus className="w-4 h-4 text-white animate-pulse" />
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-[#374151] text-xs">Viaje en curso</h3>
-                    <p className="text-xs text-[#6B7280]">{selectedRoute?.routeNumber}</p>
-                  </div>
-                </div>
-                <Badge className="bg-[#10B981] text-white border-none text-xs">
-                  Activo
-                </Badge>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2 text-center">
-                <div>
-                  <p className="text-xs text-[#6B7280]">Restante</p>
-                  <p className="font-bold text-[#E31837] text-sm">
-                    {distanceRemaining.toFixed(1)} km
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs text-[#6B7280]">Tiempo</p>
-                  <p className="font-bold text-[#0052B4] text-sm">
-                    {elapsedTime < 60
-                      ? `${Math.floor(elapsedTime)} min`
-                      : `${Math.floor(elapsedTime / 60)}h ${Math.floor(elapsedTime % 60)}min`}
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
       {/* Route results shown in bottom panel below */}
 
       {/* Notificación de llegada */}
@@ -1092,8 +1052,57 @@ export default function BusPlannerApp() {
                     </div>
                   </div>
 
-                  {/* Current Route Info */}
-                  {hasPlanned && (
+                  {/* Trip Tracking Info - Inside Menu */}
+                  {isTracking && (
+                    <div className="bg-green-50 rounded-lg border-2 border-[#10B981] overflow-hidden">
+                      <div className="bg-[#10B981] px-3 py-2 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <div className="w-7 h-7 bg-white rounded-full flex items-center justify-center">
+                            <Bus className="w-4 h-4 text-[#10B981] animate-pulse" />
+                          </div>
+                          <div>
+                            <h3 className="font-bold text-white text-sm">Viaje en curso</h3>
+                            <p className="text-white/80 text-xs">{selectedRoute?.routeNumber || 'Directo'}</p>
+                          </div>
+                        </div>
+                        <Badge className="bg-white/25 text-white border-none text-xs">
+                          Activo
+                        </Badge>
+                      </div>
+                      <div className="p-3">
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="text-center">
+                            <p className="text-xs text-[#6B7280]">Restante</p>
+                            <p className="font-bold text-[#E31837] text-lg leading-tight">
+                              {distanceRemaining.toFixed(1)} km
+                            </p>
+                          </div>
+                          <div className="text-center">
+                            <p className="text-xs text-[#6B7280]">Tiempo</p>
+                            <p className="font-bold text-[#0052B4] text-lg leading-tight">
+                              {elapsedTime < 60
+                                ? `${Math.floor(elapsedTime)} min`
+                                : `${Math.floor(elapsedTime / 60)}h ${Math.floor(elapsedTime % 60)}min`}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="mt-3 pt-3 border-t border-green-200 flex items-center gap-2 text-xs text-[#6B7280]">
+                          <MapPin className="w-3.5 h-3.5 text-[#0052B4] flex-shrink-0" />
+                          <span className="truncate">{selectedRoute?.destinationStop?.name || destination}</span>
+                        </div>
+                        <Button
+                          onClick={handleStopTrip}
+                          className="w-full h-10 mt-3 text-sm font-semibold bg-white text-red-600 border-2 border-red-600 hover:bg-red-50"
+                        >
+                          <Navigation className="w-4 h-4 mr-2" />
+                          Detener Viaje
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Current Route Info - Only when not tracking */}
+                  {hasPlanned && !isTracking && (
                     <div className="bg-blue-50 p-3 rounded-lg border border-blue-200">
                       <div className="flex items-center justify-between">
                         <span className="text-sm font-semibold text-[#0052B4]">
@@ -1351,31 +1360,25 @@ export default function BusPlannerApp() {
         </div>
       </header>
 
-      {/* Bottom Route Results Panel - Visible after search */}
-      {hasPlanned && !routePanelDismissed && (
+      {/* Bottom Route Results Panel - Compact */}
+      {hasPlanned && !routePanelDismissed && !isTracking && (
         <div className="absolute bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur-sm border-t border-[#E5E7EB] shadow-[0_-4px_20px_rgba(0,0,0,0.1)]">
-          {/* Drag handle */}
-          <div className="flex justify-center pt-2 pb-1">
-            <div className="w-10 h-1 bg-gray-300 rounded-full" />
-          </div>
-
-          {/* Header with route count and reset */}
-          <div className="px-4 pb-2 flex items-center justify-between">
-            <h2 className="text-lg font-bold flex items-center gap-2 text-gray-800">
-              <Bus className="w-5 h-5 text-red-600" />
-              Rutas Encontradas
+          {/* Compact Header */}
+          <div className="px-3 py-2 flex items-center justify-between border-b border-[#E5E7EB]">
+            <h2 className="text-sm font-bold flex items-center gap-1.5 text-gray-800">
+              <Bus className="w-4 h-4 text-red-600" />
+              Rutas
               {plannedRoutes.length > 0 && (
-                <Badge className="bg-red-600 text-white border-none">{plannedRoutes.length}</Badge>
+                <Badge className="bg-red-600 text-white border-none text-xs px-1.5">{plannedRoutes.length}</Badge>
               )}
             </h2>
             <Button
-              variant="outline"
+              variant="ghost"
               size="sm"
-              onClick={handleResetSearch}
-              className="text-xs border-[#E5E7EB] text-gray-600 hover:bg-red-50 hover:text-red-600"
+              onClick={() => setRoutePanelDismissed(true)}
+              className="text-xs text-gray-500 hover:text-red-600 h-7 w-7 p-0"
             >
-              <X className="w-3 h-3 mr-1" />
-              Cerrar
+              <X className="w-4 h-4" />
             </Button>
           </div>
 
@@ -1402,16 +1405,16 @@ export default function BusPlannerApp() {
             </div>
           )}
 
-          {/* Route cards - scrollable */}
+          {/* Route cards - compact scrollable */}
           {plannedRoutes.length > 0 && (
-            <div className="max-h-[45vh] overflow-y-auto px-4 pb-4 space-y-3 scrollbar-thin">
+            <div className="max-h-[35vh] overflow-y-auto px-3 pb-3 space-y-2 scrollbar-thin">
               {plannedRoutes.map((route) => (
                 <Card
                   key={route.id}
-                  className={`hover:shadow-md transition-all cursor-pointer shadow-sm ${
+                  className={`transition-all cursor-pointer shadow-sm ${
                     selectedRoute?.id === route.id
                       ? 'ring-2 ring-[#E31837] shadow-md border border-[#FECACA]'
-                      : 'border border-[#E5E7EB] hover:border-[#FECACA]'
+                      : 'border border-[#E5E7EB] hover:border-[#FECACA] hover:shadow-sm'
                   }`}
                   onClick={async () => {
                     setSelectedRoute(route)
@@ -1463,17 +1466,17 @@ export default function BusPlannerApp() {
                     fitRouteToBounds(rp)
                   }}
                 >
-                  <CardContent className="p-4">
-                    <div className="space-y-3">
+                  <CardContent className="p-3">
+                    <div className="space-y-2">
                       {/* Route Header */}
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                          <div className="w-10 h-10 bg-red-50 rounded-full flex items-center justify-center">
-                            <Bus className="w-5 h-5 text-[#E31837]" />
+                          <div className="w-8 h-8 bg-red-50 rounded-full flex items-center justify-center">
+                            <Bus className="w-4 h-4 text-[#E31837]" />
                           </div>
                           <div>
-                            <span className="font-bold text-lg text-[#374151]">{route.routeNumber}</span>
-                            <Badge variant="outline" className="ml-2 text-xs border-[#BFDBFE] text-[#0052B4]">
+                            <span className="font-bold text-sm text-[#374151]">{route.routeNumber}</span>
+                            <Badge variant="outline" className="ml-1.5 text-[10px] border-[#BFDBFE] text-[#0052B4]">
                               {route.company}
                             </Badge>
                           </div>
@@ -1493,80 +1496,44 @@ export default function BusPlannerApp() {
                         </div>
                       </div>
 
-                      {/* Key Metrics */}
-                      <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-lg p-3 shadow-md">
+                      {/* Key Metrics - Compact */}
+                      <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-lg p-2.5 shadow-sm">
                         <div className="flex items-center justify-between text-white">
-                          <div className="flex items-center gap-2">
-                            <Clock className="w-5 h-5" />
-                            <span className="text-sm font-medium">Tiempo total</span>
+                          <div className="flex items-center gap-1.5">
+                            <Clock className="w-4 h-4" />
+                            <span className="text-xs font-medium">Tiempo</span>
                           </div>
-                          <span className="text-2xl font-bold">
+                          <span className="text-lg font-bold">
                             {route.durationMin ? formatDuration(route.durationMin) : '--'}
                           </span>
                         </div>
-                        <div className="mt-2 pt-2 border-t border-white/20 flex items-center justify-between text-white/90">
+                        <div className="mt-1.5 pt-1.5 border-t border-white/20 flex items-center justify-between text-white/90">
                           <div className="flex items-center gap-1">
-                            <DollarSign className="w-4 h-4" />
-                            <span className="text-sm font-medium">{formatPrice(route.price)}</span>
+                            <DollarSign className="w-3.5 h-3.5" />
+                            <span className="text-xs">{formatPrice(route.price)}</span>
                           </div>
                           {route._walkingDistanceKm !== undefined && route._walkingDistanceKm > 0 && (
-                            <div className="flex items-center gap-1">
-                              <Navigation className="w-4 h-4" />
-                              <span className="text-sm">{route._walkingDistanceKm.toFixed(1)} km caminando</span>
-                            </div>
+                            <span className="text-xs">{route._walkingDistanceKm.toFixed(1)} km a pie</span>
                           )}
                         </div>
-                        {(route._departTime || route._arriveTime) && (
-                          <div className="mt-2 pt-2 border-t border-white/20 flex items-center justify-between text-white/90">
-                            {route._departTime && (
-                              <div className="flex items-center gap-1">
-                                <span className="text-xs opacity-75">Sale:</span>
-                                <span className="text-sm font-semibold">{route._departTime}</span>
-                              </div>
-                            )}
-                            {route._arriveTime && (
-                              <div className="flex items-center gap-1">
-                                <span className="text-xs opacity-75">Llega:</span>
-                                <span className="text-sm font-semibold">{route._arriveTime}</span>
-                              </div>
-                            )}
-                            {route._transfers !== undefined && route._transfers > 0 && (
-                              <Badge className="bg-white/20 text-white border-none text-xs">
-                                {route._transfers} transbordo{route._transfers > 1 ? 's' : ''}
-                              </Badge>
-                            )}
-                          </div>
-                        )}
                       </div>
 
-                      {/* Route Path Details */}
-                      <div className="bg-gradient-to-r from-blue-50 to-red-50 rounded-lg p-3 space-y-2">
-                        <div className="flex items-start gap-2">
-                          <div className="flex flex-col items-center">
-                            <div className="w-3 h-3 rounded-full bg-[#0052B4]" />
-                            <div className="w-0.5 h-6 bg-blue-200" />
-                          </div>
-                          <div className="flex-1">
-                            <p className="text-xs text-[#6B7280] mb-0.5">Sube en:</p>
-                            <p className="font-semibold text-sm text-[#374151]">{route.boardingStop.name}</p>
-                            {route._boardingStopDistanceKm !== undefined && route._boardingStopDistanceKm > 0 && (
-                              <p className="text-xs text-[#0052B4] mt-0.5 font-medium">
-                                {route._boardingStopDistanceKm.toFixed(2)} km de tu ubicación
-                              </p>
-                            )}
-                          </div>
+                      {/* Route Path Details - Compact */}
+                      <div className="bg-gradient-to-r from-blue-50 to-red-50 rounded-lg p-2.5 flex items-center gap-2">
+                        <div className="flex flex-col items-center">
+                          <div className="w-2.5 h-2.5 rounded-full bg-[#0052B4]" />
+                          <div className="w-0.5 h-5 bg-blue-200" />
+                          <div className="w-2.5 h-2.5 rounded-full bg-[#E31837]" />
                         </div>
-                        <div className="flex items-center justify-center">
-                          <ArrowRight className="w-4 h-4 text-[#9CA3AF]" />
-                        </div>
-                        <div className="flex items-start gap-2">
-                          <div className="w-3 h-3 rounded-full bg-[#E31837]" />
-                          <div className="flex-1">
-                            <p className="text-xs text-[#6B7280] mb-0.5">Baja en:</p>
-                            <p className="font-semibold text-sm text-[#374151]">
-                              {route.destinationStop?.name || route.destination}
-                            </p>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-semibold text-[#374151] truncate">{route.boardingStop.name}</p>
+                          <div className="flex items-center gap-1 my-0.5">
+                            <ArrowRight className="w-3 h-3 text-[#9CA3AF] flex-shrink-0" />
+                            <span className="text-[10px] text-[#6B7280]">{route._boardingStopDistanceKm ? `${route._boardingStopDistanceKm.toFixed(1)} km` : ''}</span>
                           </div>
+                          <p className="text-xs font-semibold text-[#374151] truncate">
+                            {route.destinationStop?.name || route.destination}
+                          </p>
                         </div>
                       </div>
                     </div>
@@ -1582,27 +1549,15 @@ export default function BusPlannerApp() {
                 </div>
               )}
 
-              {/* Empezar Viaje Button */}
-              {selectedRoute && (
-                <div className="pt-1">
-                  {!isTracking ? (
-                    <Button
-                      onClick={(e) => { e.stopPropagation(); handleStartTrip() }}
-                      className="w-full h-12 text-base font-semibold bg-[#10B981] hover:bg-[#059669] shadow-md"
-                    >
-                      <Navigation className="w-5 h-5 mr-2" />
-                      Empezar Viaje
-                    </Button>
-                  ) : (
-                    <Button
-                      onClick={(e) => { e.stopPropagation(); handleStopTrip() }}
-                      className="w-full h-12 text-base font-semibold bg-white text-red-600 border-2 border-red-600 hover:bg-red-50"
-                    >
-                      <Navigation className="w-5 h-5 mr-2" />
-                      Detener Viaje
-                    </Button>
-                  )}
-                </div>
+              {/* Empezar Viaje Button - Compact */}
+              {selectedRoute && !isTracking && (
+                <Button
+                  onClick={(e) => { e.stopPropagation(); handleStartTrip() }}
+                  className="w-full h-10 text-sm font-semibold bg-[#10B981] hover:bg-[#059669] shadow-sm"
+                >
+                  <Navigation className="w-4 h-4 mr-1.5" />
+                  Empezar Viaje
+                </Button>
               )}
             </div>
           )}
