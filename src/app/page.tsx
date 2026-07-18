@@ -150,9 +150,9 @@ export default function BusPlannerApp() {
     fetchPopularDestinations()
   }, [])
 
-  // Auto-ocultar panel de rutas después de 5 segundos
+  // Auto-ocultar panel de rutas después de 5 segundos (solo cuando hay varias opciones)
   useEffect(() => {
-    if (hasPlanned && plannedRoutes.length > 0 && !routePanelDismissed) {
+    if (hasPlanned && plannedRoutes.length > 1 && !routePanelDismissed) {
       // Limpiar timer previo si existe
       if (routePanelTimerRef.current) {
         clearTimeout(routePanelTimerRef.current)
@@ -723,14 +723,42 @@ export default function BusPlannerApp() {
           }
         }
       } else {
-        // No se encontraron rutas de bus — conservar la ruta directa que ya estaba dibujada
-        if (previousRoutePath) {
+        // No se encontraron rutas de bus — crear ruta directa sintética para iniciar seguimiento
+        if (previousRoutePath && selectedDestination) {
           setRoutePath(previousRoutePath)
           routePathRef.current = previousRoutePath
-          if (previousSelectedRoute) {
-            setSelectedRoute(previousSelectedRoute)
+
+          // Crear ruta sintética tipo "directo" para que funcione todo el flujo de seguimiento
+          const directRoute: PlanatedRoute = {
+            id: 'direct-route-' + Math.random().toString(36).slice(2, 6),
+            company: 'Ruta Directa',
+            routeNumber: 'Directo',
+            origin: currentAddress || 'Tu ubicación',
+            destination: selectedDestination.name || destination,
+            price: 0,
+            currency: 'CRC',
+            boardingStop: {
+              name: currentAddress || 'Tu ubicación',
+              city: null,
+              coordinates: currentLocation ? { latitude: currentLocation.latitude, longitude: currentLocation.longitude } : undefined,
+            },
+            destinationStop: {
+              name: selectedDestination.displayName || selectedDestination.name,
+              city: null,
+              coordinates: { latitude: selectedDestination.lat, longitude: selectedDestination.lon },
+            },
+            nearbyStops: [],
           }
-          // No mostrar panel de rutas ni error, la ruta directa se mantiene en el mapa
+
+          setPlannedRoutes([directRoute])
+          setSelectedRoute(directRoute)
+          setHasPlanned(true)
+        } else if (previousRoutePath && previousSelectedRoute) {
+          // Ya tenía una ruta seleccionada previamente (caso edge)
+          setRoutePath(previousRoutePath)
+          routePathRef.current = previousRoutePath
+          setSelectedRoute(previousSelectedRoute)
+          setHasPlanned(true)
         } else {
           setPlannedRoutes([])
           setHasPlanned(true)
@@ -837,12 +865,15 @@ export default function BusPlannerApp() {
     setTrackingPanelVisible(false) // Esconder panel al empezar
 
     // Calcular distancia inicial al destino
-    if (selectedRoute.destinationStop?.coordinates) {
+    const destCoords = selectedRoute.destinationStop?.coordinates
+      || (selectedDestination ? { latitude: selectedDestination.lat, longitude: selectedDestination.lon } : null)
+
+    if (destCoords) {
       const initialDistance = calculateDistance(
         currentLocation.latitude,
         currentLocation.longitude,
-        selectedRoute.destinationStop.coordinates.latitude,
-        selectedRoute.destinationStop.coordinates.longitude
+        destCoords.latitude,
+        destCoords.longitude
       )
       setDistanceRemaining(initialDistance)
     }
@@ -858,12 +889,15 @@ export default function BusPlannerApp() {
         setCurrentLocation({ latitude, longitude })
 
         // Calcular distancia restante
-        if (selectedRoute.destinationStop?.coordinates) {
+        const trackDestCoords = selectedRoute.destinationStop?.coordinates
+          || (selectedDestination ? { latitude: selectedDestination.lat, longitude: selectedDestination.lon } : null)
+
+        if (trackDestCoords) {
           const remaining = calculateDistance(
             latitude,
             longitude,
-            selectedRoute.destinationStop.coordinates.latitude,
-            selectedRoute.destinationStop.coordinates.longitude
+            trackDestCoords.latitude,
+            trackDestCoords.longitude
           )
           setDistanceRemaining(remaining)
 

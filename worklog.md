@@ -707,3 +707,22 @@ Stage Summary:
 - Fix 1 (Route Preservation): When Iniciar Viaje finds no bus routes, the previously drawn direct OSRM route is preserved on the map. Tested with Boca Arenal (no bus routes) - route stays visible.
 - Fix 2 (Auto-dismiss): Route options panel auto-hides after 5 seconds, letting user see the full map with the drawn route. Tested with Alajuela (5 routes found) - panel appears then dismisses.
 - Both fixes verified with agent-browser + VLM screenshot analysis
+---
+Task ID: 2
+Agent: Main
+Task: Fix trip tracking not starting when no bus routes found (Iniciar Viaje → nothing happens)
+
+Work Log:
+- Identified root cause: When API returns no bus routes, no `selectedRoute` was created, so `handleStartTrip` (requires selectedRoute != null) could never run
+- Created synthetic `PlanatedRoute` object ("Ruta Directa") when no bus routes found but direct OSRM route exists
+- Synthetic route includes proper `destinationStop.coordinates` from `selectedDestination` so distance tracking works
+- Set `plannedRoutes([directRoute])`, `setSelectedRoute(directRoute)`, `setHasPlanned(true)` to show bottom panel with "Empezar Viaje" button
+- Modified `handleStartTrip` to fallback to `selectedDestination` coordinates when `selectedRoute.destinationStop?.coordinates` is null
+- Modified auto-dismiss to only trigger when `plannedRoutes.length > 1` (multiple routes), not for single direct route
+- Full end-to-end test with Boca Arenal: select destination → direct route draws → Iniciar Viaje → synthetic route panel appears → Empezar Viaje → tracking starts → "Viaje en curso" panel with 79.3km distance and 0min timer → Detener Viaje available
+
+Stage Summary:
+- Complete trip tracking flow now works for destinations without bus route data
+- Direct route is preserved and wrapped in a synthetic PlanatedRoute
+- GPS tracking, distance calculation, and elapsed timer all function correctly
+- Auto-dismiss only applies to multiple route options (not single direct route)
