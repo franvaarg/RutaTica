@@ -804,3 +804,29 @@ Stage Summary:
 - "Buscar Ruta" buttons in menu and no-transport section trigger route planning via handlePlanRoute
 - Full pause/resume/stop trip lifecycle with accurate elapsed time tracking
 - Lint passes clean, dev server compiles successfully
+---
+Task ID: 2
+Agent: Z.ai Code (main conversation)
+Task: Fix route results panel lifecycle — only dismiss when Iniciar Viaje is clicked + fix event propagation on tracking panels
+
+Work Log:
+- Removed auto-dismiss useEffect timer (5-second auto-hide) for route results panel
+- Removed X close button from route panel header — panel header now only shows "Rutas" badge
+- Added `setRoutePanelDismissed(false)` at the start of `handlePlanRoute` to ensure panel always shows after clicking Buscar Ruta
+- Fixed event propagation bug: parent div had `onClick={() => setTrackingPanelVisible(!trackingPanelVisible)}` which intercepted clicks on Detener button, toggling panel visibility and hiding it
+- Added `e.stopPropagation()` to both tracking panel containers (active + paused) and the Detener button
+- Verified full flow with agent-browser:
+  1. Select destination → Buscar Ruta button appears ✓
+  2. Click Buscar Ruta → Sheet closes, route results panel appears ✓
+  3. Route panel has NO X button, stays visible ✓
+  4. Click Iniciar Viaje → countdown dialog appears ✓
+  5. Cancel countdown → route panel stays visible ✓
+  6. Click Iniciar ahora → trip starts, route panel dismissed, tracking panel appears ✓
+  7. Click Detener → paused panel shows Continuar Viaje + Finalizar Viaje ✓
+  8. Click Continuar Viaje → trip resumes, back to Detener button ✓
+  9. Click Finalizar Viaje → trip fully stops, back to initial state ✓
+
+Stage Summary:
+- Route results panel now only disappears when the trip actually starts (Iniciar Viaje/Iniciar ahora)
+- Event propagation fix ensures tracking panels don't accidentally hide when clicking buttons
+- All trip lifecycle states verified: active → paused → resumed → finalized

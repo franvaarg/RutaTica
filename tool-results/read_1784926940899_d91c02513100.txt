@@ -769,3 +769,39 @@
    769→- All menu cards use glassmorphism effect (semi-transparent with backdrop blur)
    770→- Used <img> tag approach instead of CSS background-image for headless browser compatibility
    771→
+   772→---
+   773→Task ID: 9
+   774→Agent: Z.ai Code (via main conversation)
+   775→Task: UI/UX refinements - custom origin icon, remove auto-calc, Buscar Ruta buttons, pause/resume trip
+   776→
+   777→Work Log:
+   778→- **map.tsx**: Created `customOriginIcon` (amber/orange #F59E0B with house SVG icon, labeled "Mi Origen")
+   779→- **map.tsx**: Updated `originCoordinates` marker to use `customOriginIcon` instead of `originIcon`
+   780→- **map.tsx**: Updated popup text for custom origin to use 🏠 emoji and amber color
+   781→- **map.tsx**: Added `customOriginIcon` to the rendering guard condition
+   782→- **page.tsx**: Removed `searchTransportAndDrawRoute` call from `handleDestinationSelect` - now only sets destination state
+   783→- **page.tsx**: Removed `searchTransportAndDrawRoute` call from `handleOriginSelect` - now only sets origin, centers map
+   784→- **page.tsx**: Removed `searchTransportAndDrawRoute` call from popular destinations onClick - now only sets destination
+   785→- **page.tsx**: Changed destination card button from "Iniciar Viaje" (Navigation icon) to "Buscar Ruta" (Search icon)
+   786→- **page.tsx**: Changed no-public-transport section button from "Iniciar Viaje" (Navigation, calls handleStartTrip) to "Buscar Ruta" (Search, calls handlePlanRoute)
+   787→- **page.tsx**: Added `isTripPaused` state, `pausedAtRef` and `totalPausedMsRef` refs for pause tracking
+   788→- **page.tsx**: Created `handlePauseTrip()` - clears geolocation watch, records pause timestamp, sets isTripPaused=true
+   789→- **page.tsx**: Created `handleResumeTrip()` - calculates paused duration, restarts geolocation watch, sets isTripPaused=false
+   790→- **page.tsx**: Created `handleFullStopTrip()` - calls handleResetSearch for full cleanup
+   791→- **page.tsx**: Modified `handleStopTrip` to delegate to `handlePauseTrip` (pause behavior instead of full stop)
+   792→- **page.tsx**: Added `isTripPaused` to handleResetSearch reset list
+   793→- **page.tsx**: Set `isTripPaused=false` and reset paused refs in `executeStartTrip`
+   794→- **page.tsx**: Added `isTripPaused` to elapsed time useEffect condition - timer stops when paused
+   795→- **page.tsx**: Updated elapsed time calculation to subtract `totalPausedMsRef.current` for accurate paused time accounting
+   796→- **page.tsx**: Replaced single tracking panel with two conditional panels:
+   797→  - Active panel (`!isTripPaused`): green bus icon, "Activo" badge, single "Detener" button (pause)
+   798→  - Paused panel (`isTripPaused`): amber bus icon, "Pausado" badge, two buttons ("Continuar Viaje" green, "Finalizar Viaje" red)
+   799→- **page.tsx**: Changed "Empezar Viaje" to "Iniciar Viaje" for consistency
+   800→
+   801→Stage Summary:
+   802→- Custom origin marker is now visually distinct (amber with house icon) vs GPS origin (blue with pin)
+   803→- Destination/origin selection no longer auto-triggers route calculation
+   804→- "Buscar Ruta" buttons in menu and no-transport section trigger route planning via handlePlanRoute
+   805→- Full pause/resume/stop trip lifecycle with accurate elapsed time tracking
+   806→- Lint passes clean, dev server compiles successfully
+   807→

@@ -160,24 +160,7 @@ export default function BusPlannerApp() {
     fetchPopularDestinations()
   }, [])
 
-  // Auto-ocultar panel de rutas después de 5 segundos (solo cuando hay varias opciones)
-  useEffect(() => {
-    if (hasPlanned && plannedRoutes.length > 1 && !routePanelDismissed) {
-      // Limpiar timer previo si existe
-      if (routePanelTimerRef.current) {
-        clearTimeout(routePanelTimerRef.current)
-      }
-      routePanelTimerRef.current = setTimeout(() => {
-        setRoutePanelDismissed(true)
-      }, 5000)
-    }
-    return () => {
-      if (routePanelTimerRef.current) {
-        clearTimeout(routePanelTimerRef.current)
-        routePanelTimerRef.current = null
-      }
-    }
-  }, [hasPlanned, plannedRoutes.length, routePanelDismissed])
+  // El panel de rutas ya NO se auto-oculta — solo desaparece cuando el usuario hace clic en Iniciar Viaje
 
   // Fetch popular destinations from GTFS stops
   const fetchPopularDestinations = async () => {
@@ -733,6 +716,9 @@ export default function BusPlannerApp() {
       }
       return
     }
+
+    // Asegurar que el panel de rutas será visible
+    setRoutePanelDismissed(false)
 
     // Cerrar menú inmediatamente
     setIsMenuOpen(false)
@@ -1690,8 +1676,8 @@ export default function BusPlannerApp() {
       {/* Bottom Route Results Panel - Compact */}
       {hasPlanned && !routePanelDismissed && !isTracking && (
         <div className="absolute bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur-sm border-t border-[#E5E7EB] shadow-[0_-4px_20px_rgba(0,0,0,0.1)]">
-          {/* Compact Header */}
-          <div className="px-3 py-1.5 flex items-center justify-between border-b border-[#E5E7EB]">
+          {/* Compact Header — sin botón de cerrar; el panel se cierra al iniciar el viaje */}
+          <div className="px-3 py-1.5 flex items-center border-b border-[#E5E7EB]">
             <h2 className="text-xs font-bold flex items-center gap-1 text-gray-800">
               <Bus className="w-3.5 h-3.5 text-red-600" />
               Rutas
@@ -1699,14 +1685,6 @@ export default function BusPlannerApp() {
                 <Badge className="bg-red-600 text-white border-none text-[10px] px-1 py-0">{plannedRoutes.length}</Badge>
               )}
             </h2>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setRoutePanelDismissed(true)}
-              className="text-gray-400 hover:text-red-600 h-6 w-6 p-0"
-            >
-              <X className="w-3.5 h-3.5" />
-            </Button>
           </div>
 
           {/* Error message when no routes */}
@@ -1946,7 +1924,7 @@ export default function BusPlannerApp() {
 
       {/* Tracking Panel - Bottom bar during trip */}
       {isTracking && trackingPanelVisible && !isTripPaused && (
-        <div className="absolute bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur-sm border-t border-[#E5E7EB] shadow-[0_-4px_20px_rgba(0,0,0,0.1)]">
+        <div className="absolute bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur-sm border-t border-[#E5E7EB] shadow-[0_-4px_20px_rgba(0,0,0,0.1)]" onClick={(e) => e.stopPropagation()}>
           <div className="p-3 space-y-2">
             {/* Trip info row */}
             <div className="flex items-center justify-between">
@@ -1982,7 +1960,7 @@ export default function BusPlannerApp() {
               </div>
               <div className="flex items-center justify-center">
                 <Button
-                  onClick={handleStopTrip}
+                  onClick={(e) => { e.stopPropagation(); handleStopTrip(); }}
                   className="w-full h-full min-h-[40px] text-xs font-semibold bg-red-600 hover:bg-red-700 text-white shadow-sm"
                 >
                   <X className="w-4 h-4 mr-1" />
@@ -1996,7 +1974,7 @@ export default function BusPlannerApp() {
 
       {/* Paused Tracking Panel */}
       {isTracking && trackingPanelVisible && isTripPaused && (
-        <div className="absolute bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur-sm border-t border-[#E5E7EB] shadow-[0_-4px_20px_rgba(0,0,0,0.1)]">
+        <div className="absolute bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur-sm border-t border-[#E5E7EB] shadow-[0_-4px_20px_rgba(0,0,0,0.1)]" onClick={(e) => e.stopPropagation()}>
           <div className="p-3 space-y-2">
             {/* Trip info row */}
             <div className="flex items-center justify-between">
