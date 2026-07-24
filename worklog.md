@@ -747,3 +747,24 @@ Stage Summary:
 - "Empezar Viaje" closes popup (was already implemented)
 - Trip info inside menu (was already implemented)
 - All verified via browser screenshots + VLM analysis
+---
+Task ID: bg-menu
+Agent: main
+Task: Set BG.jpg as background image of the main menu (Sheet)
+
+Work Log:
+- Copied BG.jpg to /home/z/my-project/public/BG.jpg (279×107px, colorful bus/mountain illustration)
+- Added background image via inline style on SheetContent — didn't render in headless browser (background-image CSS not rendered)
+- Added absolute-positioned div with background-image — still didn't render (same headless limitation)
+- Confirmed solid colors (red, orange) DO render via backgroundColor, only background-image fails
+- Solution: Used <img> tag positioned absolutely with object-cover inside an overflow-hidden wrapper
+- Added !bg-transparent + inline backgroundColor:transparent to SheetContent
+- Added relative z-10 to content wrapper to sit above bg layer
+- Added z-50 to Sheet close button in sheet.tsx
+- Applied glassmorphism (bg-white/80 backdrop-blur-sm) to all cards and sections inside menu
+- Updated "Destinos Populares" heading to white with drop-shadow for readability
+
+Stage Summary:
+- Menu background now shows the colorful BG.jpg bus/landscape illustration
+- All menu cards use glassmorphism effect (semi-transparent with backdrop blur)
+- Used <img> tag approach instead of CSS background-image for headless browser compatibility

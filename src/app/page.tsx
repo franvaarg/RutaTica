@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
 import { Sheet, SheetContent, SheetTrigger, SheetTitle, SheetDescription } from '@/components/ui/sheet'
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import BusMap from '@/components/map'
 import LocationAutocomplete from '@/components/location-autocomplete'
 
@@ -100,6 +101,9 @@ export default function BusPlannerApp() {
   const [currentLocation, setCurrentLocation] = useState<Location | null>({ latitude: 9.9281, longitude: -84.0907 })
   const [currentAddress, setCurrentAddress] = useState<string>('San José, Costa Rica (ubicación aproximada)')
   const [nearestStop, setNearestStop] = useState<NearestStop | null>(null)
+  const [useCurrentLocation, setUseCurrentLocation] = useState(true)
+  const [originText, setOriginText] = useState('')
+  const [selectedOrigin, setSelectedOrigin] = useState<SelectedLocation | null>(null)
   const [destination, setDestination] = useState('')
   const [selectedDestination, setSelectedDestination] = useState<SelectedLocation | null>(null)
   const [plannedRoutes, setPlannedRoutes] = useState<PlanatedRoute[]>([])
@@ -126,6 +130,9 @@ export default function BusPlannerApp() {
   const [distanceRemaining, setDistanceRemaining] = useState<number>(0)
   const [elapsedTime, setElapsedTime] = useState<number>(0)
   const [showArrivalNotification, setShowArrivalNotification] = useState(false)
+  const [showCountdown, setShowCountdown] = useState(false)
+  const [countdown, setCountdown] = useState(30)
+  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // Estados para panel de seguimiento
   const [trackingPanelVisible, setTrackingPanelVisible] = useState(true)
@@ -494,6 +501,171 @@ export default function BusPlannerApp() {
     setMapZoom(10) // Zoom out para mostrar toda la ruta
   }
 
+  const handleOriginSelect = (location: any) => {
+    try {
+      if (!location || !location.lat || !location.lon) {
+        console.error('Ubicación inválida:', location)
+        setError('La ubicación de origen no tiene coordenadas válidas')
+        return
+      }
+
+      const lat = parseFloat(location.lat)
+      const lon = parseFloat(location.lon)
+
+      if (isNaN(lat) || isNaN(lon)) {
+        console.error('Coordenadas inválidas:', { lat, lon, location })
+        setError('Las coordenadas de origen no son válidas')
+        return
+      }
+
+      setSelectedOrigin({
+        name: location.name || 'Origen desconocido',
+        lat: lat,
+        lon: lon,
+        displayName: location.displayName || location.name || 'Origen desconocido',
+      })
+      setOriginText(location.name || '')
+      setError(null)
+
+      // Centrar mapa en el origen seleccionado
+      setMapCenter([lat, lon])
+      setMapZoom(13)
+
+      // Si ya hay un destino seleccionado, buscar transporte y mostrar ruta
+      if (selectedDestination) {
+        searchTransportAndDrawRoute([lat, lon], [selectedDestination.lat, selectedDestination.lon])
+      }
+    } catch (err) {
+      console.error('Error al seleccionar origen:', err)
+    }
+  }
+
+  // Función que busca transporte público y dibuja la ruta
+  const searchTransportAndDrawRoute = async (origin: [number, number], dest: [number, number]) => {
+    // Primero dibujar ruta directa mientras busca transporte
+    getDirectRouteToDestination(origin, dest)
+
+    // Ajustar mapa para mostrar ambas ubicaciones
+    setMapCenter([
+      (origin[0] + dest[0]) / 2,
+      (origin[1] + dest[1]) / 2
+    ])
+    setMapZoom(10)
+
+    // Buscar rutas de transporte público
+    try {
+      setPlanning(true)
+      setError(null)
+      setPlannedRoutes([])
+      setSelectedRoute(null)
+      setHasPlanned(false)
+
+      const params = new URLSearchParams({
+        originLat: origin[0].toString(),
+        originLon: origin[1].toString(),
+        destLat: dest[0].toString(),
+        destLon: dest[1].toString(),
+      })
+
+      const response = await fetch(`/api/best-route?${params}`)
+      if (!response.ok) throw new Error('Error al buscar rutas')
+
+      const data = await response.json()
+
+      if (data.routes && data.routes.length > 0) {
+        // Hay transporte público disponible
+        const mappedRoutes: PlanatedRoute[] = data.routes.map((r: any) => ({
+          id: `${r.route?.routeId || 'R'}-${r.boardingStop?.name || 'A'}-${r.alightingStop?.name || 'B'}-${Math.random().toString(36).slice(2, 6)}`,
+          company: r.route?.company || 'N/A',
+          routeNumber: r.route?.shortName || 'N/A',
+          origin: r.boardingStop?.name || 'Origen',
+          destination: r.alightingStop?.name || 'Destino',
+          price: r.costCRC || 0,
+          currency: 'CRC',
+          distanceKm: r.walkingDistanceKm ? r.walkingDistanceKm : null,
+          durationMin: r.totalTimeMinutes || null,
+          boardingStop: {
+            name: r.boardingStop?.name || '',
+            city: null,
+            coordinates: r.boardingStop ? { latitude: r.boardingStop.lat, longitude: r.boardingStop.lon } : undefined,
+          },
+          destinationStop: {
+            name: r.alightingStop?.name || '',
+            city: null,
+            coordinates: r.alightingStop ? { latitude: r.alightingStop.lat, longitude: r.alightingStop.lon } : undefined,
+          },
+          nearbyStops: [],
+          _shapePoints: r.shapePoints || [],
+          _score: r.score || 0,
+          _departTime: r.departTime || '',
+          _arriveTime: r.arriveTime || '',
+          _transfers: r.transfers || 0,
+          _walkingDistanceKm: r.walkingDistanceKm || 0,
+          _boardingStopDistanceKm: r.boardingStop?.distanceKm || 0,
+        }))
+
+        setPlannedRoutes(mappedRoutes)
+        setHasPlanned(true)
+        setSelectedRoute(mappedRoutes[0])
+
+        // Build route path
+        const newRoutePath: RoutePath = {}
+        const routePromises: Promise<void>[] = []
+        const bestRoute = data.routes[0]
+
+        if (bestRoute.boardingStop) {
+          routePromises.push(
+            getOSRMRoute(origin, [bestRoute.boardingStop.lat, bestRoute.boardingStop.lon], 'foot')
+              .then((coords) => {
+                if (coords) newRoutePath.walking = coords
+                else newRoutePath.walking = [origin, [bestRoute.boardingStop.lat, bestRoute.boardingStop.lon]]
+              })
+          )
+        }
+
+        if (bestRoute.alightingStop && selectedDestination) {
+          routePromises.push(
+            getOSRMRoute([bestRoute.alightingStop.lat, bestRoute.alightingStop.lon], dest, 'foot')
+              .then((coords) => {
+                if (coords) newRoutePath.walking2 = coords
+                else newRoutePath.walking2 = [[bestRoute.alightingStop.lat, bestRoute.alightingStop.lon], dest]
+              })
+          )
+        }
+
+        if (bestRoute.boardingStop && bestRoute.alightingStop) {
+          routePromises.push(
+            getOSRMRoute([bestRoute.boardingStop.lat, bestRoute.boardingStop.lon], [bestRoute.alightingStop.lat, bestRoute.alightingStop.lon], 'driving')
+              .then((coords) => {
+                if (coords) newRoutePath.bus = coords
+              })
+          )
+        }
+
+        await Promise.all(routePromises)
+        setRoutePath(newRoutePath)
+        routePathRef.current = newRoutePath
+        setRoutePanelDismissed(false)
+      } else {
+        // No hay transporte público - mostrar notificación con info de ruta directa
+        setHasPlanned(true)
+        setPlannedRoutes([])
+        setSelectedRoute(null)
+        setRoutePanelDismissed(false)
+        setError(null)
+      }
+    } catch (err) {
+      console.error('Error al buscar transporte:', err)
+      // Si falla la búsqueda, aún mostrar la ruta directa
+      setHasPlanned(true)
+      setPlannedRoutes([])
+      setSelectedRoute(null)
+      setRoutePanelDismissed(false)
+    } finally {
+      setPlanning(false)
+    }
+  }
+
   const handleDestinationSelect = (location: any) => {
     try {
       // Validar que la ubicación tenga los datos necesarios
@@ -521,10 +693,13 @@ export default function BusPlannerApp() {
       setDestination(location.name || '')
       setError(null)
 
-      // Obtener ruta directa al destino seleccionado
-      if (currentLocation) {
-        getDirectRouteToDestination([currentLocation.latitude, currentLocation.longitude], [lat, lon])
-      }
+      // Calcular origen
+      const originCoords: [number, number] = useCurrentLocation
+        ? (currentLocation ? [currentLocation.latitude, currentLocation.longitude] : [9.9281, -84.0907])
+        : (selectedOrigin ? [selectedOrigin.lat, selectedOrigin.lon] : [9.9281, -84.0907])
+
+      // Buscar transporte público y dibujar ruta
+      searchTransportAndDrawRoute(originCoords, [lat, lon])
     } catch (error) {
       console.error('Error al seleccionar destino:', error)
       setError('Error al procesar la ubicación seleccionada')
@@ -558,6 +733,15 @@ export default function BusPlannerApp() {
       return
     }
 
+    if (!useCurrentLocation && !selectedOrigin) {
+      if (!originText.trim()) {
+        setError('Por favor ingresa un lugar de origen')
+      } else {
+        setError('Por favor selecciona un origen de la lista')
+      }
+      return
+    }
+
     // Cerrar menú inmediatamente
     setIsMenuOpen(false)
 
@@ -567,8 +751,12 @@ export default function BusPlannerApp() {
     await new Promise(resolve => setTimeout(resolve, 400))
 
     // Usar ubicación actual o San José como origen por defecto
-    const originLat = currentLocation?.latitude ?? 9.9281
-    const originLon = currentLocation?.longitude ?? -84.0907
+    const originLat = useCurrentLocation
+      ? (currentLocation?.latitude ?? 9.9281)
+      : (selectedOrigin?.lat ?? 9.9281)
+    const originLon = useCurrentLocation
+      ? (currentLocation?.longitude ?? -84.0907)
+      : (selectedOrigin?.lon ?? -84.0907)
 
     // Guardar la ruta actual antes de limpiar para preservarla si no hay rutas de bus
     const previousRoutePath = routePathRef.current
@@ -638,11 +826,19 @@ export default function BusPlannerApp() {
         // Fetch walking and bus routes in parallel
         const routePromises: Promise<void>[] = []
 
-        // Walking from user location to boarding stop (OSRM walking)
-        if (currentLocation && bestRoute.boardingStop) {
+        // Origin coordinates for walking segments
+        const walkOriginLat = useCurrentLocation
+          ? (currentLocation?.latitude ?? 9.9281)
+          : (selectedOrigin?.lat ?? 9.9281)
+        const walkOriginLon = useCurrentLocation
+          ? (currentLocation?.longitude ?? -84.0907)
+          : (selectedOrigin?.lon ?? -84.0907)
+
+        // Walking from origin to boarding stop (OSRM walking)
+        if (bestRoute.boardingStop) {
           routePromises.push(
             getOSRMRoute(
-              [currentLocation.latitude, currentLocation.longitude],
+              [walkOriginLat, walkOriginLon],
               [bestRoute.boardingStop.lat, bestRoute.boardingStop.lon],
               'foot'
             ).then((coords) => {
@@ -651,7 +847,7 @@ export default function BusPlannerApp() {
               } else {
                 // Fallback: straight line
                 newRoutePath.walking = [
-                  [currentLocation.latitude, currentLocation.longitude],
+                  [walkOriginLat, walkOriginLon],
                   [bestRoute.boardingStop.lat, bestRoute.boardingStop.lon],
                 ]
               }
@@ -799,6 +995,12 @@ export default function BusPlannerApp() {
     setElapsedTime(0)
     setDistanceRemaining(0)
     setShowArrivalNotification(false)
+    setShowCountdown(false)
+    setCountdown(30)
+    if (countdownRef.current) {
+      clearInterval(countdownRef.current)
+      countdownRef.current = null
+    }
     setTrackingPanelVisible(true)
 
     setDestination('')
@@ -855,32 +1057,53 @@ export default function BusPlannerApp() {
   }
 
   const handleStartTrip = () => {
-    if (!currentLocation || !selectedRoute) {
+    if (!selectedRoute && !selectedDestination) {
       return
+    }
+    // Si no hay ruta seleccionada (ruta directa), crear una ruta directa temporal
+    if (!selectedRoute && selectedDestination) {
+      // Se permite iniciar viaje directo sin transporte público
+    }
+    // Mostrar countdown de 30 segundos
+    setShowCountdown(true)
+    setCountdown(30)
+  }
+
+  const executeStartTrip = () => {
+    setShowCountdown(false)
+    if (countdownRef.current) {
+      clearInterval(countdownRef.current)
+      countdownRef.current = null
     }
 
     setIsTracking(true)
     setTripStartTime(new Date())
     setElapsedTime(0)
-    setTrackingPanelVisible(false)
+    setTrackingPanelVisible(true)
     setRoutePanelDismissed(true) // Cerrar panel de rutas al empezar viaje
 
     // Calcular distancia inicial al destino
-    const destCoords = selectedRoute.destinationStop?.coordinates
+    const destCoords = selectedRoute?.destinationStop?.coordinates
       || (selectedDestination ? { latitude: selectedDestination.lat, longitude: selectedDestination.lon } : null)
 
     if (destCoords) {
       const initialDistance = calculateDistance(
-        currentLocation.latitude,
-        currentLocation.longitude,
+        currentLocation?.latitude ?? 9.9281,
+        currentLocation?.longitude ?? -84.0907,
         destCoords.latitude,
         destCoords.longitude
       )
       setDistanceRemaining(initialDistance)
     }
 
-    // Centrar mapa en ubicación actual
-    setMapCenter([currentLocation.latitude, currentLocation.longitude])
+    // Centrar mapa en ubicación actual o en el origen personalizado
+    const startLat = useCurrentLocation
+      ? (currentLocation?.latitude ?? 9.9281)
+      : (selectedOrigin?.lat ?? 9.9281)
+    const startLon = useCurrentLocation
+      ? (currentLocation?.longitude ?? -84.0907)
+      : (selectedOrigin?.lon ?? -84.0907)
+    setMapCenter([startLat, startLon])
     setMapZoom(14)
 
     // Iniciar seguimiento de posición con watchPosition
@@ -890,7 +1113,7 @@ export default function BusPlannerApp() {
         setCurrentLocation({ latitude, longitude })
 
         // Calcular distancia restante
-        const trackDestCoords = selectedRoute.destinationStop?.coordinates
+        const trackDestCoords = selectedRoute?.destinationStop?.coordinates
           || (selectedDestination ? { latitude: selectedDestination.lat, longitude: selectedDestination.lon } : null)
 
         if (trackDestCoords) {
@@ -926,6 +1149,34 @@ export default function BusPlannerApp() {
     setTrackingId(id)
   }
 
+  // Countdown effect
+  useEffect(() => {
+    if (showCountdown && countdown > 0) {
+      countdownRef.current = setInterval(() => {
+        setCountdown((prev) => {
+          if (prev <= 1) {
+            if (countdownRef.current) clearInterval(countdownRef.current)
+            return 0
+          }
+          return prev - 1
+        })
+      }, 1000)
+    }
+    return () => {
+      if (countdownRef.current) {
+        clearInterval(countdownRef.current)
+        countdownRef.current = null
+      }
+    }
+  }, [showCountdown])
+
+  // Auto-start trip when countdown reaches 0
+  useEffect(() => {
+    if (showCountdown && countdown === 0) {
+      executeStartTrip()
+    }
+  }, [countdown, showCountdown])
+
   const handleStopTrip = () => {
     if (trackingId) {
       navigator.geolocation.clearWatch(trackingId)
@@ -959,6 +1210,12 @@ export default function BusPlannerApp() {
           center={mapCenter}
           zoom={mapZoom}
           userLocation={currentLocation ? [currentLocation.latitude, currentLocation.longitude] : undefined}
+          originCoordinates={!useCurrentLocation && selectedOrigin ? {
+            name: selectedOrigin.name || 'Origen',
+            latitude: selectedOrigin.lat,
+            longitude: selectedOrigin.lon,
+            displayName: selectedOrigin.displayName
+          } : null}
           nearestStop={nearestStop}
           plannedRoutes={plannedRoutes}
           plannedRoutesLength={plannedRoutes.length}
@@ -1025,12 +1282,13 @@ export default function BusPlannerApp() {
       )}
 
       {/* Header - Floating on top of map */}
-      <header className="absolute top-0 left-0 right-0 z-30 bg-white/95 backdrop-blur-sm shadow-md">
-        <div className="container mx-auto px-4 py-3">
+      <header className="absolute top-0 left-0 right-0 z-30 shadow-md overflow-hidden">
+        <img src="/RutaTica_bus.png" alt="" className="absolute inset-0 w-full h-full object-cover object-center" aria-hidden="true" />
+        <div className="container mx-auto px-4 py-3 relative z-10">
           <div className="flex items-center justify-between">
             <Sheet open={isMenuOpen} onOpenChange={setIsMenuOpen}>
               <SheetTrigger asChild>
-                <Button variant="ghost" size="icon" className="text-gray-600 hover:bg-gray-100">
+                <Button variant="ghost" size="icon" className="text-white bg-white/25 hover:bg-white/35 backdrop-blur-sm rounded-lg border border-white/30">
                   <Menu className="w-6 h-6" />
                 </Button>
               </SheetTrigger>
@@ -1040,7 +1298,7 @@ export default function BusPlannerApp() {
                 <div className="mt-8 space-y-4">
                   {/* Header Content */}
                   <div className="flex items-center gap-3 pb-4 border-b">
-                    <img src="/RutaTica_icono.jpg" alt="RutaTica" className="h-9 w-auto object-contain" />
+                    <img src="/RutaTica_Logo.png" alt="RutaTica" className="h-9 w-auto object-contain mix-blend-multiply" />
                     <div>
                       <p className="text-xs text-gray-500">Toda Costa Rica en una APP</p>
                     </div>
@@ -1115,50 +1373,92 @@ export default function BusPlannerApp() {
                     </div>
                   )}
 
-                                    {/* Current Location Info */}
-                  {!hasPlanned && currentLocation && (
+                                    {/* Origin Card */}
+                  {!hasPlanned && (
                     <Card className="shadow-sm border border-[#E5E7EB]">
                       <CardContent className="p-4 space-y-3">
-                        <div className="flex items-center gap-2">
-                          <div className="w-6 h-6 bg-[#0052B4] rounded-full flex items-center justify-center">
-                            <MapPin className="w-3.5 h-3.5 text-white" />
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <div className="w-6 h-6 bg-[#0052B4] rounded-full flex items-center justify-center">
+                              <MapPin className="w-3.5 h-3.5 text-white" />
+                            </div>
+                            <span className="font-semibold text-sm text-[#374151]">Origen</span>
                           </div>
-                          <span className="font-semibold text-sm text-[#374151]">Origen (tu ubicación)</span>
+                          <div className="flex items-center gap-2">
+                            <Label htmlFor="location-toggle" className="text-xs cursor-pointer text-[#6B7280]">
+                              Mi ubicación
+                            </Label>
+                            <Switch
+                              id="location-toggle"
+                              checked={useCurrentLocation}
+                              onCheckedChange={(checked) => {
+                                setUseCurrentLocation(checked)
+                                if (!checked) {
+                                  setSelectedOrigin(null)
+                                  setOriginText('')
+                                }
+                              }}
+                              className="scale-90"
+                            />
+                          </div>
                         </div>
-                        {loadingLocation || loadingAddress ? (
-                          <div className="flex items-center gap-2 text-muted-foreground p-3 bg-blue-50 rounded-lg border border-[#E5E7EB]">
-                            <Loader2 className="w-4 h-4 animate-spin text-[#0052B4]" />
-                            <span className="text-sm">
-                              {loadingLocation ? 'Obteniendo ubicación...' : 'Obteniendo dirección...'}
-                            </span>
-                          </div>
-                        ) : (
-                          <div className="space-y-2">
-                            <div className="bg-white rounded-lg p-3 border border-[#E5E7EB] shadow-sm">
-                              <p className="text-sm leading-relaxed text-[#374151]">{currentAddress}</p>
-                            </div>
 
-                            <div className="flex items-center justify-between gap-2">
-                              <Label htmlFor="address-toggle" className="text-xs cursor-pointer text-[#6B7280]">
-                                Dirección {showFullAddress ? 'completa' : 'corta'}
-                              </Label>
-                              <Switch
-                                id="address-toggle"
-                                checked={showFullAddress}
-                                onCheckedChange={setShowFullAddress}
-                                className="scale-90"
-                              />
-                            </div>
-
-                            {nearestStop && (
-                              <div className="flex items-center gap-2 text-xs text-[#6B7280] bg-green-50 p-2 rounded-lg border border-[#E5E7EB]">
-                                <Bus className="w-3.5 h-3.5 text-[#10B981]" />
-                                <span>
-                                  Parada: <span className="font-semibold text-[#10B981]">{nearestStop.name}</span>
+                        {useCurrentLocation ? (
+                          // Mostrar ubicación actual
+                          <>
+                            {loadingLocation || loadingAddress ? (
+                              <div className="flex items-center gap-2 text-muted-foreground p-3 bg-blue-50 rounded-lg border border-[#E5E7EB]">
+                                <Loader2 className="w-4 h-4 animate-spin text-[#0052B4]" />
+                                <span className="text-sm">
+                                  {loadingLocation ? 'Obteniendo ubicación...' : 'Obteniendo dirección...'}
                                 </span>
-                                <Badge variant="secondary" className="ml-auto text-xs bg-green-100 text-[#10B981] border-green-200">
-                                  {nearestStop.distance.toFixed(1)} km
-                                </Badge>
+                              </div>
+                            ) : (
+                              <div className="space-y-2">
+                                <div className="bg-white rounded-lg p-3 border border-[#E5E7EB] shadow-sm">
+                                  <p className="text-sm leading-relaxed text-[#374151]">{currentAddress}</p>
+                                </div>
+
+                                <div className="flex items-center justify-between gap-2">
+                                  <Label htmlFor="address-toggle" className="text-xs cursor-pointer text-[#6B7280]">
+                                    Dirección {showFullAddress ? 'completa' : 'corta'}
+                                  </Label>
+                                  <Switch
+                                    id="address-toggle"
+                                    checked={showFullAddress}
+                                    onCheckedChange={setShowFullAddress}
+                                    className="scale-90"
+                                  />
+                                </div>
+
+                                {nearestStop && (
+                                  <div className="flex items-center gap-2 text-xs text-[#6B7280] bg-green-50 p-2 rounded-lg border border-[#E5E7EB]">
+                                    <Bus className="w-3.5 h-3.5 text-[#10B981]" />
+                                    <span>
+                                      Parada: <span className="font-semibold text-[#10B981]">{nearestStop.name}</span>
+                                    </span>
+                                    <Badge variant="secondary" className="ml-auto text-xs bg-green-100 text-[#10B981] border-green-200">
+                                      {nearestStop.distance.toFixed(1)} km
+                                    </Badge>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          // Campo de búsqueda de origen personalizado
+                          <div className="space-y-2">
+                            <LocationAutocomplete
+                              value={originText}
+                              onChange={setOriginText}
+                              onSelect={handleOriginSelect}
+                              placeholder="Escribe el lugar de origen..."
+                              disabled={planning}
+                            />
+                            {selectedOrigin && (
+                              <div className="flex items-center gap-2 bg-blue-50 p-2 rounded-lg border border-[#E5E7EB]">
+                                <MapPin className="w-3.5 h-3.5 text-[#0052B4] flex-shrink-0" />
+                                <span className="text-xs text-[#374151] truncate">{selectedOrigin.displayName || selectedOrigin.name}</span>
                               </div>
                             )}
                           </div>
@@ -1213,18 +1513,14 @@ export default function BusPlannerApp() {
                     <div className="grid grid-cols-2 gap-3">
                       <Card className="shadow-sm hover:shadow-md transition-shadow cursor-pointer border border-[#E5E7EB]">
                         <CardContent className="p-4 flex flex-col items-center justify-center text-center">
-                          <div className="w-12 h-12 bg-red-50 rounded-full flex items-center justify-center mb-2">
-                            <Bus className="w-6 h-6 text-[#E31837]" />
-                          </div>
+                          <img src="/Bus.jpg" alt="Rutas" className="w-12 h-12 rounded-xl object-cover object-top mb-2" />
                           <span className="font-semibold text-sm text-[#374151]">Rutas</span>
                         </CardContent>
                       </Card>
 
                       <Card className="shadow-sm hover:shadow-md transition-shadow cursor-pointer border border-[#E5E7EB]">
                         <CardContent className="p-4 flex flex-col items-center justify-center text-center">
-                          <div className="w-12 h-12 bg-yellow-50 rounded-full flex items-center justify-center mb-2">
-                            <Clock className="w-6 h-6 text-[#F59E0B]" />
-                          </div>
+                          <img src="/Horario.jpg" alt="Horarios" className="w-12 h-12 rounded-xl object-cover mb-2" />
                           <span className="font-semibold text-sm text-[#374151]">Horarios</span>
                         </CardContent>
                       </Card>
@@ -1279,19 +1575,16 @@ export default function BusPlannerApp() {
                                   lon: dest.lon,
                                   displayName: name,
                                 })
-                                // Show direct route on map
-                                if (currentLocation) {
-                                  getDirectRouteToDestination(
-                                    [currentLocation.latitude, currentLocation.longitude],
-                                    [dest.lat, dest.lon]
-                                  )
-                                }
+                                const originCoords: [number, number] = useCurrentLocation
+                                  ? (currentLocation ? [currentLocation.latitude, currentLocation.longitude] : [9.9281, -84.0907])
+                                  : (selectedOrigin ? [selectedOrigin.lat, selectedOrigin.lon] : [9.9281, -84.0907])
+                                searchTransportAndDrawRoute(originCoords, [dest.lat, dest.lon])
                               }}
                               disabled={planning}
-                              className="h-auto py-3 flex flex-col items-center gap-2 border border-[#E5E7EB] hover:border-[#FECACA] hover:bg-red-50 text-[#374151]"
+                              className="h-auto py-3 min-w-0 flex flex-col items-center gap-2 border border-[#E5E7EB] hover:border-[#FECACA] hover:bg-red-50 text-[#374151]"
                             >
-                              <MapPin className="w-5 h-5 text-[#E31837]" />
-                              <span className="font-semibold text-sm leading-tight text-center line-clamp-2">{dest.displayName || dest.name}</span>
+                              <MapPin className="w-5 h-5 text-[#E31837] flex-shrink-0" />
+                              <span className="font-semibold text-xs leading-tight text-center line-clamp-2 w-full overflow-hidden">{dest.displayName || dest.name}</span>
                             </Button>
                           ))
                         ) : (
@@ -1304,10 +1597,10 @@ export default function BusPlannerApp() {
                                   setDestination(dest)
                                 }}
                                 disabled={planning}
-                                className="h-auto py-3 flex flex-col items-center gap-2 border border-[#E5E7EB] hover:border-[#FECACA] hover:bg-red-50 text-[#374151]"
+                                className="h-auto py-3 min-w-0 flex flex-col items-center gap-2 border border-[#E5E7EB] hover:border-[#FECACA] hover:bg-red-50 text-[#374151]"
                               >
-                                <MapPin className="w-5 h-5 text-[#E31837]" />
-                                <span className="font-semibold text-sm">{dest}</span>
+                                <MapPin className="w-5 h-5 text-[#E31837] flex-shrink-0" />
+                                <span className="font-semibold text-xs leading-tight text-center w-full overflow-hidden">{dest}</span>
                               </Button>
                             ))}
                           </>
@@ -1320,8 +1613,8 @@ export default function BusPlannerApp() {
             </Sheet>
 
             <div className="flex items-center gap-2">
-              <img src="/RutaTica_icono.jpg" alt="RutaTica" className="h-8 w-auto object-contain" />
-              <p className="text-xs text-gray-500">
+              <img src="/RutaTica_Logo.png" alt="RutaTica" className="h-8 w-auto object-contain mix-blend-multiply" />
+              <p className="text-xs text-white drop-shadow-sm">
                 {isTracking ? '🚌 Viaje en curso' : hasPlanned ? `Ruta a ${destination}` : '¿A dónde vamos hoy?'}
               </p>
             </div>
@@ -1332,13 +1625,13 @@ export default function BusPlannerApp() {
                   variant="outline"
                   size="sm"
                   onClick={handleResetSearch}
-                  className="text-sm border-[#E5E7EB] text-gray-600 hover:bg-red-50 hover:text-red-600 hover:border-red-200"
+                  className="text-sm border-white/40 text-white hover:bg-white/20 hover:text-white hover:border-white/60"
                 >
                   <X className="w-4 h-4 mr-1" />
                   Reiniciar
                 </Button>
               )}
-              <Button variant="ghost" size="icon" className="text-gray-600 hover:bg-gray-100">
+              <Button variant="ghost" size="icon" className="text-white hover:bg-white/20 drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]">
                 <Bell className="w-5 h-5" />
               </Button>
             </div>
@@ -1378,22 +1671,67 @@ export default function BusPlannerApp() {
             </div>
           )}
 
-          {/* No routes message */}
-          {!error && plannedRoutes.length === 0 && (
-            <div className="px-4 pb-4">
-              <Card className="p-4 text-center shadow-sm border border-[#E5E7EB]">
-                <Bus className="w-12 h-12 mx-auto text-[#9CA3AF] mb-3" />
-                <p className="text-[#6B7280] text-sm">
-                  No se encontraron rutas disponibles hacia "{destination}".
-                  Intenta con otro destino más cercano.
-                </p>
+          {/* No public transport available - show direct route info */}
+          {!error && plannedRoutes.length === 0 && selectedDestination && (
+            <div className="px-4 pb-4 space-y-3">
+              <Card className="p-3 border border-amber-200 bg-amber-50">
+                <div className="flex items-start gap-2">
+                  <div className="w-8 h-8 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <Bus className="w-4 h-4 text-amber-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-amber-800">Sin transporte público registrado</p>
+                    <p className="text-xs text-amber-700 mt-0.5">
+                      No se encontraron rutas de autobús para este trayecto. Se muestra la ruta directa en el mapa.
+                    </p>
+                  </div>
+                </div>
               </Card>
+
+              {/* Direct route info */}
+              {routePath?.direct && (
+                <Card className="p-3 border border-[#E5E7EB] shadow-sm">
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Navigation className="w-4 h-4 text-[#0052B4]" />
+                      <span className="text-xs font-semibold text-[#374151]">Ruta directa</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1">
+                        <p className="text-[11px] text-[#6B7280]">Origen</p>
+                        <p className="text-xs font-semibold text-[#0052B4] truncate">
+                          {useCurrentLocation ? 'Mi ubicación' : (selectedOrigin?.displayName || selectedOrigin?.name || 'Origen')}
+                        </p>
+                      </div>
+                      <ArrowRight className="w-3.5 h-3.5 text-[#9CA3AF] flex-shrink-0" />
+                      <div className="flex-1 text-right">
+                        <p className="text-[11px] text-[#6B7280]">Destino</p>
+                        <p className="text-xs font-semibold text-[#E31837] truncate">{selectedDestination?.displayName || selectedDestination?.name}</p>
+                      </div>
+                    </div>
+                    <Button
+                      onClick={(e) => { e.stopPropagation(); handleStartTrip() }}
+                      className="w-full h-9 text-xs font-semibold bg-[#10B981] hover:bg-[#059669] shadow-sm"
+                    >
+                      <Navigation className="w-3.5 h-3.5 mr-1" />
+                      Iniciar Viaje
+                    </Button>
+                  </div>
+                </Card>
+              )}
+
+              {!routePath?.direct && (
+                <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg">
+                  <Loader2 className="w-4 h-4 text-[#0052B4] animate-spin flex-shrink-0" />
+                  <p className="text-xs text-[#0052B4]">Calculando ruta directa...</p>
+                </div>
+              )}
             </div>
           )}
 
           {/* Route cards - compact scrollable */}
           {plannedRoutes.length > 0 && (
-            <div className="max-h-[30vh] overflow-y-auto px-2.5 pb-2 space-y-1.5 scrollbar-thin">
+            <div className="max-h-[20vh] overflow-y-auto px-2.5 pb-2 space-y-1.5 scrollbar-thin">
               {plannedRoutes.map((route) => (
                 <Card
                   key={route.id}
@@ -1407,11 +1745,19 @@ export default function BusPlannerApp() {
                     const rp: RoutePath = {}
                     const promises: Promise<void>[] = []
 
+                    // Origin coordinates
+                    const cardOriginLat = useCurrentLocation
+                      ? (currentLocation?.latitude ?? 9.9281)
+                      : (selectedOrigin?.lat ?? 9.9281)
+                    const cardOriginLon = useCurrentLocation
+                      ? (currentLocation?.longitude ?? -84.0907)
+                      : (selectedOrigin?.lon ?? -84.0907)
+
                     // Walking to boarding stop
-                    if (currentLocation && route.boardingStop?.coordinates) {
+                    if (route.boardingStop?.coordinates) {
                       promises.push(
                         getOSRMRoute(
-                          [currentLocation.latitude, currentLocation.longitude],
+                          [cardOriginLat, cardOriginLon],
                           [route.boardingStop.coordinates.latitude, route.boardingStop.coordinates.longitude],
                           'foot'
                         ).then((coords) => {
@@ -1550,6 +1896,105 @@ export default function BusPlannerApp() {
         </div>
       )}
 
+      {/* Tracking Panel - Bottom bar during trip */}
+      {isTracking && trackingPanelVisible && (
+        <div className="absolute bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur-sm border-t border-[#E5E7EB] shadow-[0_-4px_20px_rgba(0,0,0,0.1)]">
+          <div className="p-3 space-y-2">
+            {/* Trip info row */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 bg-[#10B981] rounded-full flex items-center justify-center">
+                  <Bus className="w-4 h-4 text-white animate-pulse" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-xs text-gray-800">Viaje en curso</h3>
+                  <p className="text-[10px] text-[#6B7280]">
+                    {selectedRoute?.routeNumber || 'Directo'} → {selectedRoute?.destinationStop?.name || destination}
+                  </p>
+                </div>
+                <Badge className="bg-green-100 text-[#10B981] border-none text-[10px]">
+                  Activo
+                </Badge>
+              </div>
+            </div>
+
+            {/* Metrics row */}
+            <div className="grid grid-cols-3 gap-2">
+              <div className="bg-blue-50 rounded-lg p-2 text-center">
+                <p className="text-[10px] text-[#6B7280]">Restante</p>
+                <p className="font-bold text-[#E31837] text-sm">{distanceRemaining.toFixed(1)} km</p>
+              </div>
+              <div className="bg-blue-50 rounded-lg p-2 text-center">
+                <p className="text-[10px] text-[#6B7280]">Tiempo</p>
+                <p className="font-bold text-[#0052B4] text-sm">
+                  {elapsedTime < 60
+                    ? `${Math.floor(elapsedTime)} min`
+                    : `${Math.floor(elapsedTime / 60)}h ${Math.floor(elapsedTime % 60)}m`}
+                </p>
+              </div>
+              <div className="flex items-center justify-center">
+                <Button
+                  onClick={handleStopTrip}
+                  className="w-full h-full min-h-[40px] text-xs font-semibold bg-red-600 hover:bg-red-700 text-white shadow-sm"
+                >
+                  <X className="w-4 h-4 mr-1" />
+                  Detener
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Countdown Dialog */}
+      <Dialog open={showCountdown} onOpenChange={(open) => {
+        if (!open) {
+          setShowCountdown(false)
+          if (countdownRef.current) {
+            clearInterval(countdownRef.current)
+            countdownRef.current = null
+          }
+        }
+      }}>
+        <DialogContent className="sm:max-w-xs mx-auto">
+          <DialogTitle className="text-center text-lg font-bold text-[#374151]">
+            Preparando tu viaje...
+          </DialogTitle>
+          <DialogDescription className="text-center text-sm text-[#6B7280]">
+            El viaje iniciará automáticamente
+          </DialogDescription>
+          <div className="flex flex-col items-center py-4 space-y-4">
+            <div className="w-24 h-24 rounded-full bg-gradient-to-br from-[#10B981] to-[#059669] flex items-center justify-center shadow-lg">
+              <span className="text-4xl font-bold text-white">{countdown}</span>
+            </div>
+            <p className="text-sm text-[#6B7280]">
+              {selectedRoute?.routeNumber || 'Ruta directa'} → {selectedRoute?.destinationStop?.name || destination}
+            </p>
+            <div className="flex gap-2 w-full">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowCountdown(false)
+                  if (countdownRef.current) {
+                    clearInterval(countdownRef.current)
+                    countdownRef.current = null
+                  }
+                }}
+                className="flex-1 border-[#E5E7EB] text-[#6B7280] hover:bg-gray-50"
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={executeStartTrip}
+                className="flex-1 bg-[#10B981] hover:bg-[#059669] text-white font-semibold"
+              >
+                Iniciar ahora
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Bottom Navigation - Hidden when route results are showing */}
       {!hasPlanned && (
       <nav className="absolute bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur-sm border-t border-[#E5E7EB]">
@@ -1560,7 +2005,7 @@ export default function BusPlannerApp() {
               <span className="text-xs">Mapa</span>
             </Button>
             <Button variant="ghost" className="flex flex-col items-center gap-1 text-gray-600 hover:bg-gray-100 h-auto py-2">
-              <Bus className="w-5 h-5" />
+              <img src="/Bus.jpg" alt="Rutas" className="w-5 h-5 rounded-sm object-cover object-top" />
               <span className="text-xs">Rutas</span>
             </Button>
             <Button variant="ghost" className="flex flex-col items-center gap-1 text-gray-600 hover:bg-gray-100 h-auto py-2">

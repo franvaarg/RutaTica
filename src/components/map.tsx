@@ -148,6 +148,12 @@ interface BusMapProps {
   center: [number, number]
   zoom?: number
   userLocation?: [number, number] | null
+  originCoordinates?: {
+    name: string
+    latitude: number
+    longitude: number
+    displayName?: string
+  } | null
   nearestStop?: {
     name: string
     coordinates: {
@@ -187,6 +193,7 @@ const BusMap = ({
   center,
   zoom = 13,
   userLocation,
+  originCoordinates,
   nearestStop,
   plannedRoutes,
   plannedRoutesLength,
@@ -640,6 +647,22 @@ const BusMap = ({
                 <span className="text-xs text-[#6B7280]">
                   {isTracking ? "Rastreando en tiempo real" : "Tu ubicación actual"}
                 </span>
+              </div>
+            </Popup>
+          </Marker>
+        )}
+
+        {/* Marcador de origen personalizado */}
+        {originCoordinates && (
+          <Marker
+            position={[originCoordinates.latitude, originCoordinates.longitude]}
+            icon={originIcon}
+          >
+            <Popup>
+              <div className="text-sm p-1 min-w-32">
+                <strong className="text-[#0052B4]">📍 Origen</strong>
+                <br />
+                <span className="text-xs text-[#6B7280]">{originCoordinates.displayName || originCoordinates.name}</span>
               </div>
             </Popup>
           </Marker>
