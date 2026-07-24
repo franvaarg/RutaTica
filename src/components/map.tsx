@@ -450,6 +450,27 @@ const BusMap = ({
     })
   }, [L])
 
+  const customOriginIcon = useMemo(() => {
+    if (!L) return null
+    return L.divIcon({
+      className: 'custom-origin-marker',
+      html: `
+        <div class="relative flex items-center justify-center">
+          <div class="w-10 h-10 bg-[#F59E0B] rounded-full border-3 border-white shadow-lg flex items-center justify-center">
+            <svg viewBox="0 0 24 24" class="w-5 h-5 text-white" fill="currentColor">
+              <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/>
+            </svg>
+          </div>
+          <div class="absolute -bottom-6 left-1/2 transform -translate-x-1/2 bg-white px-2 py-1 rounded shadow-md text-xs font-semibold text-[#F59E0B] whitespace-nowrap">
+            Mi Origen
+          </div>
+        </div>
+      `,
+      iconSize: [48, 64],
+      iconAnchor: [24, 48],
+    })
+  }, [L])
+
   const stopIcon = useMemo(() => {
     if (!L) return null
     return L.divIcon({
@@ -578,7 +599,7 @@ const BusMap = ({
   }
 
   // No renderizar nada hasta que el componente esté montado en el cliente
-  if (!isMounted || !L || !userIcon || !originIcon || !stopIcon || !boardingIcon || !destinationIcon || !busStationIcon) {
+  if (!isMounted || !L || !userIcon || !originIcon || !customOriginIcon || !stopIcon || !boardingIcon || !destinationIcon || !busStationIcon) {
     return (
       <div className="w-full h-full min-h-[300px] rounded-lg overflow-hidden border border-[#E5E7EB] flex items-center justify-center bg-gray-50">
         <div className="text-center">
@@ -656,11 +677,11 @@ const BusMap = ({
         {originCoordinates && (
           <Marker
             position={[originCoordinates.latitude, originCoordinates.longitude]}
-            icon={originIcon}
+            icon={customOriginIcon}
           >
             <Popup>
               <div className="text-sm p-1 min-w-32">
-                <strong className="text-[#0052B4]">📍 Origen</strong>
+                <strong className="text-[#F59E0B]">🏠 Mi Origen</strong>
                 <br />
                 <span className="text-xs text-[#6B7280]">{originCoordinates.displayName || originCoordinates.name}</span>
               </div>

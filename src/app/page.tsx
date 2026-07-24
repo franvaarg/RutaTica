@@ -136,6 +136,9 @@ export default function BusPlannerApp() {
 
   // Estados para panel de seguimiento
   const [trackingPanelVisible, setTrackingPanelVisible] = useState(true)
+  const [isTripPaused, setIsTripPaused] = useState(false)
+  const pausedAtRef = useRef<number>(0)
+  const totalPausedMsRef = useRef<number>(0)
 
   // Estados para control del mapa
   // Ubicación por defecto: San José, Costa Rica
@@ -297,19 +300,19 @@ export default function BusPlannerApp() {
 
   // Actualizar tiempo transcurrido durante el viaje
   useEffect(() => {
-    if (!isTracking || !tripStartTime) {
+    if (!isTracking || !tripStartTime || isTripPaused) {
       return
     }
 
     const interval = setInterval(() => {
-      const elapsed = (Date.now() - tripStartTime.getTime()) / 1000 / 60 // en minutos
+      const elapsed = (Date.now() - tripStartTime.getTime() - totalPausedMsRef.current) / 1000 / 60 // en minutos
       setElapsedTime(elapsed)
     }, 1000)
 
     return () => {
       clearInterval(interval)
     }
-  }, [isTracking, tripStartTime])
+  }, [isTracking, tripStartTime, isTripPaused])
 
   const getCurrentLocation = async () => {
     setLoadingLocation(true)
@@ -531,10 +534,7 @@ export default function BusPlannerApp() {
       setMapCenter([lat, lon])
       setMapZoom(13)
 
-      // Si ya hay un destino seleccionado, buscar transporte y mostrar ruta
-      if (selectedDestination) {
-        searchTransportAndDrawRoute([lat, lon], [selectedDestination.lat, selectedDestination.lon])
-      }
+
     } catch (err) {
       console.error('Error al seleccionar origen:', err)
     }
@@ -692,14 +692,6 @@ export default function BusPlannerApp() {
       })
       setDestination(location.name || '')
       setError(null)
-
-      // Calcular origen
-      const originCoords: [number, number] = useCurrentLocation
-        ? (currentLocation ? [currentLocation.latitude, currentLocation.longitude] : [9.9281, -84.0907])
-        : (selectedOrigin ? [selectedOrigin.lat, selectedOrigin.lon] : [9.9281, -84.0907])
-
-      // Buscar transporte público y dibujar ruta
-      searchTransportAndDrawRoute(originCoords, [lat, lon])
     } catch (error) {
       console.error('Error al seleccionar destino:', error)
       setError('Error al procesar la ubicación seleccionada')
@@ -991,6 +983,7 @@ export default function BusPlannerApp() {
     }
 
     setIsTracking(false)
+    setIsTripPaused(false)
     setTripStartTime(null)
     setElapsedTime(0)
     setDistanceRemaining(0)
@@ -1077,6 +1070,9 @@ export default function BusPlannerApp() {
     }
 
     setIsTracking(true)
+    setIsTripPaused(false)
+    pausedAtRef.current = 0
+    totalPausedMsRef.current = 0
     setTripStartTime(new Date())
     setElapsedTime(0)
     setTrackingPanelVisible(true)
@@ -1178,15 +1174,71 @@ export default function BusPlannerApp() {
   }, [countdown, showCountdown])
 
   const handleStopTrip = () => {
+    handlePauseTrip()
+  }
+
+  const handlePauseTrip = () => {
     if (trackingId) {
       navigator.geolocation.clearWatch(trackingId)
       setTrackingId(null)
     }
-    setIsTracking(false)
-    setTripStartTime(null)
-    setElapsedTime(0)
-    setDistanceRemaining(0)
-    setTrackingPanelVisible(true)
+    pausedAtRef.current = Date.now()
+    setIsTripPaused(true)
+  }
+
+  const handleResumeTrip = () => {
+    // Account for paused duration
+    if (pausedAtRef.current > 0) {
+      totalPausedMsRef.current += Date.now() - pausedAtRef.current
+      pausedAtRef.current = 0
+    }
+    setIsTripPaused(false)
+
+    // Restart geolocation watch
+    const id = navigator.geolocation.watchPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords
+        setCurrentLocation({ latitude, longitude })
+
+        // Calcular distancia restante
+        const trackDestCoords = selectedRoute?.destinationStop?.coordinates
+          || (selectedDestination ? { latitude: selectedDestination.lat, longitude: selectedDestination.lon } : null)
+
+        if (trackDestCoords) {
+          const remaining = calculateDistance(
+            latitude,
+            longitude,
+            trackDestCoords.latitude,
+            trackDestCoords.longitude
+          )
+          setDistanceRemaining(remaining)
+
+          // Verificar si ha llegado al destino (dentro de 100 metros)
+          if (remaining < 0.1) {
+            handleFullStopTrip()
+            setShowArrivalNotification(true)
+          }
+        }
+
+        // Actualizar dirección
+        getAddressFromCoordinates(latitude, longitude).then(setCurrentAddress)
+      },
+      (error) => {
+        console.error('Error al rastrear ubicación:', error)
+        setError('Error al rastrear tu ubicación. Verifica que el GPS esté activo.')
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0,
+      }
+    )
+
+    setTrackingId(id)
+  }
+
+  const handleFullStopTrip = () => {
+    handleResetSearch()
   }
 
   // Manejar interacción con el mapa
@@ -1499,8 +1551,8 @@ export default function BusPlannerApp() {
                             </>
                           ) : (
                             <>
-                              <Navigation className="w-5 h-5 mr-2" />
-                              Iniciar Viaje
+                              <Search className="w-5 h-5 mr-2" />
+                              Buscar Ruta
                             </>
                           )}
                         </Button>
@@ -1575,10 +1627,6 @@ export default function BusPlannerApp() {
                                   lon: dest.lon,
                                   displayName: name,
                                 })
-                                const originCoords: [number, number] = useCurrentLocation
-                                  ? (currentLocation ? [currentLocation.latitude, currentLocation.longitude] : [9.9281, -84.0907])
-                                  : (selectedOrigin ? [selectedOrigin.lat, selectedOrigin.lon] : [9.9281, -84.0907])
-                                searchTransportAndDrawRoute(originCoords, [dest.lat, dest.lon])
                               }}
                               disabled={planning}
                               className="h-auto py-3 min-w-0 flex flex-col items-center gap-2 border border-[#E5E7EB] hover:border-[#FECACA] hover:bg-red-50 text-[#374151]"
@@ -1710,11 +1758,11 @@ export default function BusPlannerApp() {
                       </div>
                     </div>
                     <Button
-                      onClick={(e) => { e.stopPropagation(); handleStartTrip() }}
+                      onClick={(e) => { e.stopPropagation(); handlePlanRoute() }}
                       className="w-full h-9 text-xs font-semibold bg-[#10B981] hover:bg-[#059669] shadow-sm"
                     >
-                      <Navigation className="w-3.5 h-3.5 mr-1" />
-                      Iniciar Viaje
+                      <Search className="w-3.5 h-3.5 mr-1" />
+                      Buscar Ruta
                     </Button>
                   </div>
                 </Card>
@@ -1888,7 +1936,7 @@ export default function BusPlannerApp() {
                   className="w-full h-9 text-xs font-semibold bg-[#10B981] hover:bg-[#059669] shadow-sm"
                 >
                   <Navigation className="w-3.5 h-3.5 mr-1" />
-                  Empezar Viaje
+                  Iniciar Viaje
                 </Button>
               )}
             </div>
@@ -1897,7 +1945,7 @@ export default function BusPlannerApp() {
       )}
 
       {/* Tracking Panel - Bottom bar during trip */}
-      {isTracking && trackingPanelVisible && (
+      {isTracking && trackingPanelVisible && !isTripPaused && (
         <div className="absolute bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur-sm border-t border-[#E5E7EB] shadow-[0_-4px_20px_rgba(0,0,0,0.1)]">
           <div className="p-3 space-y-2">
             {/* Trip info row */}
@@ -1941,6 +1989,65 @@ export default function BusPlannerApp() {
                   Detener
                 </Button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Paused Tracking Panel */}
+      {isTracking && trackingPanelVisible && isTripPaused && (
+        <div className="absolute bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur-sm border-t border-[#E5E7EB] shadow-[0_-4px_20px_rgba(0,0,0,0.1)]">
+          <div className="p-3 space-y-2">
+            {/* Trip info row */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 bg-[#F59E0B] rounded-full flex items-center justify-center">
+                  <Bus className="w-4 h-4 text-white" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-xs text-gray-800">Viaje en curso</h3>
+                  <p className="text-[10px] text-[#6B7280]">
+                    {selectedRoute?.routeNumber || 'Directo'} → {selectedRoute?.destinationStop?.name || destination}
+                  </p>
+                </div>
+                <Badge className="bg-amber-100 text-[#F59E0B] border-none text-[10px]">
+                  Pausado
+                </Badge>
+              </div>
+            </div>
+
+            {/* Metrics row */}
+            <div className="grid grid-cols-3 gap-2">
+              <div className="bg-blue-50 rounded-lg p-2 text-center">
+                <p className="text-[10px] text-[#6B7280]">Restante</p>
+                <p className="font-bold text-[#E31837] text-sm">{distanceRemaining.toFixed(1)} km</p>
+              </div>
+              <div className="bg-blue-50 rounded-lg p-2 text-center">
+                <p className="text-[10px] text-[#6B7280]">Tiempo</p>
+                <p className="font-bold text-[#0052B4] text-sm">
+                  {elapsedTime < 60
+                    ? `${Math.floor(elapsedTime)} min`
+                    : `${Math.floor(elapsedTime / 60)}h ${Math.floor(elapsedTime % 60)}m`}
+                </p>
+              </div>
+            </div>
+
+            {/* Paused action buttons */}
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                onClick={handleResumeTrip}
+                className="h-10 text-xs font-semibold bg-[#10B981] hover:bg-[#059669] text-white shadow-sm"
+              >
+                <Navigation className="w-4 h-4 mr-1" />
+                Continuar Viaje
+              </Button>
+              <Button
+                onClick={handleFullStopTrip}
+                className="h-10 text-xs font-semibold bg-red-600 hover:bg-red-700 text-white shadow-sm"
+              >
+                <X className="w-4 h-4 mr-1" />
+                Finalizar Viaje
+              </Button>
             </div>
           </div>
         </div>
