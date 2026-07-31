@@ -1,0 +1,1464 @@
+   652→
+   653→  const handleDestinationSelect = (location: any) => {
+   654→    try {
+   655→      // Validar que la ubicación tenga los datos necesarios
+   656→      if (!location || !location.lat || !location.lon) {
+   657→        console.error('Ubicación inválida:', location)
+   658→        setError('La ubicación seleccionada no tiene coordenadas válidas')
+   659→        return
+   660→      }
+   661→
+   662→      const lat = parseFloat(location.lat)
+   663→      const lon = parseFloat(location.lon)
+   664→
+   665→      if (isNaN(lat) || isNaN(lon)) {
+   666→        console.error('Coordenadas inválidas:', { lat, lon, location })
+   667→        setError('Las coordenadas seleccionadas no son válidas')
+   668→        return
+   669→      }
+   670→
+   671→      setSelectedDestination({
+   672→        name: location.name || 'Destino desconocido',
+   673→        lat: lat,
+   674→        lon: lon,
+   675→        displayName: location.displayName || location.name || 'Destino desconocido',
+   676→      })
+   677→      setDestination(location.name || '')
+   678→      setError(null)
+   679→    } catch (error) {
+   680→      console.error('Error al seleccionar destino:', error)
+   681→      setError('Error al procesar la ubicación seleccionada')
+   682→    }
+   683→  }
+   684→
+   685→  // Función para obtener ruta directa al destino seleccionado
+   686→  const getDirectRouteToDestination = async (start: [number, number], end: [number, number]) => {
+   687→    try {
+   688→      setLoadingDirectRoute(true)
+   689→      const route = await getOSRMRoute(start, end, 'driving')
+   690→      if (route) {
+   691→        const rp = { direct: route }
+   692→        setRoutePath(rp)
+   693→        routePathRef.current = rp
+   694→      }
+   695→    } catch (error) {
+   696→      console.error('Error al obtener ruta directa:', error)
+   697→    } finally {
+   698→      setLoadingDirectRoute(false)
+   699→    }
+   700→  }
+   701→
+   702→  const handlePlanRoute = async () => {
+   703→    if (!selectedDestination) {
+   704→      if (!destination.trim()) {
+   705→        setError('Por favor ingresa un destino')
+   706→      } else {
+   707→        setError('Por favor selecciona un destino de la lista')
+   708→      }
+   709→      return
+   710→    }
+   711→
+   712→    if (!useCurrentLocation && !selectedOrigin) {
+   713→      if (!originText.trim()) {
+   714→        setError('Por favor ingresa un lugar de origen')
+   715→      } else {
+   716→        setError('Por favor selecciona un origen de la lista')
+   717→      }
+   718→      return
+   719→    }
+   720→
+   721→    // Asegurar que el panel de rutas será visible
+   722→    setRoutePanelDismissed(false)
+   723→
+   724→    // Cerrar menú inmediatamente
+   725→    setIsMenuOpen(false)
+   726→
+   727→    // Esperar a que la animación de cierre del Sheet termine (300ms + margen)
+   728→    // Esto evita que los cambios de estado re-rendericen los hijos del Sheet
+   729→    // durante la animación de salida, lo cual causa crash en SheetPrimitive.Content
+   730→    await new Promise(resolve => setTimeout(resolve, 400))
+   731→
+   732→    // Usar ubicación actual o San José como origen por defecto
+   733→    const originLat = useCurrentLocation
+   734→      ? (currentLocation?.latitude ?? 9.9281)
+   735→      : (selectedOrigin?.lat ?? 9.9281)
+   736→    const originLon = useCurrentLocation
+   737→      ? (currentLocation?.longitude ?? -84.0907)
+   738→      : (selectedOrigin?.lon ?? -84.0907)
+   739→
+   740→    // Guardar la ruta actual antes de limpiar para preservarla si no hay rutas de bus
+   741→    const previousRoutePath = routePathRef.current
+   742→    const previousSelectedRoute = selectedRoute
+   743→
+   744→    setPlanning(true)
+   745→    setLoadingRoute(true)
+   746→    setError(null)
+   747→    setSelectedRoute(null)
+   748→    setRoutePath(null)
+   749→    routePathRef.current = null
+   750→    setBusStops(null)
+   751→
+   752→    try {
+   753→      const params = new URLSearchParams({
+   754→        originLat: originLat.toString(),
+   755→        originLon: originLon.toString(),
+   756→        destLat: selectedDestination.lat.toString(),
+   757→        destLon: selectedDestination.lon.toString(),
+   758→      })
+   759→
+   760→      const response = await fetch(`/api/best-route?${params}`)
+   761→      if (!response.ok) throw new Error('Error al buscar rutas')
+   762→
+   763→      const data = await response.json()
+   764→
+   765→      if (data.routes && data.routes.length > 0) {
+   766→        const mappedRoutes: PlanatedRoute[] = data.routes.map((r: any) => ({
+   767→          id: `${r.route?.routeId || 'R'}-${r.boardingStop?.name || 'A'}-${r.alightingStop?.name || 'B'}-${Math.random().toString(36).slice(2, 6)}`,
+   768→          company: r.route?.company || 'N/A',
+   769→          routeNumber: r.route?.shortName || 'N/A',
+   770→          origin: r.boardingStop?.name || 'Origen',
+   771→          destination: r.alightingStop?.name || 'Destino',
+   772→          price: r.costCRC || 0,
+   773→          currency: 'CRC',
+   774→          distanceKm: r.walkingDistanceKm ? r.walkingDistanceKm : null,
+   775→          durationMin: r.totalTimeMinutes || null,
+   776→          boardingStop: {
+   777→            name: r.boardingStop?.name || '',
+   778→            city: null,
+   779→            coordinates: r.boardingStop ? { latitude: r.boardingStop.lat, longitude: r.boardingStop.lon } : undefined,
+   780→          },
+   781→          destinationStop: {
+   782→            name: r.alightingStop?.name || '',
+   783→            city: null,
+   784→            coordinates: r.alightingStop ? { latitude: r.alightingStop.lat, longitude: r.alightingStop.lon } : undefined,
+   785→          },
+   786→          nearbyStops: [],
+   787→          // GTFS-specific fields for map rendering and enhanced cards
+   788→          _shapePoints: r.shapePoints || [],
+   789→          _score: r.score || 0,
+   790→          _departTime: r.departTime || '',
+   791→          _arriveTime: r.arriveTime || '',
+   792→          _transfers: r.transfers || 0,
+   793→          _walkingDistanceKm: r.walkingDistanceKm || 0,
+   794→          _boardingStopDistanceKm: r.boardingStop?.distanceKm || 0,
+   795→        }))
+   796→
+   797→        setPlannedRoutes(mappedRoutes)
+   798→        setHasPlanned(true)
+   799→        setSelectedRoute(mappedRoutes[0])
+   800→
+   801→        // Build route path using GTFS shape data + OSRM for walking segments
+   802→        const newRoutePath: RoutePath = {}
+   803→        const bestRoute = data.routes[0]
+   804→
+   805→        // Fetch walking and bus routes in parallel
+   806→        const routePromises: Promise<void>[] = []
+   807→
+   808→        // Origin coordinates for walking segments
+   809→        const walkOriginLat = useCurrentLocation
+   810→          ? (currentLocation?.latitude ?? 9.9281)
+   811→          : (selectedOrigin?.lat ?? 9.9281)
+   812→        const walkOriginLon = useCurrentLocation
+   813→          ? (currentLocation?.longitude ?? -84.0907)
+   814→          : (selectedOrigin?.lon ?? -84.0907)
+   815→
+   816→        // Walking from origin to boarding stop (OSRM walking)
+   817→        if (bestRoute.boardingStop) {
+   818→          routePromises.push(
+   819→            getOSRMRoute(
+   820→              [walkOriginLat, walkOriginLon],
+   821→              [bestRoute.boardingStop.lat, bestRoute.boardingStop.lon],
+   822→              'foot'
+   823→            ).then((coords) => {
+   824→              if (coords) {
+   825→                newRoutePath.walking = coords
+   826→              } else {
+   827→                // Fallback: straight line
+   828→                newRoutePath.walking = [
+   829→                  [walkOriginLat, walkOriginLon],
+   830→                  [bestRoute.boardingStop.lat, bestRoute.boardingStop.lon],
+   831→                ]
+   832→              }
+   833→            })
+   834→          )
+   835→        }
+   836→
+   837→        // Walking from alighting stop to destination (OSRM walking)
+   838→        if (bestRoute.alightingStop && selectedDestination) {
+   839→          routePromises.push(
+   840→            getOSRMRoute(
+   841→              [bestRoute.alightingStop.lat, bestRoute.alightingStop.lon],
+   842→              [selectedDestination.lat, selectedDestination.lon],
+   843→              'foot'
+   844→            ).then((coords) => {
+   845→              if (coords) {
+   846→                newRoutePath.walking2 = coords
+   847→              } else {
+   848→                newRoutePath.walking2 = [
+   849→                  [bestRoute.alightingStop.lat, bestRoute.alightingStop.lon],
+   850→                  [selectedDestination.lat, selectedDestination.lon],
+   851→                ]
+   852→              }
+   853→            })
+   854→          )
+   855→        }
+   856→
+   857→        // Bus route: always use OSRM driving to follow actual streets
+   858→        // GTFS shape points are approximate and may contain bad coordinates
+   859→        if (bestRoute.boardingStop && bestRoute.alightingStop) {
+   860→          routePromises.push(
+   861→            getOSRMRoute(
+   862→              [bestRoute.boardingStop.lat, bestRoute.boardingStop.lon],
+   863→              [bestRoute.alightingStop.lat, bestRoute.alightingStop.lon],
+   864→              'driving'
+   865→            ).then((coords) => {
+   866→              if (coords) {
+   867→                newRoutePath.bus = coords
+   868→              }
+   869→            })
+   870→          )
+   871→        }
+   872→
+   873→        await Promise.all(routePromises)
+   874→        setRoutePath(newRoutePath)
+   875→        routePathRef.current = newRoutePath
+   876→
+   877→        // Fit map to show the full route
+   878→        fitRouteToBounds(newRoutePath)
+   879→
+   880→        // Load nearby GTFS stops for the map
+   881→        const bounds = getRouteBounds(newRoutePath)
+   882→        if (bounds) {
+   883→          try {
+   884→            const response2 = await fetch(
+   885→              `/api/stops?lat=${(bounds.north + bounds.south) / 2}&lon=${(bounds.east + bounds.west) / 2}&radius=10`
+   886→            )
+   887→            const stopsData = await response2.json()
+   888→            if (stopsData.success && stopsData.stops) {
+   889→              setBusStops(stopsData.stops.map((s: any) => ({
+   890→                id: s.stop_id,
+   891→                name: s.name,
+   892→                lat: s.lat,
+   893→                lon: s.lon,
+   894→              })))
+   895→            }
+   896→          } catch {
+   897→            // Error loading map stops - non-critical
+   898→          }
+   899→        }
+   900→      } else {
+   901→        // No se encontraron rutas de bus — crear ruta directa sintética para iniciar seguimiento
+   902→        if (previousRoutePath && selectedDestination) {
+   903→          setRoutePath(previousRoutePath)
+   904→          routePathRef.current = previousRoutePath
+   905→
+   906→          // Crear ruta sintética tipo "directo" para que funcione todo el flujo de seguimiento
+   907→          const directRoute: PlanatedRoute = {
+   908→            id: 'direct-route-' + Math.random().toString(36).slice(2, 6),
+   909→            company: 'Ruta Directa',
+   910→            routeNumber: 'Directo',
+   911→            origin: currentAddress || 'Tu ubicación',
+   912→            destination: selectedDestination.name || destination,
+   913→            price: 0,
+   914→            currency: 'CRC',
+   915→            boardingStop: {
+   916→              name: currentAddress || 'Tu ubicación',
+   917→              city: null,
+   918→              coordinates: currentLocation ? { latitude: currentLocation.latitude, longitude: currentLocation.longitude } : undefined,
+   919→            },
+   920→            destinationStop: {
+   921→              name: selectedDestination.displayName || selectedDestination.name,
+   922→              city: null,
+   923→              coordinates: { latitude: selectedDestination.lat, longitude: selectedDestination.lon },
+   924→            },
+   925→            nearbyStops: [],
+   926→          }
+   927→
+   928→          setPlannedRoutes([directRoute])
+   929→          setSelectedRoute(directRoute)
+   930→          setHasPlanned(true)
+   931→        } else if (previousRoutePath && previousSelectedRoute) {
+   932→          // Ya tenía una ruta seleccionada previamente (caso edge)
+   933→          setRoutePath(previousRoutePath)
+   934→          routePathRef.current = previousRoutePath
+   935→          setSelectedRoute(previousSelectedRoute)
+   936→          setHasPlanned(true)
+   937→        } else {
+   938→          setPlannedRoutes([])
+   939→          setHasPlanned(true)
+   940→          setError('No se encontraron rutas para tu destino. Intenta con otra ubicación.')
+   941→        }
+   942→      }
+   943→    } catch {
+   944→      // En caso de error, restaurar la ruta previa si existe
+   945→      if (previousRoutePath) {
+   946→        setRoutePath(previousRoutePath)
+   947→        routePathRef.current = previousRoutePath
+   948→        if (previousSelectedRoute) {
+   949→          setSelectedRoute(previousSelectedRoute)
+   950→        }
+   951→      }
+   952→      setError('Error al buscar rutas. Por favor intenta de nuevo.')
+   953→    } finally {
+   954→      setPlanning(false)
+   955→      setLoadingRoute(false)
+   956→    }
+   957→  }
+   958→
+   959→  const handleResetSearch = () => {
+   960→    // Limpiar timer de auto-ocultar panel
+   961→    if (routePanelTimerRef.current) {
+   962→      clearTimeout(routePanelTimerRef.current)
+   963→      routePanelTimerRef.current = null
+   964→    }
+   965→
+   966→    // Detener seguimiento si está activo
+   967→    if (trackingId) {
+   968→      navigator.geolocation.clearWatch(trackingId)
+   969→      setTrackingId(null)
+   970→    }
+   971→
+   972→    setIsTracking(false)
+   973→    setIsTripPaused(false)
+   974→    setTripStartTime(null)
+   975→    setElapsedTime(0)
+   976→    setDistanceRemaining(0)
+   977→    setShowArrivalNotification(false)
+   978→    setShowCountdown(false)
+   979→    setCountdown(30)
+   980→    if (countdownRef.current) {
+   981→      clearInterval(countdownRef.current)
+   982→      countdownRef.current = null
+   983→    }
+   984→    setTrackingPanelVisible(true)
+   985→
+   986→    setDestination('')
+   987→    setSelectedDestination(null)
+   988→    setPlannedRoutes([])
+   989→    setSelectedRoute(null)
+   990→    setRoutePath(null)
+   991→    routePathRef.current = null
+   992→    setBusStops(null)
+   993→    setHasPlanned(false)
+   994→    setRoutePanelDismissed(false)
+   995→    setError(null)
+   996→
+   997→    // Resetear mapa
+   998→    if (currentLocation) {
+   999→      setMapCenter([currentLocation.latitude, currentLocation.longitude])
+  1000→      setMapZoom(14)
+  1001→    }
+  1002→  }
+  1003→
+  1004→  const formatPrice = (price: number) => {
+  1005→    return new Intl.NumberFormat('es-CR', {
+  1006→      style: 'currency',
+  1007→      currency: 'CRC',
+  1008→      minimumFractionDigits: 0,
+  1009→    }).format(price)
+  1010→  }
+  1011→
+  1012→  const formatDistance = (km: number | null | undefined) => {
+  1013→    if (!km) return null
+  1014→    return `${km} km`
+  1015→  }
+  1016→
+  1017→  const formatDuration = (min: number | null | undefined) => {
+  1018→    if (!min) return null
+  1019→    const hours = Math.floor(min / 60)
+  1020→    const mins = min % 60
+  1021→    if (hours === 0) return `${mins} min`
+  1022→    if (mins === 0) return `${hours} h`
+  1023→    return `${hours} h ${mins} min`
+  1024→  }
+  1025→
+  1026→  // Calcular distancia entre dos coordenadas usando Haversine
+  1027→  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+  1028→    const R = 6371 // Radio de la Tierra en km
+  1029→    const dLat = (lat2 - lat1) * Math.PI / 180
+  1030→    const dLon = (lon2 - lon1) * Math.PI / 180
+  1031→    const a =
+  1032→      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+  1033→      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+  1034→      Math.sin(dLon / 2) * Math.sin(dLon / 2)
+  1035→    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+  1036→    return R * c
+  1037→  }
+  1038→
+  1039→  const handleStartTrip = () => {
+  1040→    if (!selectedRoute && !selectedDestination) {
+  1041→      return
+  1042→    }
+  1043→    // Si no hay ruta seleccionada (ruta directa), crear una ruta directa temporal
+  1044→    if (!selectedRoute && selectedDestination) {
+  1045→      // Se permite iniciar viaje directo sin transporte público
+  1046→    }
+  1047→    // Mostrar countdown de 30 segundos
+  1048→    setShowCountdown(true)
+  1049→    setCountdown(30)
+  1050→  }
+  1051→
+  1052→  const executeStartTrip = () => {
+  1053→    setShowCountdown(false)
+  1054→    if (countdownRef.current) {
+  1055→      clearInterval(countdownRef.current)
+  1056→      countdownRef.current = null
+  1057→    }
+  1058→
+  1059→    setIsTracking(true)
+  1060→    setIsTripPaused(false)
+  1061→    pausedAtRef.current = 0
+  1062→    totalPausedMsRef.current = 0
+  1063→    setTripStartTime(new Date())
+  1064→    setElapsedTime(0)
+  1065→    setTrackingPanelVisible(true)
+  1066→    setRoutePanelDismissed(true) // Cerrar panel de rutas al empezar viaje
+  1067→
+  1068→    // Calcular distancia inicial al destino
+  1069→    const destCoords = selectedRoute?.destinationStop?.coordinates
+  1070→      || (selectedDestination ? { latitude: selectedDestination.lat, longitude: selectedDestination.lon } : null)
+  1071→
+  1072→    if (destCoords) {
+  1073→      const initialDistance = calculateDistance(
+  1074→        currentLocation?.latitude ?? 9.9281,
+  1075→        currentLocation?.longitude ?? -84.0907,
+  1076→        destCoords.latitude,
+  1077→        destCoords.longitude
+  1078→      )
+  1079→      setDistanceRemaining(initialDistance)
+  1080→    }
+  1081→
+  1082→    // Centrar mapa en ubicación actual o en el origen personalizado
+  1083→    const startLat = useCurrentLocation
+  1084→      ? (currentLocation?.latitude ?? 9.9281)
+  1085→      : (selectedOrigin?.lat ?? 9.9281)
+  1086→    const startLon = useCurrentLocation
+  1087→      ? (currentLocation?.longitude ?? -84.0907)
+  1088→      : (selectedOrigin?.lon ?? -84.0907)
+  1089→    setMapCenter([startLat, startLon])
+  1090→    setMapZoom(14)
+  1091→
+  1092→    // Iniciar seguimiento de posición con watchPosition
+  1093→    const id = navigator.geolocation.watchPosition(
+  1094→      (position) => {
+  1095→        const { latitude, longitude } = position.coords
+  1096→        setCurrentLocation({ latitude, longitude })
+  1097→
+  1098→        // Calcular distancia restante
+  1099→        const trackDestCoords = selectedRoute?.destinationStop?.coordinates
+  1100→          || (selectedDestination ? { latitude: selectedDestination.lat, longitude: selectedDestination.lon } : null)
+  1101→
+  1102→        if (trackDestCoords) {
+  1103→          const remaining = calculateDistance(
+  1104→            latitude,
+  1105→            longitude,
+  1106→            trackDestCoords.latitude,
+  1107→            trackDestCoords.longitude
+  1108→          )
+  1109→          setDistanceRemaining(remaining)
+  1110→
+  1111→          // Verificar si ha llegado al destino (dentro de 100 metros)
+  1112→          if (remaining < 0.1) {
+  1113→            handleStopTrip()
+  1114→            setShowArrivalNotification(true)
+  1115→          }
+  1116→        }
+  1117→
+  1118→        // Actualizar dirección
+  1119→        getAddressFromCoordinates(latitude, longitude).then(setCurrentAddress)
+  1120→      },
+  1121→      (error) => {
+  1122→        console.error('Error al rastrear ubicación:', error)
+  1123→        setError('Error al rastrear tu ubicación. Verifica que el GPS esté activo.')
+  1124→      },
+  1125→      {
+  1126→        enableHighAccuracy: true,
+  1127→        timeout: 10000,
+  1128→        maximumAge: 0,
+  1129→      }
+  1130→    )
+  1131→
+  1132→    setTrackingId(id)
+  1133→  }
+  1134→
+  1135→  // Countdown effect
+  1136→  useEffect(() => {
+  1137→    if (showCountdown && countdown > 0) {
+  1138→      countdownRef.current = setInterval(() => {
+  1139→        setCountdown((prev) => {
+  1140→          if (prev <= 1) {
+  1141→            if (countdownRef.current) clearInterval(countdownRef.current)
+  1142→            return 0
+  1143→          }
+  1144→          return prev - 1
+  1145→        })
+  1146→      }, 1000)
+  1147→    }
+  1148→    return () => {
+  1149→      if (countdownRef.current) {
+  1150→        clearInterval(countdownRef.current)
+  1151→        countdownRef.current = null
+  1152→      }
+  1153→    }
+  1154→  }, [showCountdown])
+  1155→
+  1156→  // Auto-start trip when countdown reaches 0
+  1157→  useEffect(() => {
+  1158→    if (showCountdown && countdown === 0) {
+  1159→      executeStartTrip()
+  1160→    }
+  1161→  }, [countdown, showCountdown])
+  1162→
+  1163→  const handleStopTrip = () => {
+  1164→    handlePauseTrip()
+  1165→  }
+  1166→
+  1167→  const handlePauseTrip = () => {
+  1168→    if (trackingId) {
+  1169→      navigator.geolocation.clearWatch(trackingId)
+  1170→      setTrackingId(null)
+  1171→    }
+  1172→    pausedAtRef.current = Date.now()
+  1173→    setIsTripPaused(true)
+  1174→  }
+  1175→
+  1176→  const handleResumeTrip = () => {
+  1177→    // Account for paused duration
+  1178→    if (pausedAtRef.current > 0) {
+  1179→      totalPausedMsRef.current += Date.now() - pausedAtRef.current
+  1180→      pausedAtRef.current = 0
+  1181→    }
+  1182→    setIsTripPaused(false)
+  1183→
+  1184→    // Restart geolocation watch
+  1185→    const id = navigator.geolocation.watchPosition(
+  1186→      (position) => {
+  1187→        const { latitude, longitude } = position.coords
+  1188→        setCurrentLocation({ latitude, longitude })
+  1189→
+  1190→        // Calcular distancia restante
+  1191→        const trackDestCoords = selectedRoute?.destinationStop?.coordinates
+  1192→          || (selectedDestination ? { latitude: selectedDestination.lat, longitude: selectedDestination.lon } : null)
+  1193→
+  1194→        if (trackDestCoords) {
+  1195→          const remaining = calculateDistance(
+  1196→            latitude,
+  1197→            longitude,
+  1198→            trackDestCoords.latitude,
+  1199→            trackDestCoords.longitude
+  1200→          )
+  1201→          setDistanceRemaining(remaining)
+  1202→
+  1203→          // Verificar si ha llegado al destino (dentro de 100 metros)
+  1204→          if (remaining < 0.1) {
+  1205→            handleFullStopTrip()
+  1206→            setShowArrivalNotification(true)
+  1207→          }
+  1208→        }
+  1209→
+  1210→        // Actualizar dirección
+  1211→        getAddressFromCoordinates(latitude, longitude).then(setCurrentAddress)
+  1212→      },
+  1213→      (error) => {
+  1214→        console.error('Error al rastrear ubicación:', error)
+  1215→        setError('Error al rastrear tu ubicación. Verifica que el GPS esté activo.')
+  1216→      },
+  1217→      {
+  1218→        enableHighAccuracy: true,
+  1219→        timeout: 10000,
+  1220→        maximumAge: 0,
+  1221→      }
+  1222→    )
+  1223→
+  1224→    setTrackingId(id)
+  1225→  }
+  1226→
+  1227→  const handleFullStopTrip = () => {
+  1228→    handleResetSearch()
+  1229→  }
+  1230→
+  1231→  // Manejar interacción con el mapa
+  1232→  const handleMapInteraction = () => {
+  1233→    if (isTracking) {
+  1234→      setIsUserInteracting(true)
+  1235→      setLastUserActivity(Date.now())
+  1236→    }
+  1237→  }
+  1238→
+  1239→  // Route results are shown in bottom panel - no dialog needed
+  1240→
+  1241→  return (
+  1242→    <div
+  1243→      className="relative h-screen w-screen overflow-hidden bg-gray-100"
+  1244→      onClick={() => isTracking && setTrackingPanelVisible(!trackingPanelVisible)}
+  1245→    >
+  1246→      {/* Full Screen Map - Siempre visible */}
+  1247→      <div className="absolute inset-0 z-0">
+  1248→        <BusMap
+  1249→          center={mapCenter}
+  1250→          zoom={mapZoom}
+  1251→          userLocation={currentLocation ? [currentLocation.latitude, currentLocation.longitude] : undefined}
+  1252→          originCoordinates={!useCurrentLocation && selectedOrigin ? {
+  1253→            name: selectedOrigin.name || 'Origen',
+  1254→            latitude: selectedOrigin.lat,
+  1255→            longitude: selectedOrigin.lon,
+  1256→            displayName: selectedOrigin.displayName
+  1257→          } : null}
+  1258→          nearestStop={nearestStop}
+  1259→          plannedRoutes={plannedRoutes}
+  1260→          plannedRoutesLength={plannedRoutes.length}
+  1261→          selectedRoute={selectedRoute}
+  1262→          destinationCoordinates={selectedDestination ? {
+  1263→            name: selectedDestination.name || 'Destino',
+  1264→            latitude: selectedDestination.lat,
+  1265→            longitude: selectedDestination.lon,
+  1266→            displayName: selectedDestination.displayName
+  1267→          } : null}
+  1268→          routePath={routePath}
+  1269→          busStops={busStops}
+  1270→          isTracking={isTracking}
+  1271→          onMapInteraction={handleMapInteraction}
+  1272→        />
+  1273→      </div>
+  1274→
+  1275→      {/* Loading Overlay - Solo muestra cuando no hay ubicación */}
+  1276→      {!currentLocation && loadingLocation && (
+  1277→        <div className="absolute inset-0 bg-white/90 flex items-center justify-center z-20">
+  1278→          <div className="text-center">
+  1279→            <Loader2 className="w-12 h-12 animate-spin mx-auto mb-3 text-[#E31837]" />
+  1280→            <p className="text-sm text-[#6B7280]">Obteniendo tu ubicación...</p>
+  1281→          </div>
+  1282→        </div>
+  1283→      )}
+  1284→
+  1285→      {/* Route results shown in bottom panel below */}
+  1286→
+  1287→      {/* Notificación de llegada */}
+  1288→      {showArrivalNotification && (
+  1289→        <div className="absolute top-20 left-4 right-4 z-50">
+  1290→          <Card className="bg-[#10B981] border-2 border-[#059669] shadow-xl animate-bounce">
+  1291→            <CardContent className="p-6 text-center">
+  1292→              <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center mx-auto mb-3">
+  1293→                <Navigation className="w-8 h-8 text-[#10B981]" />
+  1294→              </div>
+  1295→              <h3 className="text-xl font-bold text-white mb-2">¡Has llegado a tu destino!</h3>
+  1296→              <p className="text-white/90 mb-4">
+  1297→                {selectedRoute?.destinationStop?.name || destination}
+  1298→              </p>
+  1299→              <div className="flex gap-2 justify-center">
+  1300→                <Button
+  1301→                  onClick={() => setShowArrivalNotification(false)}
+  1302→                  variant="secondary"
+  1303→                  size="sm"
+  1304→                >
+  1305→                  Cerrar
+  1306→                </Button>
+  1307→                <Button
+  1308→                  onClick={() => {
+  1309→                    setShowArrivalNotification(false)
+  1310→                    handleResetSearch()
+  1311→                  }}
+  1312→                  size="sm"
+  1313→                  className="bg-white text-[#10B981] hover:bg-gray-100"
+  1314→                >
+  1315→                  Nueva Ruta
+  1316→                </Button>
+  1317→              </div>
+  1318→            </CardContent>
+  1319→          </Card>
+  1320→        </div>
+  1321→      )}
+  1322→
+  1323→      {/* Header - Floating on top of map */}
+  1324→      <header className="absolute top-0 left-0 right-0 z-30 shadow-md overflow-hidden">
+  1325→        <img src="/RutaTica_bus.png" alt="" className="absolute inset-0 w-full h-full object-cover object-center" aria-hidden="true" />
+  1326→        <div className="container mx-auto px-4 py-3 relative z-10">
+  1327→          <div className="flex items-center justify-between">
+  1328→            <Sheet open={isMenuOpen} onOpenChange={setIsMenuOpen}>
+  1329→              <SheetTrigger asChild>
+  1330→                <Button variant="ghost" size="icon" className="text-white bg-white/25 hover:bg-white/35 backdrop-blur-sm rounded-lg border border-white/30">
+  1331→                  <Menu className="w-6 h-6" />
+  1332→                </Button>
+  1333→              </SheetTrigger>
+  1334→              <SheetContent side="left" className="w-full sm:w-96 overflow-y-auto">
+  1335→                <SheetTitle className="sr-only">Menú de RutaTica</SheetTitle>
+  1336→                <SheetDescription className="sr-only">Planifica tu viaje en autobús por Costa Rica</SheetDescription>
+  1337→                <div className="mt-8 space-y-4">
+  1338→                  {/* Header Content */}
+  1339→                  <div className="flex items-center gap-3 pb-4 border-b">
+  1340→                    <img src="/RutaTica_Logo.png" alt="RutaTica" className="h-9 w-auto object-contain mix-blend-multiply" />
+  1341→                    <div>
+  1342→                      <p className="text-xs text-gray-500">Toda Costa Rica en una APP</p>
+  1343→                    </div>
+  1344→                  </div>
+  1345→
+  1346→                  {/* Trip Tracking Info - Inside Menu */}
+  1347→                  {isTracking && (
+  1348→                    <div className="bg-green-50 rounded-lg border-2 border-[#10B981] overflow-hidden">
+  1349→                      <div className="bg-[#10B981] px-3 py-2 flex items-center justify-between">
+  1350→                        <div className="flex items-center gap-2">
+  1351→                          <div className="w-7 h-7 bg-white rounded-full flex items-center justify-center">
+  1352→                            <Bus className="w-4 h-4 text-[#10B981] animate-pulse" />
+  1353→                          </div>
+  1354→                          <div>
+  1355→                            <h3 className="font-bold text-white text-sm">Viaje en curso</h3>
+  1356→                            <p className="text-white/80 text-xs">{selectedRoute?.routeNumber || 'Directo'}</p>
+  1357→                          </div>
+  1358→                        </div>
+  1359→                        <Badge className="bg-white/25 text-white border-none text-xs">
+  1360→                          Activo
+  1361→                        </Badge>
+  1362→                      </div>
+  1363→                      <div className="p-3">
+  1364→                        <div className="grid grid-cols-2 gap-3">
+  1365→                          <div className="text-center">
+  1366→                            <p className="text-xs text-[#6B7280]">Restante</p>
+  1367→                            <p className="font-bold text-[#E31837] text-lg leading-tight">
+  1368→                              {distanceRemaining.toFixed(1)} km
+  1369→                            </p>
+  1370→                          </div>
+  1371→                          <div className="text-center">
+  1372→                            <p className="text-xs text-[#6B7280]">Tiempo</p>
+  1373→                            <p className="font-bold text-[#0052B4] text-lg leading-tight">
+  1374→                              {elapsedTime < 60
+  1375→                                ? `${Math.floor(elapsedTime)} min`
+  1376→                                : `${Math.floor(elapsedTime / 60)}h ${Math.floor(elapsedTime % 60)}min`}
+  1377→                            </p>
+  1378→                          </div>
+  1379→                        </div>
+  1380→                        <div className="mt-3 pt-3 border-t border-green-200 flex items-center gap-2 text-xs text-[#6B7280]">
+  1381→                          <MapPin className="w-3.5 h-3.5 text-[#0052B4] flex-shrink-0" />
+  1382→                          <span className="truncate">{selectedRoute?.destinationStop?.name || destination}</span>
+  1383→                        </div>
+  1384→                        <Button
+  1385→                          onClick={handleStopTrip}
+  1386→                          className="w-full h-10 mt-3 text-sm font-semibold bg-white text-red-600 border-2 border-red-600 hover:bg-red-50"
+  1387→                        >
+  1388→                          <Navigation className="w-4 h-4 mr-2" />
+  1389→                          Detener Viaje
+  1390→                        </Button>
+  1391→                      </div>
+  1392→                    </div>
+  1393→                  )}
+  1394→
+  1395→                  {/* Current Route Info - Only when not tracking */}
+  1396→                  {hasPlanned && !isTracking && (
+  1397→                    <div className="bg-blue-50 p-3 rounded-lg border border-blue-200">
+  1398→                      <div className="flex items-center justify-between">
+  1399→                        <span className="text-sm font-semibold text-[#0052B4]">
+  1400→                          Ruta a {destination}
+  1401→                        </span>
+  1402→                        <Button
+  1403→                          variant="outline"
+  1404→                          size="sm"
+  1405→                          onClick={handleResetSearch}
+  1406→                          className="text-xs border-[#E5E7EB] text-gray-600 hover:bg-red-50 hover:text-red-600"
+  1407→                        >
+  1408→                          <X className="w-3 h-3 mr-1" />
+  1409→                          Reiniciar
+  1410→                        </Button>
+  1411→                      </div>
+  1412→                    </div>
+  1413→                  )}
+  1414→
+  1415→                                    {/* Origin Card */}
+  1416→                  {!hasPlanned && (
+  1417→                    <Card className="shadow-sm border border-[#E5E7EB]">
+  1418→                      <CardContent className="p-4 space-y-3">
+  1419→                        <div className="flex items-center justify-between gap-2">
+  1420→                          <div className="flex items-center gap-2">
+  1421→                            <div className="w-6 h-6 bg-[#0052B4] rounded-full flex items-center justify-center">
+  1422→                              <MapPin className="w-3.5 h-3.5 text-white" />
+  1423→                            </div>
+  1424→                            <span className="font-semibold text-sm text-[#374151]">Origen</span>
+  1425→                          </div>
+  1426→                          <div className="flex items-center gap-2">
+  1427→                            <Label htmlFor="location-toggle" className="text-xs cursor-pointer text-[#6B7280]">
+  1428→                              Mi ubicación
+  1429→                            </Label>
+  1430→                            <Switch
+  1431→                              id="location-toggle"
+  1432→                              checked={useCurrentLocation}
+  1433→                              onCheckedChange={(checked) => {
+  1434→                                setUseCurrentLocation(checked)
+  1435→                                if (!checked) {
+  1436→                                  setSelectedOrigin(null)
+  1437→                                  setOriginText('')
+  1438→                                }
+  1439→                              }}
+  1440→                              className="scale-90"
+  1441→                            />
+  1442→                          </div>
+  1443→                        </div>
+  1444→
+  1445→                        {useCurrentLocation ? (
+  1446→                          // Mostrar ubicación actual
+  1447→                          <>
+  1448→                            {loadingLocation || loadingAddress ? (
+  1449→                              <div className="flex items-center gap-2 text-muted-foreground p-3 bg-blue-50 rounded-lg border border-[#E5E7EB]">
+  1450→                                <Loader2 className="w-4 h-4 animate-spin text-[#0052B4]" />
+  1451→                                <span className="text-sm">
+  1452→                                  {loadingLocation ? 'Obteniendo ubicación...' : 'Obteniendo dirección...'}
+  1453→                                </span>
+  1454→                              </div>
+  1455→                            ) : (
+  1456→                              <div className="space-y-2">
+  1457→                                <div className="bg-white rounded-lg p-3 border border-[#E5E7EB] shadow-sm">
+  1458→                                  <p className="text-sm leading-relaxed text-[#374151]">{currentAddress}</p>
+  1459→                                </div>
+  1460→
+  1461→                                <div className="flex items-center justify-between gap-2">
+  1462→                                  <Label htmlFor="address-toggle" className="text-xs cursor-pointer text-[#6B7280]">
+  1463→                                    Dirección {showFullAddress ? 'completa' : 'corta'}
+  1464→                                  </Label>
+  1465→                                  <Switch
+  1466→                                    id="address-toggle"
+  1467→                                    checked={showFullAddress}
+  1468→                                    onCheckedChange={setShowFullAddress}
+  1469→                                    className="scale-90"
+  1470→                                  />
+  1471→                                </div>
+  1472→
+  1473→                                {nearestStop && (
+  1474→                                  <div className="flex items-center gap-2 text-xs text-[#6B7280] bg-green-50 p-2 rounded-lg border border-[#E5E7EB]">
+  1475→                                    <Bus className="w-3.5 h-3.5 text-[#10B981]" />
+  1476→                                    <span>
+  1477→                                      Parada: <span className="font-semibold text-[#10B981]">{nearestStop.name}</span>
+  1478→                                    </span>
+  1479→                                    <Badge variant="secondary" className="ml-auto text-xs bg-green-100 text-[#10B981] border-green-200">
+  1480→                                      {nearestStop.distance.toFixed(1)} km
+  1481→                                    </Badge>
+  1482→                                  </div>
+  1483→                                )}
+  1484→                              </div>
+  1485→                            )}
+  1486→                          </>
+  1487→                        ) : (
+  1488→                          // Campo de búsqueda de origen personalizado
+  1489→                          <div className="space-y-2">
+  1490→                            <LocationAutocomplete
+  1491→                              value={originText}
+  1492→                              onChange={setOriginText}
+  1493→                              onSelect={handleOriginSelect}
+  1494→                              placeholder="Escribe el lugar de origen..."
+  1495→                              disabled={planning}
+  1496→                            />
+  1497→                            {selectedOrigin && (
+  1498→                              <div className="flex items-center gap-2 bg-blue-50 p-2 rounded-lg border border-[#E5E7EB]">
+  1499→                                <MapPin className="w-3.5 h-3.5 text-[#0052B4] flex-shrink-0" />
+  1500→                                <span className="text-xs text-[#374151] truncate">{selectedOrigin.displayName || selectedOrigin.name}</span>
+  1501→                              </div>
+  1502→                            )}
+  1503→                          </div>
+  1504→                        )}
+  1505→                      </CardContent>
+  1506→                    </Card>
+  1507→                  )}
+  1508→
+  1509→                  {/* Destination Card - Debajo de origen */}
+  1510→                  <Card className="shadow-md border border-[#E5E7EB]">
+  1511→                    <CardContent className="p-4 space-y-4">
+  1512→                      <div className="space-y-2">
+  1513→                        <div className="flex items-center gap-2">
+  1514→                          <div className="w-6 h-6 bg-[#E31837] rounded-full flex items-center justify-center">
+  1515→                            <Navigation className="w-3.5 h-3.5 text-white" />
+  1516→                          </div>
+  1517→                          <span className="font-semibold text-sm text-[#374151]">Destino</span>
+  1518→                        </div>
+  1519→                        <LocationAutocomplete
+  1520→                          value={destination}
+  1521→                          onChange={setDestination}
+  1522→                          onSelect={handleDestinationSelect}
+  1523→                          placeholder="Escribe el destino..."
+  1524→                          disabled={planning}
+  1525→                        />
+  1526→                      </div>
+  1527→
+  1528→                      {selectedDestination && (
+  1529→                        <Button
+  1530→                          onClick={handlePlanRoute}
+  1531→                          disabled={planning}
+  1532→                          className="w-full h-11 text-base font-semibold bg-[#10B981] hover:bg-[#059669] shadow-md"
+  1533→                        >
+  1534→                          {planning ? (
+  1535→                            <>
+  1536→                              <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+  1537→                              Calculando ruta...
+  1538→                            </>
+  1539→                          ) : (
+  1540→                            <>
+  1541→                              <Search className="w-5 h-5 mr-2" />
+  1542→                              Buscar Ruta
+  1543→                            </>
+  1544→                          )}
+  1545→                        </Button>
+  1546→                      )}
+  1547→                    </CardContent>
+  1548→                  </Card>
+  1549→
+  1550→                  {/* Quick Access Buttons - Solo si no hay destino seleccionado */}
+  1551→                  {!hasPlanned && !selectedDestination && (
+  1552→                    <div className="grid grid-cols-2 gap-3">
+  1553→                      <Card className="shadow-sm hover:shadow-md transition-shadow cursor-pointer border border-[#E5E7EB]">
+  1554→                        <CardContent className="p-4 flex flex-col items-center justify-center text-center">
+  1555→                          <img src="/Bus.jpg" alt="Rutas" className="w-12 h-12 rounded-xl object-cover object-top mb-2" />
+  1556→                          <span className="font-semibold text-sm text-[#374151]">Rutas</span>
+  1557→                        </CardContent>
+  1558→                      </Card>
+  1559→
+  1560→                      <Card className="shadow-sm hover:shadow-md transition-shadow cursor-pointer border border-[#E5E7EB]">
+  1561→                        <CardContent className="p-4 flex flex-col items-center justify-center text-center">
+  1562→                          <img src="/Horario.jpg" alt="Horarios" className="w-12 h-12 rounded-xl object-cover mb-2" />
+  1563→                          <span className="font-semibold text-sm text-[#374151]">Horarios</span>
+  1564→                        </CardContent>
+  1565→                      </Card>
+  1566→
+  1567→                      <Card className="shadow-sm hover:shadow-md transition-shadow cursor-pointer border border-[#E5E7EB]">
+  1568→                        <CardContent className="p-4 flex flex-col items-center justify-center text-center">
+  1569→                          <div className="w-12 h-12 bg-blue-50 rounded-full flex items-center justify-center mb-2">
+  1570→                            <MapPin className="w-6 h-6 text-[#0052B4]" />
+  1571→                          </div>
+  1572→                          <span className="font-semibold text-sm text-[#374151]">Cercanos</span>
+  1573→                        </CardContent>
+  1574→                      </Card>
+  1575→
+  1576→                      <Card className="shadow-sm hover:shadow-md transition-shadow cursor-pointer border border-[#E5E7EB]">
+  1577→                        <CardContent className="p-4 flex flex-col items-center justify-center text-center">
+  1578→                          <div className="w-12 h-12 bg-green-50 rounded-full flex items-center justify-center mb-2">
+  1579→                            <Heart className="w-6 h-6 text-[#10B981]" />
+  1580→                          </div>
+  1581→                          <span className="font-semibold text-sm text-[#374151]">Favoritos</span>
+  1582→                        </CardContent>
+  1583→                      </Card>
+  1584→                    </div>
+  1585→                  )}
+  1586→
+  1587→                  {/* Error Message */}
+  1588→                  {error && !hasPlanned && (
+  1589→                    <Card className="border border-[#FECACA] bg-red-50">
+  1590→                      <CardContent className="p-4 text-center text-[#DC2626]">
+  1591→                        {error}
+  1592→                      </CardContent>
+  1593→                    </Card>
+  1594→                  )}
+  1595→
+  1596→                  {/* Route results shown in bottom panel outside Sheet */}
+  1597→
+  1598→                  {/* Popular Destinations - Solo si no hay destino seleccionado */}
+  1599→                  {!hasPlanned && !error && !selectedDestination && (
+  1600→                    <div className="space-y-3">
+  1601→                      <h3 className="font-bold text-lg text-[#374151]">Destinos Populares</h3>
+  1602→                      <div className="grid grid-cols-2 gap-3">
+  1603→                        {popularDestinations.length > 0 ? (
+  1604→                          popularDestinations.map((dest) => (
+  1605→                            <Button
+  1606→                              key={dest.name}
+  1607→                              variant="outline"
+  1608→                              onClick={() => {
+  1609→                                const name = dest.displayName || dest.name
+  1610→                                setDestination(name)
+  1611→                                setSelectedDestination({
+  1612→                                  name: name,
+  1613→                                  lat: dest.lat,
+  1614→                                  lon: dest.lon,
+  1615→                                  displayName: name,
+  1616→                                })
+  1617→                              }}
+  1618→                              disabled={planning}
+  1619→                              className="h-auto py-3 min-w-0 flex flex-col items-center gap-2 border border-[#E5E7EB] hover:border-[#FECACA] hover:bg-red-50 text-[#374151]"
+  1620→                            >
+  1621→                              <MapPin className="w-5 h-5 text-[#E31837] flex-shrink-0" />
+  1622→                              <span className="font-semibold text-xs leading-tight text-center line-clamp-2 w-full overflow-hidden">{dest.displayName || dest.name}</span>
+  1623→                            </Button>
+  1624→                          ))
+  1625→                        ) : (
+  1626→                          <>
+  1627→                            {['Alajuela', 'Heredia', 'Cartago', 'Escazú', 'Desamparados', 'Limón'].map((dest) => (
+  1628→                              <Button
+  1629→                                key={dest}
+  1630→                                variant="outline"
+  1631→                                onClick={() => {
+  1632→                                  setDestination(dest)
+  1633→                                }}
+  1634→                                disabled={planning}
+  1635→                                className="h-auto py-3 min-w-0 flex flex-col items-center gap-2 border border-[#E5E7EB] hover:border-[#FECACA] hover:bg-red-50 text-[#374151]"
+  1636→                              >
+  1637→                                <MapPin className="w-5 h-5 text-[#E31837] flex-shrink-0" />
+  1638→                                <span className="font-semibold text-xs leading-tight text-center w-full overflow-hidden">{dest}</span>
+  1639→                              </Button>
+  1640→                            ))}
+  1641→                          </>
+  1642→                        )}
+  1643→                      </div>
+  1644→                    </div>
+  1645→                  )}
+  1646→                </div>
+  1647→              </SheetContent>
+  1648→            </Sheet>
+  1649→
+  1650→            <div className="flex items-center gap-2">
+  1651→              <img src="/RutaTica_Logo.png" alt="RutaTica" className="h-8 w-auto object-contain mix-blend-multiply" />
+  1652→              <p className="text-xs text-white drop-shadow-sm">
+  1653→                {isTracking ? '🚌 Viaje en curso' : hasPlanned ? `Ruta a ${destination}` : '¿A dónde vamos hoy?'}
+  1654→              </p>
+  1655→            </div>
+  1656→
+  1657→            <div className="flex items-center gap-2">
+  1658→              {hasPlanned && (
+  1659→                <Button
+  1660→                  variant="outline"
+  1661→                  size="sm"
+  1662→                  onClick={handleResetSearch}
+  1663→                  className="text-sm border-white/40 text-white hover:bg-white/20 hover:text-white hover:border-white/60"
+  1664→                >
+  1665→                  <X className="w-4 h-4 mr-1" />
+  1666→                  Reiniciar
+  1667→                </Button>
+  1668→              )}
+  1669→              <Button variant="ghost" size="icon" className="text-white hover:bg-white/20 drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]">
+  1670→                <Bell className="w-5 h-5" />
+  1671→              </Button>
+  1672→            </div>
+  1673→          </div>
+  1674→        </div>
+  1675→      </header>
+  1676→
+  1677→      {/* Bottom Route Results Panel - Compact */}
+  1678→      {hasPlanned && !routePanelDismissed && !isTracking && (
+  1679→        <div className="absolute bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur-sm border-t border-[#E5E7EB] shadow-[0_-4px_20px_rgba(0,0,0,0.1)]">
+  1680→          {/* Compact Header — sin botón de cerrar; el panel se cierra al iniciar el viaje */}
+  1681→          <div className="px-3 py-1.5 flex items-center border-b border-[#E5E7EB]">
+  1682→            <h2 className="text-xs font-bold flex items-center gap-1 text-gray-800">
+  1683→              <Bus className="w-3.5 h-3.5 text-red-600" />
+  1684→              Rutas
+  1685→              {plannedRoutes.length > 0 && (
+  1686→                <Badge className="bg-red-600 text-white border-none text-[10px] px-1 py-0">{plannedRoutes.length}</Badge>
+  1687→              )}
+  1688→            </h2>
+  1689→          </div>
+  1690→
+  1691→          {/* Error message when no routes */}
+  1692→          {error && plannedRoutes.length === 0 && (
+  1693→            <div className="px-4 pb-4">
+  1694→              <Card className="p-4 text-center border border-[#FECACA] bg-red-50">
+  1695→                <Bus className="w-12 h-12 mx-auto text-[#9CA3AF] mb-3" />
+  1696→                <p className="text-[#DC2626] text-sm">{error}</p>
+  1697→              </Card>
+  1698→            </div>
+  1699→          )}
+  1700→
+  1701→          {/* No public transport available - show direct route info */}
+  1702→          {!error && plannedRoutes.length === 0 && selectedDestination && (
+  1703→            <div className="px-4 pb-4 space-y-3">
+  1704→              <Card className="p-3 border border-amber-200 bg-amber-50">
+  1705→                <div className="flex items-start gap-2">
+  1706→                  <div className="w-8 h-8 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+  1707→                    <Bus className="w-4 h-4 text-amber-600" />
+  1708→                  </div>
+  1709→                  <div>
+  1710→                    <p className="text-sm font-semibold text-amber-800">Sin transporte público registrado</p>
+  1711→                    <p className="text-xs text-amber-700 mt-0.5">
+  1712→                      No se encontraron rutas de autobús para este trayecto. Se muestra la ruta directa en el mapa.
+  1713→                    </p>
+  1714→                  </div>
+  1715→                </div>
+  1716→              </Card>
+  1717→
+  1718→              {/* Direct route info */}
+  1719→              {routePath?.direct && (
+  1720→                <Card className="p-3 border border-[#E5E7EB] shadow-sm">
+  1721→                  <div className="space-y-2">
+  1722→                    <div className="flex items-center gap-2">
+  1723→                      <Navigation className="w-4 h-4 text-[#0052B4]" />
+  1724→                      <span className="text-xs font-semibold text-[#374151]">Ruta directa</span>
+  1725→                    </div>
+  1726→                    <div className="flex items-center gap-2">
+  1727→                      <div className="flex-1">
+  1728→                        <p className="text-[11px] text-[#6B7280]">Origen</p>
+  1729→                        <p className="text-xs font-semibold text-[#0052B4] truncate">
+  1730→                          {useCurrentLocation ? 'Mi ubicación' : (selectedOrigin?.displayName || selectedOrigin?.name || 'Origen')}
+  1731→                        </p>
+  1732→                      </div>
+  1733→                      <ArrowRight className="w-3.5 h-3.5 text-[#9CA3AF] flex-shrink-0" />
+  1734→                      <div className="flex-1 text-right">
+  1735→                        <p className="text-[11px] text-[#6B7280]">Destino</p>
+  1736→                        <p className="text-xs font-semibold text-[#E31837] truncate">{selectedDestination?.displayName || selectedDestination?.name}</p>
+  1737→                      </div>
+  1738→                    </div>
+  1739→                    <Button
+  1740→                      onClick={(e) => { e.stopPropagation(); handlePlanRoute() }}
+  1741→                      className="w-full h-9 text-xs font-semibold bg-[#10B981] hover:bg-[#059669] shadow-sm"
+  1742→                    >
+  1743→                      <Search className="w-3.5 h-3.5 mr-1" />
+  1744→                      Buscar Ruta
+  1745→                    </Button>
+  1746→                  </div>
+  1747→                </Card>
+  1748→              )}
+  1749→
+  1750→              {!routePath?.direct && (
+  1751→                <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg">
+  1752→                  <Loader2 className="w-4 h-4 text-[#0052B4] animate-spin flex-shrink-0" />
+  1753→                  <p className="text-xs text-[#0052B4]">Calculando ruta directa...</p>
+  1754→                </div>
+  1755→              )}
+  1756→            </div>
+  1757→          )}
+  1758→
+  1759→          {/* Route cards - compact scrollable */}
+  1760→          {plannedRoutes.length > 0 && (
+  1761→            <div className="max-h-[20vh] overflow-y-auto px-2.5 pb-2 space-y-1.5 scrollbar-thin">
+  1762→              {plannedRoutes.map((route) => (
+  1763→                <Card
+  1764→                  key={route.id}
+  1765→                  className={`transition-all cursor-pointer shadow-sm ${
+  1766→                    selectedRoute?.id === route.id
+  1767→                      ? 'ring-2 ring-[#E31837] shadow-md border border-[#FECACA]'
+  1768→                      : 'border border-[#E5E7EB] hover:border-[#FECACA] hover:shadow-sm'
+  1769→                  }`}
+  1770→                  onClick={async () => {
+  1771→                    setSelectedRoute(route)
+  1772→                    const rp: RoutePath = {}
+  1773→                    const promises: Promise<void>[] = []
+  1774→
+  1775→                    // Origin coordinates
+  1776→                    const cardOriginLat = useCurrentLocation
+  1777→                      ? (currentLocation?.latitude ?? 9.9281)
+  1778→                      : (selectedOrigin?.lat ?? 9.9281)
+  1779→                    const cardOriginLon = useCurrentLocation
+  1780→                      ? (currentLocation?.longitude ?? -84.0907)
+  1781→                      : (selectedOrigin?.lon ?? -84.0907)
+  1782→
+  1783→                    // Walking to boarding stop
+  1784→                    if (route.boardingStop?.coordinates) {
+  1785→                      promises.push(
+  1786→                        getOSRMRoute(
+  1787→                          [cardOriginLat, cardOriginLon],
+  1788→                          [route.boardingStop.coordinates.latitude, route.boardingStop.coordinates.longitude],
+  1789→                          'foot'
+  1790→                        ).then((coords) => {
+  1791→                          if (coords && coords.length > 2) rp.walking = coords
+  1792→                        })
+  1793→                      )
+  1794→                    }
+  1795→
+  1796→                    // Bus segment: always use OSRM driving to follow actual streets
+  1797→                    if (route.boardingStop?.coordinates && route.destinationStop?.coordinates) {
+  1798→                      promises.push(
+  1799→                        getOSRMRoute(
+  1800→                          [route.boardingStop.coordinates.latitude, route.boardingStop.coordinates.longitude],
+  1801→                          [route.destinationStop.coordinates.latitude, route.destinationStop.coordinates.longitude],
+  1802→                          'driving'
+  1803→                        ).then((coords) => {
+  1804→                          if (coords) rp.bus = coords
+  1805→                        })
+  1806→                      )
+  1807→                    }
+  1808→
+  1809→                    // Walking from alighting stop to destination
+  1810→                    if (selectedDestination && route.destinationStop?.coordinates) {
+  1811→                      promises.push(
+  1812→                        getOSRMRoute(
+  1813→                          [route.destinationStop.coordinates.latitude, route.destinationStop.coordinates.longitude],
+  1814→                          [selectedDestination.lat, selectedDestination.lon],
+  1815→                          'foot'
+  1816→                        ).then((coords) => {
+  1817→                          if (coords && coords.length > 2) rp.walking2 = coords
+  1818→                        })
+  1819→                      )
+  1820→                    }
+  1821→
+  1822→                    await Promise.all(promises)
+  1823→                    setRoutePath(rp)
+  1824→                    routePathRef.current = rp
+  1825→                    fitRouteToBounds(rp)
+  1826→                  }}
+  1827→                >
+  1828→                  <CardContent className="p-2">
+  1829→                    <div className="space-y-1.5">
+  1830→                      {/* Route Header */}
+  1831→                      <div className="flex items-center justify-between">
+  1832→                        <div className="flex items-center gap-1.5">
+  1833→                          <div className="w-6 h-6 bg-red-50 rounded-full flex items-center justify-center">
+  1834→                            <Bus className="w-3 h-3 text-[#E31837]" />
+  1835→                          </div>
+  1836→                          <div>
+  1837→                            <span className="font-bold text-xs text-[#374151]">{route.routeNumber}</span>
+  1838→                            <Badge variant="outline" className="ml-1 text-[9px] px-1 py-0 border-[#BFDBFE] text-[#0052B4]">
+  1839→                              {route.company}
+  1840→                            </Badge>
+  1841→                          </div>
+  1842→                        </div>
+  1843→                        <div className="flex items-center gap-1">
+  1844→                          {plannedRoutes.indexOf(route) === 0 && (
+  1845→                            <Badge className="text-[10px] px-1.5 py-0 bg-green-100 text-green-700 border-none">
+  1846→                              <Star className="w-2.5 h-2.5 mr-0.5" />
+  1847→                              Mejor
+  1848→                            </Badge>
+  1849→                          )}
+  1850→                          {plannedRoutes.indexOf(route) === 1 && (
+  1851→                            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-yellow-100 text-yellow-700 border-none">
+  1852→                              Buena
+  1853→                            </Badge>
+  1854→                          )}
+  1855→                        </div>
+  1856→                      </div>
+  1857→
+  1858→                      {/* Key Metrics - Compact */}
+  1859→                      <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-md p-2 shadow-sm">
+  1860→                        <div className="flex items-center justify-between text-white">
+  1861→                          <div className="flex items-center gap-1">
+  1862→                            <Clock className="w-3 h-3" />
+  1863→                            <span className="text-[10px] font-medium">Tiempo</span>
+  1864→                          </div>
+  1865→                          <span className="text-sm font-bold">
+  1866→                            {route.durationMin ? formatDuration(route.durationMin) : '--'}
+  1867→                          </span>
+  1868→                        </div>
+  1869→                        <div className="mt-1 pt-1 border-t border-white/20 flex items-center justify-between text-white/90">
+  1870→                          <div className="flex items-center gap-0.5">
+  1871→                            <DollarSign className="w-3 h-3" />
+  1872→                            <span className="text-[10px]">{formatPrice(route.price)}</span>
+  1873→                          </div>
+  1874→                          {route._walkingDistanceKm !== undefined && route._walkingDistanceKm > 0 && (
+  1875→                            <span className="text-[10px]">{route._walkingDistanceKm.toFixed(1)} km a pie</span>
+  1876→                          )}
+  1877→                        </div>
+  1878→                      </div>
+  1879→
+  1880→                      {/* Route Path Details - Compact */}
+  1881→                      <div className="bg-gradient-to-r from-blue-50 to-red-50 rounded-md p-2 flex items-center gap-1.5">
+  1882→                        <div className="flex flex-col items-center">
+  1883→                          <div className="w-2 h-2 rounded-full bg-[#0052B4]" />
+  1884→                          <div className="w-0.5 h-4 bg-blue-200" />
+  1885→                          <div className="w-2 h-2 rounded-full bg-[#E31837]" />
+  1886→                        </div>
+  1887→                        <div className="flex-1 min-w-0">
+  1888→                          <p className="text-[11px] font-semibold text-[#374151] truncate">{route.boardingStop.name}</p>
+  1889→                          <div className="flex items-center gap-0.5 my-0">
+  1890→                            <ArrowRight className="w-2.5 h-2.5 text-[#9CA3AF] flex-shrink-0" />
+  1891→                            <span className="text-[9px] text-[#6B7280]">{route._boardingStopDistanceKm ? `${route._boardingStopDistanceKm.toFixed(1)} km` : ''}</span>
+  1892→                          </div>
+  1893→                          <p className="text-[11px] font-semibold text-[#374151] truncate">
+  1894→                            {route.destinationStop?.name || route.destination}
+  1895→                          </p>
+  1896→                        </div>
+  1897→                      </div>
+  1898→                    </div>
+  1899→                  </CardContent>
+  1900→                </Card>
+  1901→              ))}
+  1902→
+  1903→              {/* Ruta por definir - cuando no hay datos OSRM para la ruta seleccionada */}
+  1904→              {selectedRoute && routePath && !routePath.walking && !routePath.bus && !routePath.walking2 && !routePath.direct && (
+  1905→                <div className="flex items-center gap-2 px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-lg">
+  1906→                  <Navigation className="w-4 h-4 text-amber-600 flex-shrink-0" />
+  1907→                  <p className="text-xs text-amber-700 font-medium">Ruta por definir — no se pudo trazar el camino por las calles</p>
+  1908→                </div>
+  1909→              )}
+  1910→
+  1911→              {/* Empezar Viaje Button - Compact */}
+  1912→              {selectedRoute && !isTracking && (
+  1913→                <Button
+  1914→                  onClick={(e) => { e.stopPropagation(); handleStartTrip() }}
+  1915→                  className="w-full h-9 text-xs font-semibold bg-[#10B981] hover:bg-[#059669] shadow-sm"
+  1916→                >
+  1917→                  <Navigation className="w-3.5 h-3.5 mr-1" />
+  1918→                  Iniciar Viaje
+  1919→                </Button>
+  1920→              )}
+  1921→            </div>
+  1922→          )}
+  1923→        </div>
+  1924→      )}
+  1925→
+  1926→      {/* Tracking Panel - Bottom bar during trip */}
+  1927→      {isTracking && trackingPanelVisible && !isTripPaused && (
+  1928→        <div className="absolute bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur-sm border-t border-[#E5E7EB] shadow-[0_-4px_20px_rgba(0,0,0,0.1)]" onClick={(e) => e.stopPropagation()}>
+  1929→          <div className="p-3 space-y-2">
+  1930→            {/* Trip info row */}
+  1931→            <div className="flex items-center justify-between">
+  1932→              <div className="flex items-center gap-2">
+  1933→                <div className="w-7 h-7 bg-[#10B981] rounded-full flex items-center justify-center">
+  1934→                  <Bus className="w-4 h-4 text-white animate-pulse" />
+  1935→                </div>
+  1936→                <div>
+  1937→                  <h3 className="font-bold text-xs text-gray-800">Viaje en curso</h3>
+  1938→                  <p className="text-[10px] text-[#6B7280]">
+  1939→                    {selectedRoute?.routeNumber || 'Directo'} → {selectedRoute?.destinationStop?.name || destination}
+  1940→                  </p>
+  1941→                </div>
+  1942→                <Badge className="bg-green-100 text-[#10B981] border-none text-[10px]">
+  1943→                  Activo
+  1944→                </Badge>
+  1945→              </div>
+  1946→            </div>
+  1947→
+  1948→            {/* Metrics row */}
+  1949→            <div className="grid grid-cols-3 gap-2">
+  1950→              <div className="bg-blue-50 rounded-lg p-2 text-center">
+  1951→                <p className="text-[10px] text-[#6B7280]">Restante</p>
+  1952→                <p className="font-bold text-[#E31837] text-sm">{distanceRemaining.toFixed(1)} km</p>
+  1953→              </div>
+  1954→              <div className="bg-blue-50 rounded-lg p-2 text-center">
+  1955→                <p className="text-[10px] text-[#6B7280]">Tiempo</p>
+  1956→                <p className="font-bold text-[#0052B4] text-sm">
+  1957→                  {elapsedTime < 60
+  1958→                    ? `${Math.floor(elapsedTime)} min`
+  1959→                    : `${Math.floor(elapsedTime / 60)}h ${Math.floor(elapsedTime % 60)}m`}
+  1960→                </p>
+  1961→              </div>
+  1962→              <div className="flex items-center justify-center">
+  1963→                <Button
+  1964→                  onClick={(e) => { e.stopPropagation(); handleStopTrip(); }}
+  1965→                  className="w-full h-full min-h-[40px] text-xs font-semibold bg-red-600 hover:bg-red-700 text-white shadow-sm"
+  1966→                >
+  1967→                  <X className="w-4 h-4 mr-1" />
+  1968→                  Detener
+  1969→                </Button>
+  1970→              </div>
+  1971→            </div>
+  1972→          </div>
+  1973→        </div>
+  1974→      )}
+  1975→
+  1976→      {/* Paused Tracking Panel */}
+  1977→      {isTracking && trackingPanelVisible && isTripPaused && (
+  1978→        <div className="absolute bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur-sm border-t border-[#E5E7EB] shadow-[0_-4px_20px_rgba(0,0,0,0.1)]" onClick={(e) => e.stopPropagation()}>
+  1979→          <div className="p-3 space-y-2">
+  1980→            {/* Trip info row */}
+  1981→            <div className="flex items-center justify-between">
+  1982→              <div className="flex items-center gap-2">
+  1983→                <div className="w-7 h-7 bg-[#F59E0B] rounded-full flex items-center justify-center">
+  1984→                  <Bus className="w-4 h-4 text-white" />
+  1985→                </div>
+  1986→                <div>
+  1987→                  <h3 className="font-bold text-xs text-gray-800">Viaje en curso</h3>
+  1988→                  <p className="text-[10px] text-[#6B7280]">
+  1989→                    {selectedRoute?.routeNumber || 'Directo'} → {selectedRoute?.destinationStop?.name || destination}
+  1990→                  </p>
+  1991→                </div>
+  1992→                <Badge className="bg-amber-100 text-[#F59E0B] border-none text-[10px]">
+  1993→                  Pausado
+  1994→                </Badge>
+  1995→              </div>
+  1996→            </div>
+  1997→
+  1998→            {/* Metrics row */}
+  1999→            <div className="grid grid-cols-3 gap-2">
+  2000→              <div className="bg-blue-50 rounded-lg p-2 text-center">
+  2001→                <p className="text-[10px] text-[#6B7280]">Restante</p>
+  2002→                <p className="font-bold text-[#E31837] text-sm">{distanceRemaining.toFixed(1)} km</p>
+  2003→              </div>
+  2004→              <div className="bg-blue-50 rounded-lg p-2 text-center">
+  2005→                <p className="text-[10px] text-[#6B7280]">Tiempo</p>
+  2006→                <p className="font-bold text-[#0052B4] text-sm">
+  2007→                  {elapsedTime < 60
+  2008→                    ? `${Math.floor(elapsedTime)} min`
+  2009→                    : `${Math.floor(elapsedTime / 60)}h ${Math.floor(elapsedTime % 60)}m`}
+  2010→                </p>
+  2011→              </div>
+  2012→            </div>
+  2013→
+  2014→            {/* Paused action buttons */}
+  2015→            <div className="grid grid-cols-2 gap-2">
+  2016→              <Button
+  2017→                onClick={handleResumeTrip}
+  2018→                className="h-10 text-xs font-semibold bg-[#10B981] hover:bg-[#059669] text-white shadow-sm"
+  2019→              >
+  2020→                <Navigation className="w-4 h-4 mr-1" />
+  2021→                Continuar Viaje
+  2022→              </Button>
+  2023→              <Button
+  2024→                onClick={handleFullStopTrip}
+  2025→                className="h-10 text-xs font-semibold bg-red-600 hover:bg-red-700 text-white shadow-sm"
+  2026→              >
+  2027→                <X className="w-4 h-4 mr-1" />
+  2028→                Finalizar Viaje
+  2029→              </Button>
+  2030→            </div>
+  2031→          </div>
+  2032→        </div>
+  2033→      )}
+  2034→
+  2035→      {/* Countdown Dialog */}
+  2036→      <Dialog open={showCountdown} onOpenChange={(open) => {
+  2037→        if (!open) {
+  2038→          setShowCountdown(false)
+  2039→          if (countdownRef.current) {
+  2040→            clearInterval(countdownRef.current)
+  2041→            countdownRef.current = null
+  2042→          }
+  2043→        }
+  2044→      }}>
+  2045→        <DialogContent className="sm:max-w-xs mx-auto">
+  2046→          <DialogTitle className="text-center text-lg font-bold text-[#374151]">
+  2047→            Preparando tu viaje...
+  2048→          </DialogTitle>
+  2049→          <DialogDescription className="text-center text-sm text-[#6B7280]">
+  2050→            El viaje iniciará automáticamente
+  2051→          </DialogDescription>
+  2052→          <div className="flex flex-col items-center py-4 space-y-4">
+  2053→            <div className="w-24 h-24 rounded-full bg-gradient-to-br from-[#10B981] to-[#059669] flex items-center justify-center shadow-lg">
+  2054→              <span className="text-4xl font-bold text-white">{countdown}</span>
+  2055→            </div>
+  2056→            <p className="text-sm text-[#6B7280]">
+  2057→              {selectedRoute?.routeNumber || 'Ruta directa'} → {selectedRoute?.destinationStop?.name || destination}
+  2058→            </p>
+  2059→            <div className="flex gap-2 w-full">
+  2060→              <Button
+  2061→                variant="outline"
+  2062→                onClick={() => {
+  2063→                  setShowCountdown(false)
+  2064→                  if (countdownRef.current) {
+  2065→                    clearInterval(countdownRef.current)
+  2066→                    countdownRef.current = null
+  2067→                  }
+  2068→                }}
+  2069→                className="flex-1 border-[#E5E7EB] text-[#6B7280] hover:bg-gray-50"
+  2070→              >
+  2071→                Cancelar
+  2072→              </Button>
+  2073→              <Button
+  2074→                onClick={executeStartTrip}
+  2075→                className="flex-1 bg-[#10B981] hover:bg-[#059669] text-white font-semibold"
+  2076→              >
+  2077→                Iniciar ahora
+  2078→              </Button>
+  2079→            </div>
+  2080→          </div>
+  2081→        </DialogContent>
+  2082→      </Dialog>
+  2083→
+  2084→      {/* Bottom Navigation - Hidden when route results are showing */}
+  2085→      {!hasPlanned && (
+  2086→      <nav className="absolute bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur-sm border-t border-[#E5E7EB]">
+  2087→        <div className="container mx-auto px-4">
+  2088→          <div className="flex items-center justify-around py-2">
+  2089→            <Button variant="ghost" className="flex flex-col items-center gap-1 text-gray-600 hover:bg-gray-100 h-auto py-2">
+  2090→              <Map className="w-5 h-5" />
+  2091→              <span className="text-xs">Mapa</span>
+  2092→            </Button>
+  2093→            <Button variant="ghost" className="flex flex-col items-center gap-1 text-gray-600 hover:bg-gray-100 h-auto py-2">
+  2094→              <img src="/Bus.jpg" alt="Rutas" className="w-5 h-5 rounded-sm object-cover object-top" />
+  2095→              <span className="text-xs">Rutas</span>
+  2096→            </Button>
+  2097→            <Button variant="ghost" className="flex flex-col items-center gap-1 text-gray-600 hover:bg-gray-100 h-auto py-2">
+  2098→              <Clock className="w-5 h-5" />
+  2099→              <span className="text-xs">Horarios</span>
+  2100→            </Button>
+  2101→            <Button variant="ghost" className="flex flex-col items-center gap-1 text-gray-600 hover:bg-gray-100 h-auto py-2">
+  2102→              <Heart className="w-5 h-5" />
+  2103→              <span className="text-xs">Favoritos</span>
+  2104→            </Button>
+  2105→            <Button variant="ghost" className="flex flex-col items-center gap-1 text-gray-600 hover:bg-gray-100 h-auto py-2">
+  2106→              <User className="w-5 h-5" />
+  2107→              <span className="text-xs">Perfil</span>
+  2108→            </Button>
+  2109→          </div>
+  2110→        </div>
+  2111→      </nav>
+  2112→      )}
+  2113→    </div>
+  2114→  )
+  2115→}

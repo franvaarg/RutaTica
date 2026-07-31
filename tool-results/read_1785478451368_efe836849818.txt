@@ -1,0 +1,602 @@
+  1518→                          <div className="w-6 h-6 bg-[#E31837] rounded-full flex items-center justify-center">
+  1519→                            <Navigation className="w-3.5 h-3.5 text-white" />
+  1520→                          </div>
+  1521→                          <span className="font-semibold text-sm text-[#374151]">Destino</span>
+  1522→                        </div>
+  1523→                        <LocationAutocomplete
+  1524→                          value={destination}
+  1525→                          onChange={setDestination}
+  1526→                          onSelect={handleDestinationSelect}
+  1527→                          placeholder="Escribe el destino..."
+  1528→                          disabled={planning}
+  1529→                        />
+  1530→                      </div>
+  1531→
+  1532→                      {selectedDestination && (
+  1533→                        <Button
+  1534→                          onClick={handlePlanRoute}
+  1535→                          disabled={planning}
+  1536→                          className="w-full h-11 text-base font-semibold bg-[#10B981] hover:bg-[#059669] shadow-md"
+  1537→                        >
+  1538→                          {planning ? (
+  1539→                            <>
+  1540→                              <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+  1541→                              Calculando ruta...
+  1542→                            </>
+  1543→                          ) : (
+  1544→                            <>
+  1545→                              <Search className="w-5 h-5 mr-2" />
+  1546→                              Buscar Ruta
+  1547→                            </>
+  1548→                          )}
+  1549→                        </Button>
+  1550→                      )}
+  1551→                    </CardContent>
+  1552→                  </Card>
+  1553→
+  1554→                  {/* Quick Access Buttons - Solo si no hay destino seleccionado */}
+  1555→                  {!hasPlanned && !selectedDestination && (
+  1556→                    <div className="grid grid-cols-2 gap-3">
+  1557→                      <Card className="shadow-sm hover:shadow-md transition-shadow cursor-pointer border border-[#E5E7EB]">
+  1558→                        <CardContent className="p-4 flex flex-col items-center justify-center text-center">
+  1559→                          <img src="/Bus.jpg" alt="Rutas" className="w-12 h-12 rounded-xl object-cover object-top mb-2" />
+  1560→                          <span className="font-semibold text-sm text-[#374151]">Rutas</span>
+  1561→                        </CardContent>
+  1562→                      </Card>
+  1563→
+  1564→                      <Card className="shadow-sm hover:shadow-md transition-shadow cursor-pointer border border-[#E5E7EB]">
+  1565→                        <CardContent className="p-4 flex flex-col items-center justify-center text-center">
+  1566→                          <img src="/Horario.jpg" alt="Horarios" className="w-12 h-12 rounded-xl object-cover mb-2" />
+  1567→                          <span className="font-semibold text-sm text-[#374151]">Horarios</span>
+  1568→                        </CardContent>
+  1569→                      </Card>
+  1570→
+  1571→                      <Card className="shadow-sm hover:shadow-md transition-shadow cursor-pointer border border-[#E5E7EB]">
+  1572→                        <CardContent className="p-4 flex flex-col items-center justify-center text-center">
+  1573→                          <div className="w-12 h-12 bg-blue-50 rounded-full flex items-center justify-center mb-2">
+  1574→                            <MapPin className="w-6 h-6 text-[#0052B4]" />
+  1575→                          </div>
+  1576→                          <span className="font-semibold text-sm text-[#374151]">Cercanos</span>
+  1577→                        </CardContent>
+  1578→                      </Card>
+  1579→
+  1580→                      <Card className="shadow-sm hover:shadow-md transition-shadow cursor-pointer border border-[#E5E7EB]">
+  1581→                        <CardContent className="p-4 flex flex-col items-center justify-center text-center">
+  1582→                          <div className="w-12 h-12 bg-green-50 rounded-full flex items-center justify-center mb-2">
+  1583→                            <Heart className="w-6 h-6 text-[#10B981]" />
+  1584→                          </div>
+  1585→                          <span className="font-semibold text-sm text-[#374151]">Favoritos</span>
+  1586→                        </CardContent>
+  1587→                      </Card>
+  1588→                    </div>
+  1589→                  )}
+  1590→
+  1591→                  {/* Error Message */}
+  1592→                  {error && !hasPlanned && (
+  1593→                    <Card className="border border-[#FECACA] bg-red-50">
+  1594→                      <CardContent className="p-4 text-center text-[#DC2626]">
+  1595→                        {error}
+  1596→                      </CardContent>
+  1597→                    </Card>
+  1598→                  )}
+  1599→
+  1600→                  {/* Route results shown in bottom panel outside Sheet */}
+  1601→
+  1602→                  {/* Popular Destinations - Solo si no hay destino seleccionado */}
+  1603→                  {!hasPlanned && !error && !selectedDestination && (
+  1604→                    <div className="space-y-3">
+  1605→                      <h3 className="font-bold text-lg text-[#374151]">Destinos Populares</h3>
+  1606→                      <div className="grid grid-cols-2 gap-3">
+  1607→                        {popularDestinations.length > 0 ? (
+  1608→                          popularDestinations.map((dest) => (
+  1609→                            <Button
+  1610→                              key={dest.name}
+  1611→                              variant="outline"
+  1612→                              onClick={() => {
+  1613→                                const name = dest.displayName || dest.name
+  1614→                                setDestination(name)
+  1615→                                setSelectedDestination({
+  1616→                                  name: name,
+  1617→                                  lat: dest.lat,
+  1618→                                  lon: dest.lon,
+  1619→                                  displayName: name,
+  1620→                                })
+  1621→                              }}
+  1622→                              disabled={planning}
+  1623→                              className="h-auto py-3 min-w-0 flex flex-col items-center gap-2 border border-[#E5E7EB] hover:border-[#FECACA] hover:bg-red-50 text-[#374151]"
+  1624→                            >
+  1625→                              <MapPin className="w-5 h-5 text-[#E31837] flex-shrink-0" />
+  1626→                              <span className="font-semibold text-xs leading-tight text-center line-clamp-2 w-full overflow-hidden">{dest.displayName || dest.name}</span>
+  1627→                            </Button>
+  1628→                          ))
+  1629→                        ) : (
+  1630→                          <>
+  1631→                            {['Alajuela', 'Heredia', 'Cartago', 'Escazú', 'Desamparados', 'Limón'].map((dest) => (
+  1632→                              <Button
+  1633→                                key={dest}
+  1634→                                variant="outline"
+  1635→                                onClick={() => {
+  1636→                                  setDestination(dest)
+  1637→                                }}
+  1638→                                disabled={planning}
+  1639→                                className="h-auto py-3 min-w-0 flex flex-col items-center gap-2 border border-[#E5E7EB] hover:border-[#FECACA] hover:bg-red-50 text-[#374151]"
+  1640→                              >
+  1641→                                <MapPin className="w-5 h-5 text-[#E31837] flex-shrink-0" />
+  1642→                                <span className="font-semibold text-xs leading-tight text-center w-full overflow-hidden">{dest}</span>
+  1643→                              </Button>
+  1644→                            ))}
+  1645→                          </>
+  1646→                        )}
+  1647→                      </div>
+  1648→                    </div>
+  1649→                  )}
+  1650→                </div>
+  1651→              </SheetContent>
+  1652→            </Sheet>
+  1653→
+  1654→            <div className="flex items-center gap-2">
+  1655→              <img src="/RutaTica_Logo.png" alt="RutaTica" className="h-8 w-auto object-contain mix-blend-multiply" />
+  1656→              <p className="text-xs text-white drop-shadow-sm">
+  1657→                {isTracking ? '🚌 Viaje en curso' : hasPlanned ? `Ruta a ${destination}` : '¿A dónde vamos hoy?'}
+  1658→              </p>
+  1659→            </div>
+  1660→
+  1661→            <div className="flex items-center gap-2">
+  1662→              {hasPlanned && (
+  1663→                <Button
+  1664→                  variant="outline"
+  1665→                  size="sm"
+  1666→                  onClick={handleResetSearch}
+  1667→                  className="text-sm border-white/40 text-white hover:bg-white/20 hover:text-white hover:border-white/60"
+  1668→                >
+  1669→                  <X className="w-4 h-4 mr-1" />
+  1670→                  Reiniciar
+  1671→                </Button>
+  1672→              )}
+  1673→              <Button variant="ghost" size="icon" className="text-white hover:bg-white/20 drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]">
+  1674→                <Bell className="w-5 h-5" />
+  1675→              </Button>
+  1676→            </div>
+  1677→          </div>
+  1678→        </div>
+  1679→      </header>
+  1680→
+  1681→      {/* Bottom Route Results Panel - Compact */}
+  1682→      {hasPlanned && !routePanelDismissed && !isTracking && (
+  1683→        <div className="absolute bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur-sm border-t border-[#E5E7EB] shadow-[0_-4px_20px_rgba(0,0,0,0.1)]">
+  1684→          {/* Compact Header — sin botón de cerrar; el panel se cierra al iniciar el viaje */}
+  1685→          <div className="px-3 py-1.5 flex items-center border-b border-[#E5E7EB]">
+  1686→            <h2 className="text-xs font-bold flex items-center gap-1 text-gray-800">
+  1687→              <Bus className="w-3.5 h-3.5 text-red-600" />
+  1688→              Rutas
+  1689→              {plannedRoutes.length > 0 && (
+  1690→                <Badge className="bg-red-600 text-white border-none text-[10px] px-1 py-0">{plannedRoutes.length}</Badge>
+  1691→              )}
+  1692→            </h2>
+  1693→          </div>
+  1694→
+  1695→          {/* Error message when no routes */}
+  1696→          {error && plannedRoutes.length === 0 && (
+  1697→            <div className="px-4 pb-4">
+  1698→              <Card className="p-4 text-center border border-[#FECACA] bg-red-50">
+  1699→                <Bus className="w-12 h-12 mx-auto text-[#9CA3AF] mb-3" />
+  1700→                <p className="text-[#DC2626] text-sm">{error}</p>
+  1701→              </Card>
+  1702→            </div>
+  1703→          )}
+  1704→
+  1705→          {/* No public transport available - show direct route info */}
+  1706→          {!error && plannedRoutes.length === 0 && selectedDestination && (
+  1707→            <div className="px-4 pb-4 space-y-3">
+  1708→              <Card className="p-3 border border-amber-200 bg-amber-50">
+  1709→                <div className="flex items-start gap-2">
+  1710→                  <div className="w-8 h-8 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+  1711→                    <Bus className="w-4 h-4 text-amber-600" />
+  1712→                  </div>
+  1713→                  <div>
+  1714→                    <p className="text-sm font-semibold text-amber-800">Sin transporte público registrado</p>
+  1715→                    <p className="text-xs text-amber-700 mt-0.5">
+  1716→                      No se encontraron rutas de autobús para este trayecto. Se muestra la ruta directa en el mapa.
+  1717→                    </p>
+  1718→                  </div>
+  1719→                </div>
+  1720→              </Card>
+  1721→
+  1722→              {/* Direct route info */}
+  1723→              {routePath?.direct && (
+  1724→                <Card className="p-3 border border-[#E5E7EB] shadow-sm">
+  1725→                  <div className="space-y-2">
+  1726→                    <div className="flex items-center gap-2">
+  1727→                      <Navigation className="w-4 h-4 text-[#0052B4]" />
+  1728→                      <span className="text-xs font-semibold text-[#374151]">Ruta directa</span>
+  1729→                    </div>
+  1730→                    <div className="flex items-center gap-2">
+  1731→                      <div className="flex-1">
+  1732→                        <p className="text-[11px] text-[#6B7280]">Origen</p>
+  1733→                        <p className="text-xs font-semibold text-[#0052B4] truncate">
+  1734→                          {useCurrentLocation ? 'Mi ubicación' : (selectedOrigin?.displayName || selectedOrigin?.name || 'Origen')}
+  1735→                        </p>
+  1736→                      </div>
+  1737→                      <ArrowRight className="w-3.5 h-3.5 text-[#9CA3AF] flex-shrink-0" />
+  1738→                      <div className="flex-1 text-right">
+  1739→                        <p className="text-[11px] text-[#6B7280]">Destino</p>
+  1740→                        <p className="text-xs font-semibold text-[#E31837] truncate">{selectedDestination?.displayName || selectedDestination?.name}</p>
+  1741→                      </div>
+  1742→                    </div>
+  1743→                    <Button
+  1744→                      onClick={(e) => { e.stopPropagation(); handlePlanRoute() }}
+  1745→                      className="w-full h-9 text-xs font-semibold bg-[#10B981] hover:bg-[#059669] shadow-sm"
+  1746→                    >
+  1747→                      <Search className="w-3.5 h-3.5 mr-1" />
+  1748→                      Buscar Ruta
+  1749→                    </Button>
+  1750→                  </div>
+  1751→                </Card>
+  1752→              )}
+  1753→
+  1754→              {!routePath?.direct && (
+  1755→                <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg">
+  1756→                  <Loader2 className="w-4 h-4 text-[#0052B4] animate-spin flex-shrink-0" />
+  1757→                  <p className="text-xs text-[#0052B4]">Calculando ruta directa...</p>
+  1758→                </div>
+  1759→              )}
+  1760→            </div>
+  1761→          )}
+  1762→
+  1763→          {/* Route cards - compact scrollable */}
+  1764→          {plannedRoutes.length > 0 && (
+  1765→            <div className="max-h-[20vh] overflow-y-auto px-2.5 pb-2 space-y-1.5 scrollbar-thin">
+  1766→              {plannedRoutes.map((route) => (
+  1767→                <Card
+  1768→                  key={route.id}
+  1769→                  className={`transition-all cursor-pointer shadow-sm ${
+  1770→                    selectedRoute?.id === route.id
+  1771→                      ? 'ring-2 ring-[#E31837] shadow-md border border-[#FECACA]'
+  1772→                      : 'border border-[#E5E7EB] hover:border-[#FECACA] hover:shadow-sm'
+  1773→                  }`}
+  1774→                  onClick={async () => {
+  1775→                    setSelectedRoute(route)
+  1776→                    const rp: RoutePath = {}
+  1777→                    const promises: Promise<void>[] = []
+  1778→
+  1779→                    // Origin coordinates
+  1780→                    const cardOriginLat = useCurrentLocation
+  1781→                      ? (currentLocation?.latitude ?? 9.9281)
+  1782→                      : (selectedOrigin?.lat ?? 9.9281)
+  1783→                    const cardOriginLon = useCurrentLocation
+  1784→                      ? (currentLocation?.longitude ?? -84.0907)
+  1785→                      : (selectedOrigin?.lon ?? -84.0907)
+  1786→
+  1787→                    // Walking to boarding stop
+  1788→                    if (route.boardingStop?.coordinates) {
+  1789→                      promises.push(
+  1790→                        getOSRMRoute(
+  1791→                          [cardOriginLat, cardOriginLon],
+  1792→                          [route.boardingStop.coordinates.latitude, route.boardingStop.coordinates.longitude],
+  1793→                          'foot'
+  1794→                        ).then((coords) => {
+  1795→                          if (coords && coords.length > 2) rp.walking = coords
+  1796→                        })
+  1797→                      )
+  1798→                    }
+  1799→
+  1800→                    // Bus segment: always use OSRM driving to follow actual streets
+  1801→                    if (route.boardingStop?.coordinates && route.destinationStop?.coordinates) {
+  1802→                      promises.push(
+  1803→                        getOSRMRoute(
+  1804→                          [route.boardingStop.coordinates.latitude, route.boardingStop.coordinates.longitude],
+  1805→                          [route.destinationStop.coordinates.latitude, route.destinationStop.coordinates.longitude],
+  1806→                          'driving'
+  1807→                        ).then((coords) => {
+  1808→                          if (coords) rp.bus = coords
+  1809→                        })
+  1810→                      )
+  1811→                    }
+  1812→
+  1813→                    // Walking from alighting stop to destination
+  1814→                    if (selectedDestination && route.destinationStop?.coordinates) {
+  1815→                      promises.push(
+  1816→                        getOSRMRoute(
+  1817→                          [route.destinationStop.coordinates.latitude, route.destinationStop.coordinates.longitude],
+  1818→                          [selectedDestination.lat, selectedDestination.lon],
+  1819→                          'foot'
+  1820→                        ).then((coords) => {
+  1821→                          if (coords && coords.length > 2) rp.walking2 = coords
+  1822→                        })
+  1823→                      )
+  1824→                    }
+  1825→
+  1826→                    await Promise.all(promises)
+  1827→                    setRoutePath(rp)
+  1828→                    routePathRef.current = rp
+  1829→                    fitRouteToBounds(rp)
+  1830→                  }}
+  1831→                >
+  1832→                  <CardContent className="p-2">
+  1833→                    <div className="space-y-1.5">
+  1834→                      {/* Route Header */}
+  1835→                      <div className="flex items-center justify-between">
+  1836→                        <div className="flex items-center gap-1.5">
+  1837→                          <div className="w-6 h-6 bg-red-50 rounded-full flex items-center justify-center">
+  1838→                            <Bus className="w-3 h-3 text-[#E31837]" />
+  1839→                          </div>
+  1840→                          <div>
+  1841→                            <span className="font-bold text-xs text-[#374151]">{route.routeNumber}</span>
+  1842→                            <Badge variant="outline" className="ml-1 text-[9px] px-1 py-0 border-[#BFDBFE] text-[#0052B4]">
+  1843→                              {route.company}
+  1844→                            </Badge>
+  1845→                          </div>
+  1846→                        </div>
+  1847→                        <div className="flex items-center gap-1">
+  1848→                          {plannedRoutes.indexOf(route) === 0 && (
+  1849→                            <Badge className="text-[10px] px-1.5 py-0 bg-green-100 text-green-700 border-none">
+  1850→                              <Star className="w-2.5 h-2.5 mr-0.5" />
+  1851→                              Mejor
+  1852→                            </Badge>
+  1853→                          )}
+  1854→                          {plannedRoutes.indexOf(route) === 1 && (
+  1855→                            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-yellow-100 text-yellow-700 border-none">
+  1856→                              Buena
+  1857→                            </Badge>
+  1858→                          )}
+  1859→                        </div>
+  1860→                      </div>
+  1861→
+  1862→                      {/* Key Metrics - Compact */}
+  1863→                      <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-md p-2 shadow-sm">
+  1864→                        <div className="flex items-center justify-between text-white">
+  1865→                          <div className="flex items-center gap-1">
+  1866→                            <Clock className="w-3 h-3" />
+  1867→                            <span className="text-[10px] font-medium">Tiempo</span>
+  1868→                          </div>
+  1869→                          <span className="text-sm font-bold">
+  1870→                            {route.durationMin ? formatDuration(route.durationMin) : '--'}
+  1871→                          </span>
+  1872→                        </div>
+  1873→                        <div className="mt-1 pt-1 border-t border-white/20 flex items-center justify-between text-white/90">
+  1874→                          <div className="flex items-center gap-0.5">
+  1875→                            <DollarSign className="w-3 h-3" />
+  1876→                            <span className="text-[10px]">{formatPrice(route.price)}</span>
+  1877→                          </div>
+  1878→                          {route._walkingDistanceKm !== undefined && route._walkingDistanceKm > 0 && (
+  1879→                            <span className="text-[10px]">{route._walkingDistanceKm.toFixed(1)} km a pie</span>
+  1880→                          )}
+  1881→                        </div>
+  1882→                      </div>
+  1883→
+  1884→                      {/* Route Path Details - Compact */}
+  1885→                      <div className="bg-gradient-to-r from-blue-50 to-red-50 rounded-md p-2 flex items-center gap-1.5">
+  1886→                        <div className="flex flex-col items-center">
+  1887→                          <div className="w-2 h-2 rounded-full bg-[#0052B4]" />
+  1888→                          <div className="w-0.5 h-4 bg-blue-200" />
+  1889→                          <div className="w-2 h-2 rounded-full bg-[#E31837]" />
+  1890→                        </div>
+  1891→                        <div className="flex-1 min-w-0">
+  1892→                          <p className="text-[11px] font-semibold text-[#374151] truncate">{route.boardingStop.name}</p>
+  1893→                          <div className="flex items-center gap-0.5 my-0">
+  1894→                            <ArrowRight className="w-2.5 h-2.5 text-[#9CA3AF] flex-shrink-0" />
+  1895→                            <span className="text-[9px] text-[#6B7280]">{route._boardingStopDistanceKm ? `${route._boardingStopDistanceKm.toFixed(1)} km` : ''}</span>
+  1896→                          </div>
+  1897→                          <p className="text-[11px] font-semibold text-[#374151] truncate">
+  1898→                            {route.destinationStop?.name || route.destination}
+  1899→                          </p>
+  1900→                        </div>
+  1901→                      </div>
+  1902→                    </div>
+  1903→                  </CardContent>
+  1904→                </Card>
+  1905→              ))}
+  1906→
+  1907→              {/* Ruta por definir - cuando no hay datos OSRM para la ruta seleccionada */}
+  1908→              {selectedRoute && routePath && !routePath.walking && !routePath.bus && !routePath.walking2 && !routePath.direct && (
+  1909→                <div className="flex items-center gap-2 px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-lg">
+  1910→                  <Navigation className="w-4 h-4 text-amber-600 flex-shrink-0" />
+  1911→                  <p className="text-xs text-amber-700 font-medium">Ruta por definir — no se pudo trazar el camino por las calles</p>
+  1912→                </div>
+  1913→              )}
+  1914→
+  1915→              {/* Empezar Viaje Button - Compact */}
+  1916→              {selectedRoute && !isTracking && (
+  1917→                <Button
+  1918→                  onClick={(e) => { e.stopPropagation(); handleStartTrip() }}
+  1919→                  className="w-full h-9 text-xs font-semibold bg-[#10B981] hover:bg-[#059669] shadow-sm"
+  1920→                >
+  1921→                  <Navigation className="w-3.5 h-3.5 mr-1" />
+  1922→                  Iniciar Viaje
+  1923→                </Button>
+  1924→              )}
+  1925→            </div>
+  1926→          )}
+  1927→        </div>
+  1928→      )}
+  1929→
+  1930→      {/* Tracking Panel - Bottom bar during trip */}
+  1931→      {isTracking && trackingPanelVisible && !isTripPaused && (
+  1932→        <div className="absolute bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur-sm border-t border-[#E5E7EB] shadow-[0_-4px_20px_rgba(0,0,0,0.1)]" onClick={(e) => e.stopPropagation()}>
+  1933→          <div className="p-3 space-y-2">
+  1934→            {/* Trip info row */}
+  1935→            <div className="flex items-center justify-between">
+  1936→              <div className="flex items-center gap-2">
+  1937→                <div className="w-7 h-7 bg-[#10B981] rounded-full flex items-center justify-center">
+  1938→                  <Bus className="w-4 h-4 text-white animate-pulse" />
+  1939→                </div>
+  1940→                <div>
+  1941→                  <h3 className="font-bold text-xs text-gray-800">Viaje en curso</h3>
+  1942→                  <p className="text-[10px] text-[#6B7280]">
+  1943→                    {selectedRoute?.routeNumber || 'Directo'} → {selectedRoute?.destinationStop?.name || destination}
+  1944→                  </p>
+  1945→                </div>
+  1946→                <Badge className="bg-green-100 text-[#10B981] border-none text-[10px]">
+  1947→                  Activo
+  1948→                </Badge>
+  1949→              </div>
+  1950→            </div>
+  1951→
+  1952→            {/* Metrics row */}
+  1953→            <div className="grid grid-cols-3 gap-2">
+  1954→              <div className="bg-blue-50 rounded-lg p-2 text-center">
+  1955→                <p className="text-[10px] text-[#6B7280]">Restante</p>
+  1956→                <p className="font-bold text-[#E31837] text-sm">{distanceRemaining.toFixed(1)} km</p>
+  1957→              </div>
+  1958→              <div className="bg-blue-50 rounded-lg p-2 text-center">
+  1959→                <p className="text-[10px] text-[#6B7280]">Tiempo</p>
+  1960→                <p className="font-bold text-[#0052B4] text-sm">
+  1961→                  {elapsedTime < 60
+  1962→                    ? `${Math.floor(elapsedTime)} min`
+  1963→                    : `${Math.floor(elapsedTime / 60)}h ${Math.floor(elapsedTime % 60)}m`}
+  1964→                </p>
+  1965→              </div>
+  1966→              <div className="flex items-center justify-center">
+  1967→                <Button
+  1968→                  onClick={(e) => { e.stopPropagation(); handleStopTrip(); }}
+  1969→                  className="w-full h-full min-h-[40px] text-xs font-semibold bg-red-600 hover:bg-red-700 text-white shadow-sm"
+  1970→                >
+  1971→                  <X className="w-4 h-4 mr-1" />
+  1972→                  Detener
+  1973→                </Button>
+  1974→              </div>
+  1975→            </div>
+  1976→          </div>
+  1977→        </div>
+  1978→      )}
+  1979→
+  1980→      {/* Paused Tracking Panel */}
+  1981→      {isTracking && trackingPanelVisible && isTripPaused && (
+  1982→        <div className="absolute bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur-sm border-t border-[#E5E7EB] shadow-[0_-4px_20px_rgba(0,0,0,0.1)]" onClick={(e) => e.stopPropagation()}>
+  1983→          <div className="p-3 space-y-2">
+  1984→            {/* Trip info row */}
+  1985→            <div className="flex items-center justify-between">
+  1986→              <div className="flex items-center gap-2">
+  1987→                <div className="w-7 h-7 bg-[#F59E0B] rounded-full flex items-center justify-center">
+  1988→                  <Bus className="w-4 h-4 text-white" />
+  1989→                </div>
+  1990→                <div>
+  1991→                  <h3 className="font-bold text-xs text-gray-800">Viaje en curso</h3>
+  1992→                  <p className="text-[10px] text-[#6B7280]">
+  1993→                    {selectedRoute?.routeNumber || 'Directo'} → {selectedRoute?.destinationStop?.name || destination}
+  1994→                  </p>
+  1995→                </div>
+  1996→                <Badge className="bg-amber-100 text-[#F59E0B] border-none text-[10px]">
+  1997→                  Pausado
+  1998→                </Badge>
+  1999→              </div>
+  2000→            </div>
+  2001→
+  2002→            {/* Metrics row */}
+  2003→            <div className="grid grid-cols-3 gap-2">
+  2004→              <div className="bg-blue-50 rounded-lg p-2 text-center">
+  2005→                <p className="text-[10px] text-[#6B7280]">Restante</p>
+  2006→                <p className="font-bold text-[#E31837] text-sm">{distanceRemaining.toFixed(1)} km</p>
+  2007→              </div>
+  2008→              <div className="bg-blue-50 rounded-lg p-2 text-center">
+  2009→                <p className="text-[10px] text-[#6B7280]">Tiempo</p>
+  2010→                <p className="font-bold text-[#0052B4] text-sm">
+  2011→                  {elapsedTime < 60
+  2012→                    ? `${Math.floor(elapsedTime)} min`
+  2013→                    : `${Math.floor(elapsedTime / 60)}h ${Math.floor(elapsedTime % 60)}m`}
+  2014→                </p>
+  2015→              </div>
+  2016→            </div>
+  2017→
+  2018→            {/* Paused action buttons */}
+  2019→            <div className="grid grid-cols-2 gap-2">
+  2020→              <Button
+  2021→                onClick={handleResumeTrip}
+  2022→                className="h-10 text-xs font-semibold bg-[#10B981] hover:bg-[#059669] text-white shadow-sm"
+  2023→              >
+  2024→                <Navigation className="w-4 h-4 mr-1" />
+  2025→                Continuar Viaje
+  2026→              </Button>
+  2027→              <Button
+  2028→                onClick={handleFullStopTrip}
+  2029→                className="h-10 text-xs font-semibold bg-red-600 hover:bg-red-700 text-white shadow-sm"
+  2030→              >
+  2031→                <X className="w-4 h-4 mr-1" />
+  2032→                Finalizar Viaje
+  2033→              </Button>
+  2034→            </div>
+  2035→          </div>
+  2036→        </div>
+  2037→      )}
+  2038→
+  2039→      {/* Countdown Dialog */}
+  2040→      <Dialog open={showCountdown} onOpenChange={(open) => {
+  2041→        if (!open) {
+  2042→          setShowCountdown(false)
+  2043→          if (countdownRef.current) {
+  2044→            clearInterval(countdownRef.current)
+  2045→            countdownRef.current = null
+  2046→          }
+  2047→        }
+  2048→      }}>
+  2049→        <DialogContent className="sm:max-w-xs mx-auto">
+  2050→          <DialogTitle className="text-center text-lg font-bold text-[#374151]">
+  2051→            Preparando tu viaje...
+  2052→          </DialogTitle>
+  2053→          <DialogDescription className="text-center text-sm text-[#6B7280]">
+  2054→            El viaje iniciará automáticamente
+  2055→          </DialogDescription>
+  2056→          <div className="flex flex-col items-center py-4 space-y-4">
+  2057→            <div className="w-24 h-24 rounded-full bg-gradient-to-br from-[#10B981] to-[#059669] flex items-center justify-center shadow-lg">
+  2058→              <span className="text-4xl font-bold text-white">{countdown}</span>
+  2059→            </div>
+  2060→            <p className="text-sm text-[#6B7280]">
+  2061→              {selectedRoute?.routeNumber || 'Ruta directa'} → {selectedRoute?.destinationStop?.name || destination}
+  2062→            </p>
+  2063→            <div className="flex gap-2 w-full">
+  2064→              <Button
+  2065→                variant="outline"
+  2066→                onClick={() => {
+  2067→                  setShowCountdown(false)
+  2068→                  if (countdownRef.current) {
+  2069→                    clearInterval(countdownRef.current)
+  2070→                    countdownRef.current = null
+  2071→                  }
+  2072→                }}
+  2073→                className="flex-1 border-[#E5E7EB] text-[#6B7280] hover:bg-gray-50"
+  2074→              >
+  2075→                Cancelar
+  2076→              </Button>
+  2077→              <Button
+  2078→                onClick={executeStartTrip}
+  2079→                className="flex-1 bg-[#10B981] hover:bg-[#059669] text-white font-semibold"
+  2080→              >
+  2081→                Iniciar ahora
+  2082→              </Button>
+  2083→            </div>
+  2084→          </div>
+  2085→        </DialogContent>
+  2086→      </Dialog>
+  2087→
+  2088→      {/* Bottom Navigation - Hidden when route results are showing */}
+  2089→      {!hasPlanned && (
+  2090→      <nav className="absolute bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur-sm border-t border-[#E5E7EB]">
+  2091→        <div className="container mx-auto px-4">
+  2092→          <div className="flex items-center justify-around py-2">
+  2093→            <Button variant="ghost" className="flex flex-col items-center gap-1 text-gray-600 hover:bg-gray-100 h-auto py-2">
+  2094→              <Map className="w-5 h-5" />
+  2095→              <span className="text-xs">Mapa</span>
+  2096→            </Button>
+  2097→            <Button variant="ghost" className="flex flex-col items-center gap-1 text-gray-600 hover:bg-gray-100 h-auto py-2">
+  2098→              <img src="/Bus.jpg" alt="Rutas" className="w-5 h-5 rounded-sm object-cover object-top" />
+  2099→              <span className="text-xs">Rutas</span>
+  2100→            </Button>
+  2101→            <Button variant="ghost" className="flex flex-col items-center gap-1 text-gray-600 hover:bg-gray-100 h-auto py-2">
+  2102→              <Clock className="w-5 h-5" />
+  2103→              <span className="text-xs">Horarios</span>
+  2104→            </Button>
+  2105→            <Button variant="ghost" className="flex flex-col items-center gap-1 text-gray-600 hover:bg-gray-100 h-auto py-2">
+  2106→              <Heart className="w-5 h-5" />
+  2107→              <span className="text-xs">Favoritos</span>
+  2108→            </Button>
+  2109→            <Button variant="ghost" className="flex flex-col items-center gap-1 text-gray-600 hover:bg-gray-100 h-auto py-2">
+  2110→              <User className="w-5 h-5" />
+  2111→              <span className="text-xs">Perfil</span>
+  2112→            </Button>
+  2113→          </div>
+  2114→        </div>
+  2115→      </nav>
+  2116→      )}
+  2117→    </div>
+  2118→  )
+  2119→}

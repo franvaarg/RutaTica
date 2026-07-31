@@ -105,6 +105,7 @@ export default function BusPlannerApp() {
   const [originText, setOriginText] = useState('')
   const [selectedOrigin, setSelectedOrigin] = useState<SelectedLocation | null>(null)
   const [destination, setDestination] = useState('')
+  const [suppressDestSuggestions, setSuppressDestSuggestions] = useState(false)
   const [selectedDestination, setSelectedDestination] = useState<SelectedLocation | null>(null)
   const [plannedRoutes, setPlannedRoutes] = useState<PlanatedRoute[]>([])
   const [selectedRoute, setSelectedRoute] = useState<PlanatedRoute | null>(null)
@@ -667,6 +668,10 @@ export default function BusPlannerApp() {
         return
       }
 
+      // Suppress autocomplete suggestions so the dropdown doesn't reopen
+      // and cover the "Buscar Ruta" button
+      setSuppressDestSuggestions(true)
+
       setSelectedDestination({
         name: location.name || 'Destino desconocido',
         lat: lat,
@@ -897,46 +902,50 @@ export default function BusPlannerApp() {
           }
         }
       } else {
-        // No se encontraron rutas de bus — crear ruta directa sintética para iniciar seguimiento
-        if (previousRoutePath && selectedDestination) {
-          setRoutePath(previousRoutePath)
-          routePathRef.current = previousRoutePath
+        // No se encontraron rutas de bus — trazar ruta directa con OSRM
+        setHasPlanned(true)
 
-          // Crear ruta sintética tipo "directo" para que funcione todo el flujo de seguimiento
-          const directRoute: PlanatedRoute = {
-            id: 'direct-route-' + Math.random().toString(36).slice(2, 6),
-            company: 'Ruta Directa',
-            routeNumber: 'Directo',
-            origin: currentAddress || 'Tu ubicación',
-            destination: selectedDestination.name || destination,
-            price: 0,
-            currency: 'CRC',
-            boardingStop: {
-              name: currentAddress || 'Tu ubicación',
-              city: null,
-              coordinates: currentLocation ? { latitude: currentLocation.latitude, longitude: currentLocation.longitude } : undefined,
-            },
-            destinationStop: {
-              name: selectedDestination.displayName || selectedDestination.name,
-              city: null,
-              coordinates: { latitude: selectedDestination.lat, longitude: selectedDestination.lon },
-            },
-            nearbyStops: [],
+        const directRoute: PlanerratedRoute = {
+          id: 'direct-route-' + Math.random().toString(36).slice(2, 6),
+          company: 'Ruta Directa',
+          routeNumber: 'Directo',
+          origin: currentAddress || 'Tu ubicación',
+          destination: selectedDestination.name || destination,
+          price: 0,
+          currency: 'CRC',
+          boardingStop: {
+            name: currentAddress || 'Tu ubicación',
+            city: null,
+            coordinates: currentLocation ? { latitude: currentLocation.latitude, longitude: currentLocation.longitude } : { latitude: originLat, longitude: originLon },
+          },
+          destinationStop: {
+            name: selectedDestination.displayName || selectedDestination.name,
+            city: null,
+            coordinates: { latitude: selectedDestination.lat, longitude: selectedDestination.lon },
+          },
+          nearbyStops: [],
+        }
+
+        setPlannedRoutes([directRoute])
+        setSelectedRoute(directRoute)
+
+        // Fetch OSRM direct route
+        try {
+          const osrmRoute = await getOSRMRoute(
+            [originLat, originLon],
+            [selectedDestination.lat, selectedDestination.lon],
+            'driving'
+          )
+          if (osrmRoute) {
+            const newRoutePath: RoutePath = { direct: osrmRoute }
+            setRoutePath(newRoutePath)
+            routePathRef.current = newRoutePath
+            fitRouteToBounds(newRoutePath)
+          } else {
+            setError('No se pudo trazar la ruta. Intenta con otro destino.')
           }
-
-          setPlannedRoutes([directRoute])
-          setSelectedRoute(directRoute)
-          setHasPlanned(true)
-        } else if (previousRoutePath && previousSelectedRoute) {
-          // Ya tenía una ruta seleccionada previamente (caso edge)
-          setRoutePath(previousRoutePath)
-          routePathRef.current = previousRoutePath
-          setSelectedRoute(previousSelectedRoute)
-          setHasPlanned(true)
-        } else {
-          setPlannedRoutes([])
-          setHasPlanned(true)
-          setError('No se encontraron rutas para tu destino. Intenta con otra ubicación.')
+        } catch {
+          setError('Error al trazar la ruta directa. Intenta de nuevo.')
         }
       }
     } catch {
@@ -1517,10 +1526,11 @@ export default function BusPlannerApp() {
                         </div>
                         <LocationAutocomplete
                           value={destination}
-                          onChange={setDestination}
+                          onChange={(val) => { setDestination(val); setSuppressDestSuggestions(false) }}
                           onSelect={handleDestinationSelect}
                           placeholder="Escribe el destino..."
                           disabled={planning}
+                          suppressSuggestions={suppressDestSuggestions}
                         />
                       </div>
 
@@ -1606,6 +1616,7 @@ export default function BusPlannerApp() {
                               variant="outline"
                               onClick={() => {
                                 const name = dest.displayName || dest.name
+                                setSuppressDestSuggestions(true)
                                 setDestination(name)
                                 setSelectedDestination({
                                   name: name,

@@ -555,6 +555,15 @@ const BusMap = ({
 
     // Si hay ruta seleccionada con caminos reales
     if (selectedRoute && routePath) {
+      // Ruta directa (cuando no hay rutas de bus)
+      if (routePath.direct && routePath.direct.length > 2) {
+        polylines.push({
+          positions: routePath.direct,
+          color: '#E31837', // Rojo para conexión directa
+          weight: 4,
+          dashArray: '5, 5',
+        })
+      }
       // Segmento 1: Camino a pie desde ubicación del usuario hasta parada de embarque
       if (routePath.walking && routePath.walking.length > 0) {
         polylines.push({
@@ -584,7 +593,7 @@ const BusMap = ({
         })
       }
     }
-    // Ruta directa OSRM (cuando se selecciona un destino antes de planificar)
+    // Ruta directa OSRM sin ruta seleccionada (fallback)
     else if (routePath?.direct && routePath.direct.length > 2) {
       polylines.push({
         positions: routePath.direct,

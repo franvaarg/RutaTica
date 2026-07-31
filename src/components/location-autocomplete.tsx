@@ -27,6 +27,8 @@ interface LocationAutocompleteProps {
   onSelect: (location: LocationSuggestion) => void
   placeholder?: string
   disabled?: boolean
+  /** When true, suggestions are hidden and no search is triggered. Resets on next user keystroke. */
+  suppressSuggestions?: boolean
 }
 
 // Datos en memoria de ubicaciones comunes de Costa Rica (usadas como sugerencias iniciales)
@@ -118,6 +120,7 @@ export default function LocationAutocomplete({
   onSelect,
   placeholder = "Escribe el destino...",
   disabled = false,
+  suppressSuggestions = false,
 }: LocationAutocompleteProps) {
   const [suggestions, setSuggestions] = useState<LocationSuggestion[]>([])
   const [selectedLocation, setSelectedLocation] = useState<LocationSuggestion | null>(null)
@@ -147,6 +150,12 @@ export default function LocationAutocomplete({
 
   // Buscar sugerencias mientras el usuario escribe
   useEffect(() => {
+    // If suppressSuggestions is active, skip searching entirely
+    if (suppressSuggestions) {
+      if (searchTimeout.current) clearTimeout(searchTimeout.current)
+      return
+    }
+
     const query = displayValue.trim()
 
     // Limpiar timeout anterior
@@ -199,7 +208,7 @@ export default function LocationAutocomplete({
         clearTimeout(searchTimeout.current)
       }
     }
-  }, [displayValue, useNominatim])
+  }, [displayValue, useNominatim, suppressSuggestions])
 
   const handleSelect = (location: LocationSuggestion) => {
     setSelectedLocation(location)
@@ -275,7 +284,7 @@ export default function LocationAutocomplete({
       </div>
 
       {/* Lista de sugerencias */}
-      {showSuggestions && (
+      {showSuggestions && !suppressSuggestions && (
         <div className="absolute z-50 w-full mt-1 bg-white text-popover-foreground rounded-lg border border-[#E5E7EB] shadow-md max-h-64 overflow-y-auto">
           {loading ? (
             <div className="p-4 flex flex-col items-center justify-center">

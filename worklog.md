@@ -941,3 +941,33 @@ Stage Summary:
 - Documento de bitácora actualizado con fechas aproximadas para las 28 tareas
 - Cronología cubre 7 días de desarrollo activo (21-27 julio 2025) + documentación (31 julio)
 - Postcheck limpio sin errores
+---
+Fecha: 2026-07-31 (31 de julio de 2026)
+Task ID: fix-buscar-ruta-menu
+Agent: Z.ai Code (via main conversation)
+Task: Fix: botón Buscar Ruta del menú no funciona y rutas no se dibujan en el mapa
+
+Work Log:
+- Test en vivo con agent-browser reveló 3 bugs concatenados:
+  - Bug 1: Al seleccionar destino popular, el autocomplete se reabría con resultados Nominatim, cubriendo el botón Buscar Ruta (z-50)
+  - Bug 2: Cuando no hay rutas de bus cerca del destino, no se generaba ruta directa OSRM
+  - Bug 3: La ruta directa OSRM se calculaba pero no se dibujaba en el mapa
+- Fix 1: Agregada prop `suppressSuggestions` al componente LocationAutocomplete
+  - Cuando un destino se selecciona (desde autocomplete o destinos populares), se activa suppress
+  - El useEffect del autocomplete omite la búsqueda cuando suppress=true
+  - El render condicional incluye `!suppressSuggestions` para ocultar el dropdown
+  - Los destinos populares ahora también llaman `setSuppressDestSuggestions(true)`
+  - Al escribir en el campo, el onChange limpia suppress para reactivar sugerencias normales
+- Fix 2: Reemplazada la lógica de 'no rutas de bus' en handlePlanRoute
+  - Antes: dependía de previousRoutePath que era null en primera búsqueda
+  - Ahora: siempre crea ruta sintética + llama getOSRMRoute para dibujar ruta directa
+- Fix 3: Corregida lógica de getRoutePolylines en map.tsx
+  - Antes: `if (selectedRoute && routePath)` consumía el else-if para direct
+  - Ahora: dentro del primer if se verifica routePath.direct antes de walking/bus/walking2
+
+Stage Summary:
+- 3 bugs corregidos que impedían el flujo completo de búsqueda desde el menú
+- Botón Buscar Ruta ahora es accesible después de seleccionar cualquier destino
+- Destinos sin paradas de bus cercanas muestran ruta directa OSRM roja punteada
+- Verificado con VLM que la ruta se dibuja correctamente en el mapa
+- Lint limpio sin errores
