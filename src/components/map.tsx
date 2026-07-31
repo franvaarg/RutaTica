@@ -298,11 +298,11 @@ const BusMap = ({
   const [mapReady, setMapReady] = useState(false)
 
   // Actualizar centro y zoom del mapa cuando cambian las props
-  // NO actualizar cuando hay una ruta dibujada — RouteBoundsFitter se encarga
+  // NO actualizar cuando hay una ruta dibujada Y no se está en tracking — RouteBoundsFitter se encarga
   useEffect(() => {
     if (!mapRef.current || !center || !mapReady) return
-    // Si hay ruta dibujada, RouteBoundsFitter controla el zoom via fitBounds
-    if (routePath) return
+    // Si hay ruta dibujada y NO estamos en tracking, RouteBoundsFitter controla el zoom via fitBounds
+    if (routePath && !isTracking) return
 
     const map = mapRef.current
 
@@ -329,7 +329,7 @@ const BusMap = ({
         console.error('Error al llamar setView:', error, { center, zoom })
       }
     }
-  }, [center, zoom, mapReady, routePath])
+  }, [center, zoom, mapReady, routePath, isTracking])
 
   useEffect(() => {
     let mounted = true

@@ -1664,9 +1664,9 @@ export default function BusPlannerApp() {
         </div>
       </header>
 
-      {/* Bottom Route Results Panel - Compact */}
+      {/* Route Results Panel - Lado derecho */}
       {hasPlanned && !routePanelDismissed && !isTracking && (
-        <div className="absolute bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur-sm border-t border-[#E5E7EB] shadow-[0_-4px_20px_rgba(0,0,0,0.1)]">
+        <div className="absolute top-0 right-0 bottom-0 z-40 w-[320px] max-w-[85vw] bg-white/95 backdrop-blur-sm border-l border-[#E5E7EB] shadow-[-4px_0_20px_rgba(0,0,0,0.1)] flex flex-col">
           {/* Compact Header — sin botón de cerrar; el panel se cierra al iniciar el viaje */}
           <div className="px-3 py-1.5 flex items-center border-b border-[#E5E7EB]">
             <h2 className="text-xs font-bold flex items-center gap-1 text-gray-800">
@@ -1748,7 +1748,7 @@ export default function BusPlannerApp() {
 
           {/* Route cards - compact scrollable */}
           {plannedRoutes.length > 0 && (
-            <div className="max-h-[20vh] overflow-y-auto px-2.5 pb-2 space-y-1.5 scrollbar-thin">
+            <div className="flex-1 overflow-y-auto px-2.5 pb-2 space-y-1.5 scrollbar-thin">
               {plannedRoutes.map((route) => (
                 <Card
                   key={route.id}
@@ -1913,10 +1913,10 @@ export default function BusPlannerApp() {
         </div>
       )}
 
-      {/* Tracking Panel - Bottom bar during trip */}
+      {/* Tracking Panel - Lado derecho, slide in/out */}
       {isTracking && trackingPanelVisible && !isTripPaused && (
-        <div className="absolute bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur-sm border-t border-[#E5E7EB] shadow-[0_-4px_20px_rgba(0,0,0,0.1)]" onClick={(e) => e.stopPropagation()}>
-          <div className="p-3 space-y-2">
+        <div className="absolute top-0 right-0 bottom-0 z-40 w-[280px] max-w-[75vw] bg-white/95 backdrop-blur-sm border-l border-[#E5E7EB] shadow-[-4px_0_20px_rgba(0,0,0,0.1)] animate-[slideInRight_0.3s_ease-out]" onClick={(e) => e.stopPropagation()}>
+          <div className="p-3 space-y-3 h-full flex flex-col">
             {/* Trip info row */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -1935,38 +1935,40 @@ export default function BusPlannerApp() {
               </div>
             </div>
 
-            {/* Metrics row */}
-            <div className="grid grid-cols-3 gap-2">
-              <div className="bg-blue-50 rounded-lg p-2 text-center">
-                <p className="text-[10px] text-[#6B7280]">Restante</p>
-                <p className="font-bold text-[#E31837] text-sm">{distanceRemaining.toFixed(1)} km</p>
+            {/* Metrics */
+            <div className="space-y-2">
+              <div className="bg-blue-50 rounded-lg p-3">
+                <p className="text-[10px] text-[#6B7280]">Distancia restante</p>
+                <p className="font-bold text-[#E31837] text-lg">{distanceRemaining.toFixed(1)} km</p>
               </div>
-              <div className="bg-blue-50 rounded-lg p-2 text-center">
-                <p className="text-[10px] text-[#6B7280]">Tiempo</p>
-                <p className="font-bold text-[#0052B4] text-sm">
+              <div className="bg-blue-50 rounded-lg p-3">
+                <p className="text-[10px] text-[#6B7280]">Tiempo de viaje</p>
+                <p className="font-bold text-[#0052B4] text-lg">
                   {elapsedTime < 60
                     ? `${Math.floor(elapsedTime)} min`
                     : `${Math.floor(elapsedTime / 60)}h ${Math.floor(elapsedTime % 60)}m`}
                 </p>
               </div>
-              <div className="flex items-center justify-center">
-                <Button
-                  onClick={(e) => { e.stopPropagation(); handleStopTrip(); }}
-                  className="w-full h-full min-h-[40px] text-xs font-semibold bg-red-600 hover:bg-red-700 text-white shadow-sm"
-                >
-                  <X className="w-4 h-4 mr-1" />
-                  Detener
-                </Button>
-              </div>
+            </div>
+
+            // Stop button
+            <div className="mt-auto">
+              <Button
+                onClick={(e) => { e.stopPropagation(); handleStopTrip(); }}
+                className="w-full h-11 text-sm font-semibold bg-red-600 hover:bg-red-700 text-white shadow-sm"
+              >
+                <X className="w-4 h-4 mr-2" />
+                Detener Viaje
+              </Button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Paused Tracking Panel */}
+      {/* Paused Tracking Panel - Lado derecho */}
       {isTracking && trackingPanelVisible && isTripPaused && (
-        <div className="absolute bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur-sm border-t border-[#E5E7EB] shadow-[0_-4px_20px_rgba(0,0,0,0.1)]" onClick={(e) => e.stopPropagation()}>
-          <div className="p-3 space-y-2">
+        <div className="absolute top-0 right-0 bottom-0 z-40 w-[280px] max-w-[75vw] bg-white/95 backdrop-blur-sm border-l border-[#E5E7EB] shadow-[-4px_0_20px_rgba(0,0,0,0.1)] animate-[slideInRight_0.3s_ease-out]" onClick={(e) => e.stopPropagation()}>
+          <div className="p-3 space-y-3 h-full flex flex-col">
             {/* Trip info row */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -1985,15 +1987,15 @@ export default function BusPlannerApp() {
               </div>
             </div>
 
-            {/* Metrics row */}
-            <div className="grid grid-cols-3 gap-2">
-              <div className="bg-blue-50 rounded-lg p-2 text-center">
-                <p className="text-[10px] text-[#6B7280]">Restante</p>
-                <p className="font-bold text-[#E31837] text-sm">{distanceRemaining.toFixed(1)} km</p>
+            // Metrics
+            <div className="space-y-2">
+              <div className="bg-blue-50 rounded-lg p-3">
+                <p className="text-[10px] text-[#6B7280]">Distancia restante</p>
+                <p className="font-bold text-[#E31837] text-lg">{distanceRemaining.toFixed(1)} km</p>
               </div>
-              <div className="bg-blue-50 rounded-lg p-2 text-center">
-                <p className="text-[10px] text-[#6B7280]">Tiempo</p>
-                <p className="font-bold text-[#0052B4] text-sm">
+              <div className="bg-blue-50 rounded-lg p-3">
+                <p className="text-[10px] text-[#6B7280]">Tiempo de viaje</p>
+                <p className="font-bold text-[#0052B4] text-lg">
                   {elapsedTime < 60
                     ? `${Math.floor(elapsedTime)} min`
                     : `${Math.floor(elapsedTime / 60)}h ${Math.floor(elapsedTime % 60)}m`}
@@ -2001,8 +2003,8 @@ export default function BusPlannerApp() {
               </div>
             </div>
 
-            {/* Paused action buttons */}
-            <div className="grid grid-cols-2 gap-2">
+            // Paused action buttons
+            <div className="space-y-2 mt-auto">
               <Button
                 onClick={handleResumeTrip}
                 className="h-10 text-xs font-semibold bg-[#10B981] hover:bg-[#059669] text-white shadow-sm"
