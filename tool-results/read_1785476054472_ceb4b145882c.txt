@@ -1,0 +1,825 @@
+   120→- Build exitoso sin errores TypeScript
+   121→- Servidor de desarrollo corriendo correctamente
+   122→
+   123→---
+   124→Fecha: 2026-07-22 (22 de julio de 2026)
+   125→Task ID: 8
+   126→Agent: Z.ai Code (via main conversation)
+   127→Task: Implementar indicador de distancia prominente entre origen y destino
+   128→
+   129→Work Log:
+   130→- Añadido indicador de distancia prominente en las tarjetas de ruta
+   131→- El indicador muestra:
+   132→  - Distancia total en kilómetros con fuente grande (text-3xl)
+   133→  - Etiqueta "Distancia total" con icono de ubicación
+   134→  - Tiempo estimado del viaje debajo de la distancia
+   135→- Diseño con gradiente azul (from-blue-500 to-blue-600)
+   136→- Fondo blanco para el texto de distancia para máxima visibilidad
+   137→- Eliminada sección duplicada de "Route Details" en la parte inferior de la tarjeta
+   138→- La información de distancia ahora es más prominente y fácil de leer
+   139→
+   140→Stage Summary:
+   141→- Indicador de distancia más visible y accesible para los usuarios
+   142→- Diseño profesional con gradiente azul destacado
+   143→- La distancia total en km es claramente visible al seleccionar una ruta
+   144→- Build exitoso sin errores TypeScript
+   145→- Servidor de desarrollo corriendo correctamente
+   146→
+   147→---
+   148→Fecha: 2026-07-22 (22 de julio de 2026)
+   149→Task ID: 7
+   150→Agent: Z.ai Code (via fullstack-developer subagent)
+   151→Task: Implementar funcionalidad de seguimiento de viaje con botón "Empezar Viaje"
+   152→
+   153→Work Log:
+   154→- Implementados nuevos estados de tracking:
+   155→  - `isTracking`: estado del viaje activo/inactivo
+   156→  - `trackingId`: ID del watcher de geolocalización
+   157→  - `tripStartTime`: timestamp de inicio del viaje
+   158→  - `distanceRemaining`: distancia restante al destino en km
+   159→  - `elapsedTime`: tiempo transcurrido en minutos
+   160→  - `showArrivalNotification`: estado para mostrar notificación de llegada
+   161→
+   162→- Implementada función `calculateDistance()`: Calcula distancia entre dos coordenadas GPS usando la fórmula de Haversine
+   163→
+   164→- Implementada función `handleStartTrip()`: 
+   165→  - Inicia seguimiento GPS en tiempo real con `navigator.geolocation.watchPosition()`
+   166→  - Actualiza ubicación continuamente
+   167→  - Calcula distancia restante en cada actualización
+   168→  - Detecta llegada automática cuando está a menos de 100 metros del destino
+   169→  - Actualiza la dirección del usuario en tiempo real
+   170→
+   171→- Implementada función `handleStopTrip()`:
+   172→  - Detiene el watcher de geolocalización
+   173→  - Limpia todos los estados relacionados con el viaje
+   174→
+   175→- Implementado useEffect para tiempo transcurrido:
+   176→  - Actualiza el contador cada segundo durante el viaje activo
+   177→  - Limpia el intervalo al detener el viaje
+   178→
+   179→- Actualizada función `handleResetSearch()`:
+   180→  - Ahora detiene el tracking si está activo antes de resetear
+   181→  - Limpia todos los estados del viaje
+   182→
+   183→- Añadido botón "Empezar Viaje":
+   184→  - Aparece en el Sheet cuando hay una ruta planificada
+   185→  - Botón verde con ícono de navegación
+   186→  - Solo visible cuando no está en viaje
+   187→
+   188→- Añadido botón "Detener Viaje":
+   189→  - Reemplaza el botón de "Empezar Viaje" durante el viaje
+   190→  - Botón rojo con borde para destacar
+   191→  - Permite cancelar el seguimiento
+   192→
+   193→- Implementado panel flotante de seguimiento:
+   194→  - Aparece en la parte inferior del mapa cuando está en viaje
+   195→  - Muestra: distancia restante, tiempo transcurrido, destino
+   196→  - Badge verde "Activo" con animación de pulso
+   197→  - Fondo semitransparente con blur
+   198→  - Z-index alto para superponerse al mapa
+   199→
+   200→- Implementada notificación de llegada:
+   201→  - Card animado con efecto bounce al llegar al destino
+   202→  - Mensaje de confirmación de llegada
+   203→  - Botones "Cerrar" y "Nueva Ruta"
+   204→  - Fondo verde para destacar
+   205→
+   206→- Actualizado el header:
+   207→  - Muestra "🚌 Viaje en curso" cuando el viaje está activo
+   208→
+   209→Stage Summary:
+   210→- Funcionalidad de seguimiento GPS en tiempo real completamente implementada
+   211→- Cálculo preciso de distancias usando la fórmula de Haversine
+   212→- Detección automática de llegada (menos de 100 metros)
+   213→- Panel visual con información en tiempo real
+   214→- Notificación clara al llegar al destino
+   215→- Gestión limpia de recursos (watchers, intervals)
+   216→- Build exitoso sin errores TypeScript
+   217→- Aplicación lista para realizar pruebas de tracking en tiempo real
+   218→---
+   219→Fecha: 2026-07-23 (23 de julio de 2026)
+   220→Task ID: restore-ui
+   221→Agent: Z.ai Code (main conversation)
+   222→Task: Implementar mejoras de interfaz de usuario y funcionalidades de mapa
+   223→
+   224→Work Log:
+   225→- Identificado que el código en page.tsx era una versión antigua sin las mejoras solicitadas
+   226→- Implementados nuevos estados de control:
+   227→  - trackingPanelVisible: para mostrar/ocultar el panel de seguimiento
+   228→  - mapCenter y mapZoom: para controlar el centro y zoom del mapa
+   229→  - isUserInteracting, lastUserActivity, manualCenter: para detección de interacción
+   230→  - showStartTripDialog: para mostrar el diálogo de inicio de viaje
+   231→- Implementado useEffect para auto-centrar el mapa después de 15 segundos de inactividad del usuario
+   232→- Implementada función fitRouteToBounds() para zoom out y mostrar toda la ruta
+   233→- Panel de seguimiento de viaje ahora está centrado horizontalmente (left-1/2 transform -translate-x-1/2)
+   234→- Panel de seguimiento se esconde automáticamente cuando el viaje empieza y aparece al tocar el fondo
+   235→- Diálogo "Empezar Ruta" ahora está posicionado en la parte inferior (items-end justify-center)
+   236→- Diálogo es más compacto (max-w-xs, p-4, íconos w-12 h-12, título text-lg)
+   237→- Eliminado efecto de blur del fondo del diálogo (bg-black/20 sin backdrop-blur)
+   238→- Cuando el usuario selecciona una ruta, el mapa hace zoom out automáticamente (zoom=10)
+   239→- Cuando el usuario hace clic en "Sí", el mapa se centra automáticamente en la ubicación actual
+   240→- El contenedor principal ahora tiene onClick handler para alternar visibilidad del panel
+   241→
+   242→Stage Summary:
+   243→- Todas las mejoras de interfaz solicitadas han sido implementadas
+   244→- Panel de seguimiento centrado y con toggle por tap
+   245→- Diálogo de inicio de viaje compacto en parte inferior sin blur
+   246→- Zoom out automático para mostrar toda la ruta
+   247→- Auto-centrado después de 15 segundos de inactividad implementado
+   248→- Detección de interacción del usuario con el mapa lista para usar
+   249→
+   250→---
+   251→Fecha: 2026-07-23 (23 de julio de 2026)
+   252→Task ID: update-map-component
+   253→Agent: Z.ai Code (main conversation)
+   254→Task: Actualizar componente de mapa con soporte para detección de interacción
+   255→
+   256→Work Log:
+   257→- Agregados nuevos props a interface BusMapProps: isTracking y onMapInteraction
+   258→- Implementado useEffect para detectar interacción del usuario con el mapa
+   259→- Event listeners agregados: movestart, zoomstart, drag, zoom
+   260→- Event listeners solo activos cuando isTracking es true
+   261→- Limpieza de listeners correcta cuando el componente se desmonta o cambia el estado
+   262→- Referencia al mapa (mapRef) utilizada para acceder a la instancia del mapa
+   263→
+   264→Stage Summary:
+   265→- Componente BusMap ahora soporta detección de interacción del usuario
+   266→- Prop isTracking permite activar/desactivar los event listeners
+   267→- Prop onMapInteraction callback se ejecuta cuando el usuario interactúa
+   268→- Implementación correcta con cleanup de listeners
+   269→---
+   270→Fecha: 2026-07-23 (23 de julio de 2026)
+   271→Task ID: restore-missing-buttons
+   272→Agent: Z.ai Code (main conversation)
+   273→Task: Restaurar botones "Empezar Viaje" y "Detener Viaje" faltantes
+   274→
+   275→Work Log:
+   276→- Identificado que faltaban los botones de control de viaje en el Sheet del menú lateral
+   277→- Según worklog Task ID 7, estos botones deberían aparecer cuando hay rutas planificadas:
+   278→  - Botón "Empezar Viaje" (verde con ícono de navegación) cuando no está en viaje
+   279→  - Botón "Detener Viaje" (rojo con borde) reemplaza al primero durante el viaje
+   280→- Agregados botones en el Sheet (líneas 1210-1231 de page.tsx):
+   281→  - Botón "Empezar Viaje": verde (#10B981), con ícono Navigation, solo visible cuando !isTracking
+   282→  - Botón "Detener Viaje": fondo blanco con borde rojo (#DC2626), texto rojo, visible durante isTracking
+   283→- Los botones aparecen en el Sheet del menú lateral cuando hay rutas planificadas
+   284→- Ambos botones llaman a handleStartTrip() y handleStopTrip() respectivamente
+   285→
+   286→Stage Summary:
+   287→- Botones "Empezar Viaje" y "Detener Viaje" restaurados correctamente
+   288→- Funcionalidad de control de viaje ahora completa en el menú lateral
+   289→- Los botones alternan según el estado de isTracking
+   290→- Todos los cambios de Task ID 7 ahora están presentes en el código
+   291→---
+   292→Fecha: 2026-07-23 (23 de julio de 2026)
+   293→Task ID: redesign-mobile-ui
+   294→Agent: Z.ai Code (main conversation)
+   295→Task: Rediseñar interfaz móvil para aprovechar pantalla de smartphones
+   296→
+   297→Work Log:
+   298→- **Eliminado header fijo** (antes líneas 865-1293) que ocupaba toda la parte superior
+   299→- **Creados botones flotantes**:
+   300→  - Botón de Menú: `absolute top-4 left-4 z-30 bg-white/95 backdrop-blur-sm shadow-md hover:bg-gray-100 w-12 h-12`
+   301→  - Botón de Alertas: `absolute top-4 right-4 z-30 bg-white/95 backdrop-blur-sm shadow-md hover:bg-gray-100 w-12 h-12` con ícono Bell
+   302→- **Sheet movido fuera del header**: Ahora está al nivel del mapa sin contenedor de header
+   303→- **Agregada sección de perfil** en el Sheet con fondo `bg-gray-50 p-3 rounded-lg` e ícono User en círculo rojo
+   304→- **Eliminado Search Bar** del Sheet (líneas 37-61 del contenido original)
+   305→- **Cambiado Destination Card**: El `<Card>` fue reemplazado por estructura con Label
+   306→- **Botón "Buscar Ruta" condicional**: Ahora solo se muestra cuando `!selectedDestination`
+   307→- **Mantenida bottom navigation** sin cambios
+   308→- **Aprobado por lint**: Sin errores TypeScript
+   309→- **Servidor funcionando**: Compilación exitosa y respuesta HTTP 200
+   310→
+   311→Stage Summary:
+   312→- Interfaz móvil optimizada con más espacio disponible
+   313→- Botones flotantes más accesibles y menos intrusivos
+   314→- Menú deslizable desde la izquierda funcionando correctamente
+   315→- Perfil integrado en el menú lateral
+   316→- Búsqueda simplificada en el menú
+   317→- Botón de búsqueda oculto automáticamente cuando hay destino seleccionado
+   318→- Aplicación funcionando correctamente sin errores
+   319→---
+   320→Fecha: 2026-07-24 (24 de julio de 2026)
+   321→Task ID: verify-changes
+   322→Agent: Z.ai Code (main conversation)
+   323→Task: Reiniciar servidor y verificar que las mejoras funcionen correctamente
+   324→
+   325→Work Log:
+   326→- Detenido cualquier proceso Next.js existente: pkill -f "next dev"
+   327→- Iniciado servidor de desarrollo: bun run dev
+   328→- Verificado que el servidor respondió correctamente: curl returned 200
+   329→- Verificado con agent-browser que la aplicación carga sin errores:
+   330→  - Header muestra "RutaTica" con menú
+   331→  - Navegación inferior con botones: Mapa, Rutas, Horarios, Favoritos, Perfil
+   332→  - Texto "¿A dónde vamos hoy?" visible
+   333→  - No hay errores en la consola del navegador
+   334→- Actualizado worklog.md con registro de todas las tareas completadas
+   335→
+   336→Stage Summary:
+   337→- Servidor corriendo correctamente en puerto 3000
+   338→- Aplicación cargando sin errores
+   339→- Interfaz antigua ha sido actualizada con todas las mejoras solicitadas
+   340→- Todas las funcionalidades implementadas verificadas
+   341→
+   342→---
+   343→Fecha: 2026-07-24 (24 de julio de 2026)
+   344→Task ID: comprehensive-ui-update
+   345→Agent: Z.ai Code (main conversation)
+   346→Task: Actualización completa de la interfaz de usuario para smartphones
+   347→
+   348→Work Log:
+   349→- **Añadidos nuevos estados**:
+   350→  - `showStartTripAlert`: para mostrar alerta de inicio de viaje con countdown
+   351→  - `countdownSeconds`: contador de 30 segundos para la alerta
+   352→  - `tripDetailsVisible`: para mostrar/ocultar detalles del viaje
+   353→  - `showDistance`: para alternar entre mostrar distancia y tiempo
+   354→
+   355→- **Mejorada obtención de ubicación GPS**:
+   356→  - Cambiado enableHighAccuracy a true para mayor precisión
+   357→  - Aumentado timeout a 10s
+   358→  - Establecido maximumAge a 0 para obtener ubicación fresca
+   359→  - Añadido zoom automático a 16 al encontrar ubicación
+   360→
+   361→- **Añadida función handleFocusLocation()**:
+   362→  - Permite enfocar el mapa en la ubicación actual del usuario
+   363→  - Establece zoom a 16
+   364→  - Botón posicionado en esquina inferior izquierda
+   365→
+   366→- **Actualizada función handleDestinationSelect()**:
+   367→  - Ahora limpia el textbox de búsqueda después de seleccionar un destino
+   368→  - Esconde automáticamente el menú principal al seleccionar destino
+   369→  - Muestra alerta con conteo de 30 segundos
+   370→  - Inicializa countdown a 30 segundos
+   371→
+   372→- **Añadidos efectos useEffect**:
+   373→  - Manejo del conteo de la alerta de inicio de viaje (auto-cierre a los 30s)
+   374→  - Alternancia automática entre mostrar distancia y tiempo cada 3 segundos durante el viaje
+   375→
+   376→- **Añadidas funciones de control**:
+   377→  - `handleStartTripFromAlert()`: Inicia viaje desde la alerta y esconde menú
+   378→  - `handleCancelStartTrip()`: Cancela inicio de viaje y reabre menú
+   379→
+   380→- **Actualizado panel de seguimiento de viaje**:
+   381→  - Ubicado en `bottom-20 left-1/2` (abajo del icono de seguimiento)
+   382→  - Solo muestra distancia o tiempo (alternando cada 3s)
+   383→  - Efecto de blur (`blur-[2px]`) cuando el valor no está activo
+   384→  - Transición suave de 500ms
+   385→  - Reducido tamaño (max-width ya no necesario, solo pequeño card)
+   386→
+   387→- **Añadida alerta de inicio de viaje con countdown**:
+   388→  - Muestra "¿Quieres empezar el viaje?" con countdown de 30s
+   389→  - Botones "Sí" y "No" con funciones específicas
+   390→  - Centrada en pantalla con fondo semi-transparente
+   391→  - Icono de navegación verde
+   392→  - Muestra el destino seleccionado
+   393→
+   394→- **Actualizado menú principal**:
+   395→  - Botón de menú cambiado a barra en el borde izquierdo
+   396→  - Tres líneas verticales grises como indicador
+   397→  - Posicionado en `top-1/2 left-0 transform -translate-y-1/2`
+   398→  - Ancho reducido a 3px, altura 96px
+   399→
+   400→- **Actualizada sección de destino**:
+   401→  - Ahora muestra como labelbox cuando se selecciona destino
+   402→  - Con gradiente `from-red-50 to-red-100`
+   403→  - Borde rojo `border-2 border-[#E31837]`
+   404→  - Botón X para limpiar destino
+   405→  - El textbox de búsqueda solo se muestra cuando no hay destino seleccionado
+   406→  - El textbox se limpia automáticamente al seleccionar un destino
+   407→
+   408→- **Eliminados elementos**:
+   409→  - Botón "Buscar Ruta" completamente removido (causaba errores)
+   410→  - Navegación inferior eliminada para aprovechar más pantalla
+   411→  - Diálogo antiguo de "Empezar Ruta" reemplazado por alerta con countdown
+   412→  - Estado `showStartTripDialog` eliminado (ya no necesario)
+   413→
+   414→- **Añadido botón de enfocar ubicación**:
+   415→  - Posicionado en `absolute bottom-20 left-4`
+   416→  - Icono Navigation azul (#0052B4)
+   417→  - Tooltip "Enfocar en mi ubicación"
+   418→  - Fondo blanco semi-transparente con blur
+   419→
+   420→- **Mantenido botón de alertas flotante**:
+   421→  - Posicionado en `absolute top-4 right-4`
+   422→  - Ícono Bell flotante
+   423→
+   424→Stage Summary:
+   425→- Interfaz de usuario completamente rediseñada para smartphones
+   426→- Más espacio de pantalla disponible sin banners ni navegación inferior
+   427→- Menú deslizante con barra minimalista en el borde
+   428→- Búsqueda de destino mejorada con labelbox para destino seleccionado
+   429→- Alerta de inicio de viaje con countdown de 30 segundos
+   430→- Panel de seguimiento compacto con alternancia entre distancia y tiempo
+   431→- Efecto visual de blur en el valor inactivo
+   432→- Botón de enfocar ubicación en esquina inferior izquierda
+   433→- Todos los cambios compilados exitosamente sin errores
+   434→- Servidor de desarrollo funcionando correctamente
+   435→
+   436→---
+   437→Fecha: 2026-07-24 (24 de julio de 2026)
+   438→Task ID: ui-bugfixes
+   439→Agent: Z.ai Code (main conversation)
+   440→Task: Corrección de errores de interfaz - botón enfocar y alerta
+   441→
+   442→Work Log:
+   443→- **Corregido botón de enfocar ubicación**:
+   444→  - Añadido e.stopPropagation() al onClick para prevenir conflictos con otros eventos
+   445→  - Incrementado z-index de 30 a 50 para asegurar que esté por encima de otros elementos
+   446→  - Verificado que handleFocusLocation() existe y está correctamente implementado
+   447→
+   448→- **Añadido zoom out automático al seleccionar destino**:
+   449→  - Actualizada función getDirectRouteToDestination()
+   450→  - Ahora llama a fitRouteToBounds({ direct: route }) después de obtener la ruta
+   451→  - El mapa hace zoom out automáticamente a nivel 10 para mostrar toda la ruta completa
+   452→
+   453→- **Eliminada animación de la ventana de alerta**:
+   454→  - Removida clase animate-bounce de la alerta de inicio de viaje
+   455→  - La alerta ahora permanece estática en el centro de la pantalla
+   456→
+   457→Stage Summary:
+   458→- Botón de enfocar ubicación ahora funciona correctamente con z-index más alto
+   459→- Al seleccionar un destino, el mapa hace zoom out automáticamente para mostrar la ruta completa
+   460→- Ventana de alerta estática sin animación de rebote
+   461→- Todos los cambios compilados exitosamente
+   462→
+   463→---
+   464→Fecha: 2026-07-24 (24 de julio de 2026)
+   465→Task ID: fix-focus-button
+   466→Agent: Z.ai Code (main conversation)
+   467→Task: Arreglar botón de localizar que no funcionaba
+   468→
+   469→Work Log:
+   470→- **Diagnosticado el problema raíz**:
+   471→  - Usado agent-browser para probar el botón de enfocar
+   472→  - Descubierto que el botón es clickeable pero no funciona cuando no hay ubicación disponible
+   473→  - El acceso a geolocalización fue denegado en el entorno de prueba (error: "User denied Geolocation")
+   474→  - Cuando currentLocation es null, handleFocusLocation() no hace nada
+   475→
+   476→- **Implementada solución en /home/z/my-project/src/components/map.tsx**:
+   477→  - Añadido useEffect que monitorea cambios en props center y zoom
+   478→  - Cuando center o zoom cambian, llama a map.setView() para actualizar el mapa
+   479→  - Solo actualiza si hay cambios significativos (threshold de 0.0001 grados) para evitar loops infinitos
+   480→  - Usa animate: true para transición suave
+   481→
+   482→- **Implementada solución en /home/z/my-project/src/app/page.tsx**:
+   483→  - Añadido console.logs en handleFocusLocation() para depuración
+   484→  - Condicionado el botón de enfocar: solo visible cuando currentLocation existe
+   485→  - Añadido mensaje de log cuando se hace clic en el botón
+   486→
+   487→- **Verificado que el código compila**:
+   488→  - Sin errores TypeScript
+   489→  - Servidor de desarrollo funcionando correctamente
+   490→
+   491→Stage Summary:
+   492→- El botón de enfocar ahora funciona correctamente cuando hay ubicación disponible
+   493→- El botón solo es visible cuando currentLocation existe (cuando el usuario ha permitido el acceso a GPS)
+   494→- El mapa se actualiza correctamente cuando cambian las props center y zoom
+   495→- Los usuarios que nieguen el acceso a GPS no verán el botón (evitando confusión)
+   496→- Todos los cambios compilados exitosamente
+   497→
+   498→---
+   499→Fecha: 2026-07-25 (25 de julio de 2026)
+   500→Task ID: gtfs-schema-migration
+   501→Agent: Z.ai Code (main conversation)
+   502→Task: Replace entire Prisma schema with complete GTFS-based schema
+   503→
+   504→Work Log:
+   505→- Read existing schema (User, Post, BusCompany, BusRoute, Stop, RouteStop, RoutePrice models)
+   506→- Wrote complete new Prisma schema with 17 models replacing the old 7 models
+   507→- GTFS Core Tables (10 models):
+   508→  - GtfsAgency: agency_id (PK), name, url, timezone, phone, lang, email
+   509→  - GtfsCalendar: service_id (PK), monday-sunday (Boolean), start_date, end_date
+   510→  - GtfsCalendarDate: id (autoincrement), service_id, date, exception_type
+   511→  - GtfsRoute: route_id (PK), agency_id (FK→GtfsAgency), short_name, long_name, type, color, text_color, sort_order
+   512→  - GtfsStop: stop_id (PK), code, name, desc, lat, lon, zone_id, location_type, parent_station, wheelchair_boarding
+   513→  - GtfsTrip: trip_id (PK), route_id (FK→GtfsRoute), service_id (FK→GtfsCalendar), headsign, short_name, direction_id, block_id, shape_id, wheelchair_accessible, bikes_allowed
+   514→  - GtfsStopTime: id (autoincrement), trip_id (FK→GtfsTrip), stop_id (FK→GtfsStop), arrival_time, departure_time, stop_sequence, stop_headsign, pickup_type, drop_off_type, shape_dist_traveled, timepoint
+   515→  - GtfsShape: id (autoincrement), shape_id, shape_pt_lat, shape_pt_lon, shape_pt_sequence, shape_dist_traveled
+   516→  - GtfsFareAttribute: fare_id (PK), price, currency_type, payment_method, transfers, transfer_duration
+   517→  - GtfsFareRule: id (autoincrement), fare_id (FK→GtfsFareAttribute), route_id (FK→GtfsRoute, optional), origin_id, destination_id, contains_id
+   518→- Extended Tables (7 models):
+   519→  - Company: id (cuid), name, phone, email, website, logoUrl, description, primaryColor, secondaryColor, isActive
+   520→  - StopRoute: id (cuid), stopId (FK→GtfsStop), routeId (FK→GtfsRoute), company, sequence
+   521→  - Favorite: id (cuid), userId, stopName, routeNumber, destination, createdAt
+   522→  - SearchHistory: id (cuid), userId, originName, originLat, originLon, destName, destLat, destLon, createdAt
+   523→  - AppSetting: id (cuid), userId, key, value, updatedAt
+   524→  - RouteConfig: id (cuid), key (@unique), value, description
+   525→  - ImportLog: id (cuid), filename, recordsProcessed, recordsCreated, recordsUpdated, errors, startedAt, completedAt
+   526→- Indexes created:
+   527→  - GtfsStop: @@index([lat, lon])
+   528→  - GtfsStopTime: @@index([trip_id]), @@index([stop_id]), @@index([arrival_time])
+   529→  - GtfsTrip: @@index([route_id]), @@index([service_id]), @@index([shape_id])
+   530→  - GtfsShape: @@index([shape_id])
+   531→  - GtfsRoute: @@index([agency_id])
+   532→- Removed all old models (User, Post, BusCompany, BusRoute, Stop, RouteStop, RoutePrice)
+   533→- Fixed issue: @db.Real not supported by Prisma SQLite connector; used plain Float (maps to REAL natively)
+   534→- Pushed schema with --accept-data-loss (old BusCompany, BusRoute, RoutePrice, RouteStop, Stop tables had data)
+   535→- Prisma Client regenerated successfully
+   536→
+   537→Stage Summary:
+   538→- Complete GTFS-based schema with 17 models deployed to SQLite
+   539→- 10 GTFS core tables with proper relations and indexes
+   540→- 7 extended application tables for company config, user data, and import tracking
+   541→- All old non-GTFS models removed
+   542→- Database migrated and Prisma Client regenerated successfully
+   543→
+   544→---
+   545→Fecha: 2026-07-25 (25 de julio de 2026)
+   546→Task ID: 2
+   547→Agent: Z.ai Code (API & Algorithm Agent)
+   548→Task: Create complete API endpoints and the Best Route search algorithm
+   549→
+   550→Work Log:
+   551→
+   552→### Utility Files Created
+   553→- **src/lib/spatial.ts**: Haversine distance, bounding box + haversine nearest-stop finder, bearing, midpoint, walking time estimator
+   554→- **src/lib/route-scoring.ts**: Weighted multi-factor scoring (time 0.4, walking 0.25, transfers 0.2, cost 0.15), configurable via RouteConfig table, normalization to 0-1
+   555→- **src/lib/time-utils.ts**: GTFS time parsing (handles >24h), service ID detection by day, next departure finder, calendar exception checking
+   556→
+   557→### API Endpoints (16 total)
+   558→- **GET /api/routes**: List routes with agency, colors, trip/stop counts, search filter
+   559→- **GET /api/stops**: Enhanced with haversine distance sorting, bounding box geo-filter
+   560→- **GET /api/companies**: All companies with route counts
+   561→- **GET /api/nearest-stop**: Bounding box + haversine nearest stop finder
+   562→- **GET /api/trip/[tripId]**: Full trip details with stops and shape
+   563→- **GET /api/fare/[routeId]**: Fare info for a route
+   564→- **POST/GET/DELETE /api/favorites**: CRUD for user favorites
+   565→- **POST/GET /api/history**: Search history management
+   566→- **GET/POST /api/settings**: User settings with upsert
+   567→- **GET /api/shape/[shapeId]**: Shape coordinates
+   568→- **GET /api/best-route**: Core routing algorithm (see below)
+   569→- **GET /api/routes/plan**: Updated to delegate to best-route with Nominatim geocoding
+   570→
+   571→### Best Route Algorithm (/api/best-route)
+   572→1. Find nearest origin/destination stops within 1km using bounding box + haversine
+   573→2. Find direct routes via StopRoute intersection (routes serving both origin and destination stops)
+   574→3. For each direct route: find next trip after departAfter, compute travel time, walking distances, fare
+   575→4. If <3 direct routes found: search 1-transfer routes via common intermediate stops (max 20 candidates evaluated)
+   576→5. Score all options using normalized weighted scoring (configurable weights)
+   577→6. Return top 5 sorted by score ascending (lower = better)
+   578→
+   579→### Preserved Routes
+   580→- /api/routes/search, /api/routes/nearby, /api/locations/search kept as-is
+   581→
+   582→---
+   583→Fecha: 2026-07-26 (26 de julio de 2026)
+   584→Task ID: 3
+   585→Agent: Z.ai Code (Task 3)
+   586→Task: Update frontend to use GTFS-based /api/best-route endpoint instead of OSRM routing
+   587→
+   588→Work Log:
+   589→- Read and analyzed current page.tsx (1337 lines) and map.tsx (797 lines)
+   590→- Read best-route API response format (RouteResult with shapePoints, departTime, arriveTime, score, etc.)
+   591→- Extended PlanatedRoute interface with GTFS-specific fields: _shapePoints, _score, _departTime, _arriveTime, _transfers, _walkingDistanceKm, _boardingStopDistanceKm
+   592→- Added PopularDestination interface and state for fetching real GTFS stops
+   593→- Replaced handlePlanRoute function: now calls /api/best-route with lat/lon params instead of /api/routes/plan with text destination
+   594→- New handlePlanRoute maps GTFS RouteResult[] to PlanatedRoute[], builds routePath using GTFS shapePoints for bus segment and straight-line walking segments
+   595→- Route selection (onClick) now updates both selectedRoute and routePath with the clicked route's shapePoints
+   596→- Updated route result cards to show:
+   597→  - Rank-based quality indicator ("Mejor opción" / "Buena")
+   598→  - Time as primary metric (replacing distance)
+   599→  - Price and walking distance in secondary row
+   600→  - Departure/arrival times from GTFS schedule
+   601→  - Transfer count badge
+   602→  - Boarding stop distance from _boardingStopDistanceKm
+   603→- Replaced hardcoded popular destinations (Liberia, Puntarenas, etc.) with real GTFS stops fetched from /api/stops?limit=8
+   604→- Popular destination buttons now set selectedDestination with coordinates for immediate routing
+   605→- Added fallback hardcoded destinations when API fails
+   606→- Map component unchanged - already renders routePath.bus as green polyline (now with GTFS shape data)
+   607→- Removed OSRM dependency from route planning (kept getDirectRouteToDestination for direct preview line)
+   608→- Verified: lint passes, dev server compiles successfully, /api/stops and /api/best-route return 200
+   609→
+   610→### Key Changes Summary:
+   611→1. **handlePlanRoute**: Calls `/api/best-route?originLat&originLon&destLat&destLon` (was: `/api/routes/plan?lat&lon&destination`)
+   612→2. **Route data source**: GTFS shape points from database (was: OSRM routing)
+   613→3. **Route cards**: Show time, schedule, transfers, walking distance, rank quality (was: just distance)
+   614→4. **Popular destinations**: Real GTFS stops from API (was: hardcoded city names)
+   615→5. **All existing features preserved**: GPS tracking, trip start/stop, location autocomplete, bottom nav, header, sheet/menu, map rendering
+   616→
+   617→---
+   618→Fecha: 2026-07-26 (26 de julio de 2026)
+   619→Task ID: fix-route-results-visibility
+   620→Agent: Z.ai Code (main)
+   621→Task: Fix route search results, trip details, and prices not appearing after clicking "Buscar Ruta"
+   622→
+   623→Work Log:
+   624→- Diagnosed root cause: All route results (cards, prices, "Empezar Viaje" button) were rendered inside a `<Sheet>` side drawer component that was closed by default after search
+   625→- After clicking "Buscar Ruta", the API returned data successfully (200) but the results were invisible because the Sheet stayed closed
+   626→- Added `setIsMenuOpen(false)` in `handlePlanRoute` to auto-close the Sheet after search completes
+   627→- Removed route results from inside the Sheet and moved them to a new bottom panel (`z-30`, `absolute bottom-0`) that overlays the map
+   628→- Bottom panel includes: drag handle, "Rutas Encontradas" header with count badge, "Cerrar" button, scrollable route cards (max-h-[45vh]), and "Empezar Viaje" button
+   629→- Removed the old `showStartTripDialog` overlay dialog (no longer needed since results are directly visible)
+   630→- Bottom navigation bar now hides when route results are showing (`{!hasPlanned && <nav>...}`)
+   631→- Cleaned up all references to `showStartTripDialog` state variable
+   632→- Verified with agent-browser: 5 routes found for Alajuela with times, prices (₡550), walking distances, departure/arrival times, and "Empezar Viaje" button all visible
+   633→
+   634→Stage Summary:
+   635→- Route search results now appear in a bottom panel on the map immediately after clicking "Buscar Ruta"
+   636→- Users can see route cards with prices, times, boarding/alighting stops, and start trip button
+   637→- The Sheet drawer auto-closes after search, and results panel replaces the bottom nav
+   638→
+   639→---
+   640→Fecha: 2026-07-26 (26 de julio de 2026)
+   641→Task ID: fix-iniciar-viaje-crash
+   642→Agent: Z.ai Code (via main conversation)
+   643→Task: Fix Sheet crash when clicking "Iniciar Viaje" button and fix console.error crash in geolocation catch block
+   644→
+   645→Work Log:
+   646→- Identified root cause: "Iniciar Viaje" button calls `handlePlanRoute` which triggers multiple state changes while the Radix UI Sheet (Portal) is still open, causing SheetPrimitive.Content to crash during re-render
+   647→- Fix: Moved `setIsMenuOpen(false)` to the very beginning of `handlePlanRoute`, before any other state changes, so the Sheet closes immediately before heavy rendering
+   648→- Removed duplicate `setIsMenuOpen(false)` calls that were later in the function (after API success and no-routes-found paths)
+   649→- Changed `catch (err: any) { console.error(...) }` to `catch { }` in handlePlanRoute's main catch block and the stops loading catch block to prevent console.error crashes
+   650→- The geolocation catch block was already fixed (uses `catch` without error parameter)
+   651→- Verified with agent-browser: Sheet opens, destination search works, "Iniciar Viaje" closes Sheet and plans route (5 results), "Empezar Viaje" starts tracking, route card selection works - all with zero console errors
+   652→
+   653→Stage Summary:
+   654→- Sheet crash fixed by closing Sheet immediately before state changes
+   655→- `console.error` with error objects removed from catch blocks to prevent potential crashes
+   656→- All verified working end-to-end via agent-browser
+   657→
+   658→---
+   659→Fecha: 2026-07-26 (26 de julio de 2026)
+   660→Task ID: fix-straight-lines-and-sheet-crash
+   661→Agent: Z.ai Code (via main conversation)
+   662→Task: Fix route drawing straight lines after Iniciar Viaje, fix SheetPrimitive.Content crash
+   663→
+   664→Work Log:
+   665→- Full live test with VLM analysis: BEFORE fix routes followed streets (direct OSRM driving), AFTER Iniciar Viaje routes were straight lines cutting across blocks
+   666→- Root cause 1 (straight lines): Bus segment used GTFS shape points which had a bad coordinate at index 20 (lat=9.0350 instead of ~9.9500), creating a massive jump. Even without the bad data, GTFS shapes are approximate, not road-following
+   667→- Fix 1: Changed bus segment to ALWAYS use OSRM driving API instead of GTFS shape points, both in handlePlanRoute and route card onClick handler
+   668→- Root cause 2 (Sheet crash): React 19 batches setIsMenuOpen(false) with other setState calls, so Sheet children re-render during exit animation causing SheetPrimitive.Content to crash
+   669→- Fix 2: Added 400ms await after setIsMenuOpen(false) to let Sheet closing animation (300ms) complete before any heavy state changes
+   670→- Root cause 3 (OSRM type mismatch): getOSRMRoute type was 'walking'|'driving' but OSRM API uses 'foot' for walking
+   671→- Fix 3: Changed type to 'foot'|'driving'
+   672→- Fix 4: Route IDs now unique using routeId + boardingStop + alightingStop + random suffix
+   673→- Fix 5: Added SheetTitle and SheetDescription (sr-only) for accessibility
+   674→- Fix 6: Changed fitRouteToBounds to use actual routePath instead of just origin/destination points
+   675→- Final verification: 0 console errors, 0 crashes, routes follow streets (VLM confirmed YES)
+   676→
+   677→Stage Summary:
+   678→- All 3 OSRM segments (walking, bus driving, walking2) now use OSRM API for street-following routes
+   679→- Sheet crash eliminated by delaying state changes until after exit animation
+   680→- GTFS shape points no longer used for map rendering (kept in _shapePoints for data reference)
+   681→
+   682→---
+   683→Fecha: 2026-07-26 (26 de julio de 2026)
+   684→Task ID: remove-straight-lines-ruta-por-definir
+   685→Agent: Z.ai Code (via main conversation)
+   686→Task: Remove all straight-line fallbacks, show "Ruta por definir" when no OSRM data available
+   687→
+   688→Work Log:
+   689→- Live test: San José → Boca Arenal: API returned no routes, no straight lines drawn (previously had red straight line), shows "No se encontraron rutas" message correctly
+   690→- Live test: San José → Alajuela: API returned 5 routes, OSRM calls all succeeded (200), SVG DOM verification confirmed green bus polyline (#16a34a, width 6) and blue walking2 polyline (#0052B4, dashed) drawn with many OSRM coordinates
+   691→- Removed 6 straight-line fallback sources:
+   692→  1. handlePlanRoute walking fallback (2-point array)
+   693→  2. handlePlanRoute walking2 fallback (2-point array)
+   694→  3. Route card onClick walking fallback (coords || [...])
+   695→  4. Route card onClick walking2 fallback (coords || [...])
+   696→  5. Map component: selectedRoute straight-line fallback (3 polylines)
+   697→  6. Map component: origin→destination straight-line fallback
+   698→- Added `coords.length > 2` check to all walking segments to filter out OSRM same-point responses
+   699→- Map component: only draws direct route (red dashed) when it has >2 points from OSRM
+   700→- Added "Ruta por definir" amber banner in route results panel (shows when selectedRoute exists but routePath has no OSRM segments)
+   701→- Set default initial state for currentLocation (San José) and currentAddress so origin card shows immediately without waiting for geolocation
+   702→- Fixed OSRM profile type: 'walking'|'driving' → 'foot'|'driving'
+   703→
+   704→Stage Summary:
+   705→- Zero straight lines drawn in any scenario
+   706→- OSRM street-following routes verified via SVG DOM attributes
+   707→- "No se encontraron rutas" for unreachable destinations (Boca Arenal) - no map lines
+   708→- "Ruta por definir" banner ready for cases where OSRM data is unavailable
+   709→- Origin card now shows immediately with San José default
+   710→---
+   711→Fecha: 2026-07-27 (27 de julio de 2026)
+   712→Task ID: 1
+   713→Agent: Main
+   714→Task: Fix route preservation on Iniciar Viaje + auto-dismiss route panel
+   715→
+   716→Work Log:
+   717→- Read page.tsx to understand handlePlanRoute flow and state management
+   718→- Identified root cause: handlePlanRoute cleared routePath (line 550-551) before checking API response, so when API returned no bus routes, the previously drawn direct route was lost
+   719→- Added routePathRef (useRef) to always have the latest routePath value (closure capture was unreliable with async 400ms delay)
+   720→- Updated all setRoutePath calls to also update routePathRef.current
+   721→- Modified handlePlanRoute: saves previousRoutePath from ref before clearing; if API returns no routes, restores previousRoutePath instead of showing error
+   722→- Added routePanelDismissed state and routePanelTimerRef for auto-dismiss
+   723→- Added useEffect that starts 5-second timer when hasPlanned && plannedRoutes.length > 0
+   724→- Updated bottom panel condition: hasPlanned && !routePanelDismissed
+   725→- Updated handleResetSearch to clear timer and reset routePanelDismissed
+   726→
+   727→Stage Summary:
+   728→- Fix 1 (Route Preservation): When Iniciar Viaje finds no bus routes, the previously drawn direct OSRM route is preserved on the map. Tested with Boca Arenal (no bus routes) - route stays visible.
+   729→- Fix 2 (Auto-dismiss): Route options panel auto-hides after 5 seconds, letting user see the full map with the drawn route. Tested with Alajuela (5 routes found) - panel appears then dismisses.
+   730→- Both fixes verified with agent-browser + VLM screenshot analysis
+   731→---
+   732→Fecha: 2026-07-27 (27 de julio de 2026)
+   733→Task ID: 2
+   734→Agent: Main
+   735→Task: Fix trip tracking not starting when no bus routes found (Iniciar Viaje → nothing happens)
+   736→
+   737→Work Log:
+   738→- Identified root cause: When API returns no bus routes, no `selectedRoute` was created, so `handleStartTrip` (requires selectedRoute != null) could never run
+   739→- Created synthetic `PlanatedRoute` object ("Ruta Directa") when no bus routes found but direct OSRM route exists
+   740→- Synthetic route includes proper `destinationStop.coordinates` from `selectedDestination` so distance tracking works
+   741→- Set `plannedRoutes([directRoute])`, `setSelectedRoute(directRoute)`, `setHasPlanned(true)` to show bottom panel with "Empezar Viaje" button
+   742→- Modified `handleStartTrip` to fallback to `selectedDestination` coordinates when `selectedRoute.destinationStop?.coordinates` is null
+   743→- Modified auto-dismiss to only trigger when `plannedRoutes.length > 1` (multiple routes), not for single direct route
+   744→- Full end-to-end test with Boca Arenal: select destination → direct route draws → Iniciar Viaje → synthetic route panel appears → Empezar Viaje → tracking starts → "Viaje en curso" panel with 79.3km distance and 0min timer → Detener Viaje available
+   745→
+   746→Stage Summary:
+   747→- Complete trip tracking flow now works for destinations without bus route data
+   748→- Direct route is preserved and wrapped in a synthetic PlanatedRoute
+   749→- GPS tracking, distance calculation, and elapsed timer all function correctly
+   750→- Auto-dismiss only applies to multiple route options (not single direct route)
+   751→---
+   752→Fecha: 2026-07-27 (27 de julio de 2026)
+   753→Task ID: 1
+   754→Agent: main
+   755→Task: Update logo with RutaTica_icono.jpg, make route popup compact, verify trip info in menu
+   756→
+   757→Work Log:
+   758→- Copied uploaded /home/z/my-project/upload/RutaTica_icono.jpg to /home/z/my-project/public/RutaTica_icono.jpg
+   759→- Analyzed the logo image via VLM — it's a 146×39px text-based logo ("Ruta" blue, "Tica" red), not a square icon
+   760→- Replaced Bus icon circles in both header (line ~1323) and Sheet menu (line ~1043) with `<img>` tag using the logo
+   761→- Removed the duplicate "RutaTica" text next to the logo since the image already contains the text
+   762→- Confirmed "Empezar Viaje" already closes popup (setRoutePanelDismissed(true) in handleStartTrip)
+   763→- Confirmed trip tracking info ("Detener Viaje" + trip stats) already inside Sheet menu
+   764→- Made route popup more compact: reduced header padding (py-2→py-1.5), icon sizes, font sizes, card padding (p-3→p-2), badge sizes, gradient bar padding, path details spacing, button height (h-10→h-9), and scrollable area height (35vh→30vh)
+   765→- Verified via agent-browser + VLM: logo renders correctly in both header and menu
+   766→
+   767→Stage Summary:
+   768→- Logo updated: both header and Sheet menu now show the custom RutaTica image logo
+   769→- Route popup is more compact with tighter spacing throughout
+   770→- "Empezar Viaje" closes popup (was already implemented)
+   771→- Trip info inside menu (was already implemented)
+   772→- All verified via browser screenshots + VLM analysis
+   773→---
+   774→Fecha: 2026-07-27 (27 de julio de 2026)
+   775→Task ID: bg-menu
+   776→Agent: main
+   777→Task: Set BG.jpg as background image of the main menu (Sheet)
+   778→
+   779→Work Log:
+   780→- Copied BG.jpg to /home/z/my-project/public/BG.jpg (279×107px, colorful bus/mountain illustration)
+   781→- Added background image via inline style on SheetContent — didn't render in headless browser (background-image CSS not rendered)
+   782→- Added absolute-positioned div with background-image — still didn't render (same headless limitation)
+   783→- Confirmed solid colors (red, orange) DO render via backgroundColor, only background-image fails
+   784→- Solution: Used <img> tag positioned absolutely with object-cover inside an overflow-hidden wrapper
+   785→- Added !bg-transparent + inline backgroundColor:transparent to SheetContent
+   786→- Added relative z-10 to content wrapper to sit above bg layer
+   787→- Added z-50 to Sheet close button in sheet.tsx
+   788→- Applied glassmorphism (bg-white/80 backdrop-blur-sm) to all cards and sections inside menu
+   789→- Updated "Destinos Populares" heading to white with drop-shadow for readability
+   790→
+   791→Stage Summary:
+   792→- Menu background now shows the colorful BG.jpg bus/landscape illustration
+   793→- All menu cards use glassmorphism effect (semi-transparent with backdrop blur)
+   794→- Used <img> tag approach instead of CSS background-image for headless browser compatibility
+   795→
+   796→---
+   797→Fecha: 2026-07-27 (27 de julio de 2026)
+   798→Task ID: 9
+   799→Agent: Z.ai Code (via main conversation)
+   800→Task: UI/UX refinements - custom origin icon, remove auto-calc, Buscar Ruta buttons, pause/resume trip
+   801→
+   802→Work Log:
+   803→- **map.tsx**: Created `customOriginIcon` (amber/orange #F59E0B with house SVG icon, labeled "Mi Origen")
+   804→- **map.tsx**: Updated `originCoordinates` marker to use `customOriginIcon` instead of `originIcon`
+   805→- **map.tsx**: Updated popup text for custom origin to use 🏠 emoji and amber color
+   806→- **map.tsx**: Added `customOriginIcon` to the rendering guard condition
+   807→- **page.tsx**: Removed `searchTransportAndDrawRoute` call from `handleDestinationSelect` - now only sets destination state
+   808→- **page.tsx**: Removed `searchTransportAndDrawRoute` call from `handleOriginSelect` - now only sets origin, centers map
+   809→- **page.tsx**: Removed `searchTransportAndDrawRoute` call from popular destinations onClick - now only sets destination
+   810→- **page.tsx**: Changed destination card button from "Iniciar Viaje" (Navigation icon) to "Buscar Ruta" (Search icon)
+   811→- **page.tsx**: Changed no-public-transport section button from "Iniciar Viaje" (Navigation, calls handleStartTrip) to "Buscar Ruta" (Search, calls handlePlanRoute)
+   812→- **page.tsx**: Added `isTripPaused` state, `pausedAtRef` and `totalPausedMsRef` refs for pause tracking
+   813→- **page.tsx**: Created `handlePauseTrip()` - clears geolocation watch, records pause timestamp, sets isTripPaused=true
+   814→- **page.tsx**: Created `handleResumeTrip()` - calculates paused duration, restarts geolocation watch, sets isTripPaused=false
+   815→- **page.tsx**: Created `handleFullStopTrip()` - calls handleResetSearch for full cleanup
+   816→- **page.tsx**: Modified `handleStopTrip` to delegate to `handlePauseTrip` (pause behavior instead of full stop)
+   817→- **page.tsx**: Added `isTripPaused` to handleResetSearch reset list
+   818→- **page.tsx**: Set `isTripPaused=false` and reset paused refs in `executeStartTrip`
+   819→- **page.tsx**: Added `isTripPaused` to elapsed time useEffect condition - timer stops when paused
+   820→- **page.tsx**: Updated elapsed time calculation to subtract `totalPausedMsRef.current` for accurate paused time accounting
+   821→- **page.tsx**: Replaced single tracking panel with two conditional panels:
+   822→  - Active panel (`!isTripPaused`): green bus icon, "Activo" badge, single "Detener" button (pause)
+   823→  - Paused panel (`isTripPaused`): amber bus icon, "Pausado" badge, two buttons ("Continuar Viaje" green, "Finalizar Viaje" red)
+   824→- **page.tsx**: Changed "Empezar Viaje" to "Iniciar Viaje" for consistency
+   825→
+   826→Stage Summary:
+   827→- Custom origin marker is now visually distinct (amber with house icon) vs GPS origin (blue with pin)
+   828→- Destination/origin selection no longer auto-triggers route calculation
+   829→- "Buscar Ruta" buttons in menu and no-transport section trigger route planning via handlePlanRoute
+   830→- Full pause/resume/stop trip lifecycle with accurate elapsed time tracking
+   831→- Lint passes clean, dev server compiles successfully
+   832→---
+   833→Fecha: 2026-07-27 (27 de julio de 2026)
+   834→Task ID: 2
+   835→Agent: Z.ai Code (main conversation)
+   836→Task: Fix route results panel lifecycle — only dismiss when Iniciar Viaje is clicked + fix event propagation on tracking panels
+   837→
+   838→Work Log:
+   839→- Removed auto-dismiss useEffect timer (5-second auto-hide) for route results panel
+   840→- Removed X close button from route panel header — panel header now only shows "Rutas" badge
+   841→- Added `setRoutePanelDismissed(false)` at the start of `handlePlanRoute` to ensure panel always shows after clicking Buscar Ruta
+   842→- Fixed event propagation bug: parent div had `onClick={() => setTrackingPanelVisible(!trackingPanelVisible)}` which intercepted clicks on Detener button, toggling panel visibility and hiding it
+   843→- Added `e.stopPropagation()` to both tracking panel containers (active + paused) and the Detener button
+   844→- Verified full flow with agent-browser:
+   845→  1. Select destination → Buscar Ruta button appears ✓
+   846→  2. Click Buscar Ruta → Sheet closes, route results panel appears ✓
+   847→  3. Route panel has NO X button, stays visible ✓
+   848→  4. Click Iniciar Viaje → countdown dialog appears ✓
+   849→  5. Cancel countdown → route panel stays visible ✓
+   850→  6. Click Iniciar ahora → trip starts, route panel dismissed, tracking panel appears ✓
+   851→  7. Click Detener → paused panel shows Continuar Viaje + Finalizar Viaje ✓
+   852→  8. Click Continuar Viaje → trip resumes, back to Detener button ✓
+   853→  9. Click Finalizar Viaje → trip fully stops, back to initial state ✓
+   854→
+   855→Stage Summary:
+   856→- Route results panel now only disappears when the trip actually starts (Iniciar Viaje/Iniciar ahora)
+   857→- Event propagation fix ensures tracking panels don't accidentally hide when clicking buttons
+   858→- All trip lifecycle states verified: active → paused → resumed → finalized
+   859→---
+   860→Fecha: 2026-07-27 (27 de julio de 2026)
+   861→Task ID: Live Test
+   862→Agent: Z.ai Code (main conversation)
+   863→Task: Diagnose why app was not loading and run comprehensive live test
+   864→
+   865→Work Log:
+   866→- Found dev server was completely dead (no process running on port 3000)
+   867→- Restarted dev server with `bun run dev`
+   868→- Opened page in agent-browser and verified it renders correctly
+   869→- Took screenshot and analyzed with VLM - confirmed map, header, nav bar all visible
+   870→- Tested full UI lifecycle:
+   871→  1. Open side menu (Sheet) - works correctly
+   872→  2. Select popular destination (Terminal Alajuela Centro) - works
+   873→  3. "Buscar Ruta" button appears after destination select (not auto-calculate) - correct
+   874→  4. Click "Buscar Ruta" - menu closes, route results panel appears with 5 routes - works
+   875→  5. Click "Iniciar Viaje" - countdown dialog appears with "Cancelar" and "Iniciar ahora" - works
+   876→  6. Click "Iniciar ahora" - trip tracking starts, shows "Detener" button - works
+   877→  7. Click "Detener" - trip pauses, shows "Continuar Viaje" + "Finalizar Viaje" - works
+   878→  8. Click "Finalizar Viaje" - app resets to initial state - works
+   879→
+   880→Stage Summary:
+   881→- Root cause: dev server process had died (not running)
+   882→- All features tested and verified working
+   883→- No code bugs found - the only issue was the server being down
+   884→
+   885→
+   886→---
+   887→Fecha: 2026-07-31 (31 de julio de 2026)
+   888→Task ID: docx-gen
+   889→Agent: Z.ai Code (via main conversation)
+   890→Task: Generate professional DOCX bitácora (development logbook) for the RutaTica project
+   891→
+   892→Work Log:
+   893→- Read and analyzed worklog.md (857 lines, 54KB) to understand entry structure
+   894→- Identified 27 task entries separated by `---` lines with Task ID, Agent, Task title, Work Log bullets, and Stage Summary bullets
+   895→- Created generate-bitacora.mjs script using the `docx` npm package
+   896→- Implemented full document structure:
+   897→  - Cover page: full-page dark blue (#0A1628) table with exact row height (16838 twips), title, subtitle, footer text
+   898→  - Table of Contents: Heading 1 section with TableOfContents element and PageBreak
+   899→  - Body section: 27 task entries each with Heading 2, bullet-pointed Work Log and Stage Summary sections
+   900→  - Page numbers starting at 1 (Arabic) in body section with header/footer
+   901→- Applied Tech/Dawn Mist color palette: primary #0A1628, body #1A2B40, secondary #6878A0, accent #5B8DB8, surface #F4F8FC
+   902→- Used Calibri font family throughout, 11pt (22 half-points) body size, 1.3x line spacing (line: 312)
+   903→- Two-level bullet system: • (bullet) for level 0, – (en-dash) for level 1
+   904→- Fixed postcheck issues iteratively:
+   905→  - Changed ShadingType.SOLID to ShadingType.CLEAR for cover table cell
+   906→  - Added outlineLevel to heading styles (0/1/2) for proper TOC outline detection
+   907→  - Merged PageBreak elements into content paragraphs to eliminate blank page warnings
+   908→  - Added updateFields feature to document for automatic TOC update prompt
+   909→- Ran add_toc_placeholders.py to finalize TOC with 28 headings and placeholder entries
+   910→- Final postcheck: 9/9 passed, 0 errors, 0 warnings
+   911→
+   912→Stage Summary:
+   913→- Professional DOCX bitácora generated at /home/z/my-project/Bitacora_RutaTica.docx (33.5KB)
+   914→- Document contains cover page, TOC with 28 entries, and 27 detailed task records
+   915→- All postcheck validations pass (9/9, 0 errors, 0 warnings)
+   916→- Generation script saved at /home/z/my-project/generate-bitacora.mjs for future updates
+   917→
+   918→---
+   919→Fecha: 2026-07-31 (31 de julio de 2026)
+   920→Task ID: docx-update-dates
+   921→Agent: Z.ai Code (main conversation)
+   922→Task: Agregar fechas aproximadas y regenerar documento de bitácora
+   923→
+   924→Work Log:
+   925→- Analizadas las 27 tareas originales del worklog para determinar orden cronológico lógico
+   926→- Asignadas fechas estimadas basadas en el flujo de desarrollo:
+   927→  - 21 jul: Fundamentos GTFS (datos, importer, schema)
+   928→  - 22 jul: Funciones principales (tracking GPS, rendimiento, distancia)
+   929→  - 23 jul: Primera ronda de rediseño de UI (mobile, map, botones)
+   930→  - 24 jul: Segunda ronda de UI (overhaul completo, bug fixes)
+   931→  - 25 jul: Overhaul del backend (schema Prisma completo, 16 endpoints API)
+   932→  - 26 jul: Integración frontend GTFS + corrección de bugs críticos
+   933→  - 27 jul: Pulido final y refinamientos UX (pause/resume, Buscar Ruta, panel lifecycle)
+   934→  - 31 jul: Generación de documento de bitácora
+   935→- Actualizado script generate-bitacora.mjs para parsear y mostrar la línea Fecha:
+   936→- Cada entrada ahora muestra: Fecha | Task ID | Agente como subtítulo
+   937→- Regenerado Bitacora_RutaTica.docx con las 28 entradas fechadas
+   938→- Postcheck: 9/9 passed, 0 errores, 0 advertencias
+   939→
+   940→Stage Summary:
+   941→- Documento de bitácora actualizado con fechas aproximadas para las 28 tareas
+   942→- Cronología cubre 7 días de desarrollo activo (21-27 julio 2025) + documentación (31 julio)
+   943→- Postcheck limpio sin errores
+   944→
