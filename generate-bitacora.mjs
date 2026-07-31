@@ -27,13 +27,15 @@ function emptyPara(spacing = {}) {
 // ── Parse worklog.md ──
 function parseWorklog(filePath) {
   const raw = fs.readFileSync(filePath, 'utf-8');
-  const entries = raw.split(/^---$/m).map(block => block.trim()).filter(Boolean);
+  // Split on --- lines (which now may be followed by a Fecha: line)
+  const entries = raw.split(/^---\s*$/m).map(block => block.trim()).filter(Boolean);
 
   return entries.map((block, idx) => {
     const lines = block.split('\n');
     const taskId = '';
     let agent = '';
     let task = '';
+    let fecha = '';
     let section = null; // 'worklog' | 'summary'
     const workLogItems = [];
     const summaryItems = [];
@@ -43,6 +45,8 @@ function parseWorklog(filePath) {
 
       if (line.startsWith('Task ID:')) {
         // store but we'll extract after
+      } else if (line.startsWith('Fecha:')) {
+        fecha = line.replace('Fecha:', '').trim();
       } else if (line.startsWith('Agent:')) {
         agent = line.replace('Agent:', '').trim();
       } else if (line.startsWith('Task:')) {
@@ -75,7 +79,7 @@ function parseWorklog(filePath) {
     const tidMatch = firstLine.match(/Task ID:\s*(.+)/);
     const tid = tidMatch ? tidMatch[1].trim() : `${idx + 1}`;
 
-    return { taskId: tid, agent, task, workLogItems, summaryItems };
+    return { taskId: tid, agent, task, fecha, workLogItems, summaryItems };
   });
 }
 
@@ -104,10 +108,16 @@ function bulletParagraph(text, level = 0) {
 function buildTaskEntry(entry, isFirst) {
   const paragraphs = [];
 
-  // Task ID and Agent as small gray subtitle (with PageBreak if not first)
+  // Date, Task ID and Agent as subtitle
+  const subtitleParts = [];
+  if (entry.fecha) {
+    subtitleParts.push(`Fecha: ${entry.fecha}`);
+  }
+  subtitleParts.push(`Task ID: ${entry.taskId}`);
+  subtitleParts.push(`Agente: ${entry.agent}`);
   const subtitleChildren = [
     new TextRun({
-      text: `Task ID: ${entry.taskId}  |  Agente: ${entry.agent}`,
+      text: subtitleParts.join('  |  '),
       font: FONT,
       size: 18, // 9pt
       color: COLORS.secondary,
