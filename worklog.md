@@ -971,3 +971,23 @@ Stage Summary:
 - Destinos sin paradas de bus cercanas muestran ruta directa OSRM roja punteada
 - Verificado con VLM que la ruta se dibuja correctamente en el mapa
 - Lint limpio sin errores
+
+---
+Fecha: 2026-07-31 (31 de julio de 2026)
+Task ID: 28
+Agent: Z.ai Code (main conversation)
+Task: Mejorar el zoom al dibujar ruta para que se vea completa sin ser demasiado pequeña
+
+Work Log:
+- Analicé el código existente: page.tsx tenía `setMapZoom(10)` hardcodeado en `fitRouteToBounds`, lo cual siempre mostraba ~600km de área (demasiado zoom out)
+- Creé componente `RouteBoundsFitter` en map.tsx que usa Leaflet `fitBounds` nativo para calcular zoom óptimo dinámicamente según la extensión real de la ruta
+- Descubrí que `minZoom` NO es opción válida de `fitBounds` en Leaflet (se ignora); implementé corrección post-animación con `map.once('zoomend')` para garantizar zoom mínimo de 12
+- Agregué guard en el effect center/zoom del BusMap para que no sobreescriba el fitBounds cuando hay ruta dibujada
+- Convertí `fitRouteToBounds` en page.tsx a no-op (RouteBoundsFitter se encarga)
+- Probé en vivo con destino Aserrí: antes era zoom 10 (siempre), ahora es zoom 12 (dinámico, corregido desde 11 que calculó fitBounds)
+- Probé con Terminal Alajuela Centro: fitBounds calculó zoom 12 directamente sin necesitar corrección
+
+Stage Summary:
+- **Antes**: Zoom hardcodeado a 10 (~600km visibles) para TODAS las rutas — demasiado alejado
+- **Después**: Zoom dinámico via `fitBounds` con `maxZoom: 15` y corrección mínima a 12 — se ajusta automáticamente al tamaño de la ruta
+- Archivos modificados: src/components/map.tsx (RouteBoundsFitter + guard center/zoom), src/app/page.tsx (fitRouteToBounds simplificado)

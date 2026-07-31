@@ -461,32 +461,12 @@ export default function BusPlannerApp() {
     }
   }
 
-  // Calcular centro y zoom para mostrar toda la ruta
-  const fitRouteToBounds = (routePath: RoutePath | null) => {
-    if (!routePath) return
-
-    const bounds = getRouteBounds(routePath)
-    if (!bounds || !currentLocation) return
-
-    // Validar que todos los valores del bounds sean finitos
-    const { south, west, north, east } = bounds
-    if (!isFinite(south) || !isFinite(west) || !isFinite(north) || !isFinite(east)) {
-      console.error('Bounds calculado contiene valores inválidos:', bounds)
-      return
-    }
-
-    // Validar que el bounds tenga sentido geográfico
-    if (south >= north || west >= east) {
-      console.error('Bounds inválido: south debe ser menor que north, west menor que east:', bounds)
-      return
-    }
-
-    const centerLat = (north + south) / 2
-    const centerLon = (east + west) / 2
-
-    setMapCenter([centerLat, centerLon])
-    setMapZoom(10) // Zoom out para mostrar toda la ruta
-  }
+  // El zoom y centro se ajustan automáticamente en RouteBoundsFitter (map.tsx)
+  // usando Leaflet fitBounds con maxZoom/minZoom para un ajuste óptimo.
+  // Esta función ya no necesita calcular zoom manualmente.
+  const fitRouteToBounds = (_routePath: RoutePath | null) => {
+    // RouteBoundsFitter en el componente mapa se encarga de ajustar la vista
+  };
 
   const handleOriginSelect = (location: any) => {
     try {

@@ -1,0 +1,825 @@
+     1→     1→'use client'
+     2→     2→
+     3→     3→import { useState, useEffect, useMemo, useRef } from 'react'
+     4→     4→import dynamic from 'next/dynamic'
+     5→     5→import { useMap } from 'react-leaflet'
+     6→     6→
+     7→     7→// Variable global para cachear la instancia de Leaflet
+     8→     8→let leafletInstance: any = null
+     9→     9→let leafletPromise: Promise<any> | null = null
+    10→    10→
+    11→    11→// Función para obtener Leaflet de forma segura (optimizada con cache de promesa)
+    12→    12→async function getLeaflet() {
+    13→    13→  if (typeof window === 'undefined') return null
+    14→    14→
+    15→    15→  // Usar cache de promesa para evitar múltiples llamadas simultáneas
+    16→    16→  if (!leafletPromise) {
+    17→    17→    leafletPromise = import('leaflet').then((L) => {
+    18→    18→      // Fix para iconos por defecto de Leaflet en Next.js
+    19→    19→      delete (L.Icon.Default.prototype as any)._getIconUrl
+    20→    20→      L.Icon.Default.mergeOptions({
+    21→    21→        iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+    22→    22→        iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+    23→    23→        shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+    24→    24→      })
+    25→    25→      leafletInstance = L
+    26→    26→      return L
+    27→    27→    })
+    28→    28→  }
+    29→    29→
+    30→    30→  return leafletPromise
+    31→    31→}
+    32→    32→
+    33→    33→// Importar componentes de react-leaflet de forma dinámica
+    34→    34→const MapContainer = dynamic(
+    35→    35→  () => import('react-leaflet').then((mod) => mod.MapContainer),
+    36→    36→  { ssr: false }
+    37→    37→)
+    38→    38→const TileLayer = dynamic(
+    39→    39→  () => import('react-leaflet').then((mod) => mod.TileLayer),
+    40→    40→  { ssr: false }
+    41→    41→)
+    42→    42→const Marker = dynamic(
+    43→    43→  () => import('react-leaflet').then((mod) => mod.Marker),
+    44→    44→  { ssr: false }
+    45→    45→)
+    46→    46→const Popup = dynamic(
+    47→    47→  () => import('react-leaflet').then((mod) => mod.Popup),
+    48→    48→  { ssr: false }
+    49→    49→)
+    50→    50→const Polyline = dynamic(
+    51→    51→  () => import('react-leaflet').then((mod) => mod.Polyline),
+    52→    52→  { ssr: false }
+    53→    53→)
+    54→    54→
+    55→    55→// Componente para controles de zoom personalizados
+    56→    56→function ZoomControls() {
+    57→    57→  const map = useMap()
+    58→    58→
+    59→    59→  const handleZoomIn = () => {
+    60→    60→    map.zoomIn()
+    61→    61→  }
+    62→    62→
+    63→    63→  const handleZoomOut = () => {
+    64→    64→    map.zoomOut()
+    65→    65→  }
+    66→    66→
+    67→    67→  return (
+    68→    68→    <div style={{
+    69→    69→      position: 'absolute',
+    70→    70→      bottom: '80px',
+    71→    71→      right: '16px',
+    72→    72→      zIndex: 1000,
+    73→    73→      boxShadow: '0 2px 8px rgba(0, 0, 0, 0.15)',
+    74→    74→      borderRadius: '8px',
+    75→    75→      overflow: 'hidden',
+    76→    76→      border: '2px solid rgba(255, 255, 255, 0.9)',
+    77→    77→    }}>
+    78→    78→      <button
+    79→    79→        onClick={handleZoomIn}
+    80→    80→        style={{
+    81→    81→          display: 'flex',
+    82→    82→          alignItems: 'center',
+    83→    83→          justifyContent: 'center',
+    84→    84→          width: '40px',
+    85→    85→          height: '40px',
+    86→    86→          backgroundColor: 'white',
+    87→    87→          cursor: 'pointer',
+    88→    88→          border: 'none',
+    89→    89→          borderBottom: '1px solid #E5E7EB',
+    90→    90→          fontSize: '20px',
+    91→    91→          fontWeight: 'bold',
+    92→    92→          color: '#374151',
+    93→    93→          transition: 'background-color 0.2s',
+    94→    94→        }}
+    95→    95→        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#F3F4F6'}
+    96→    96→        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'white'}
+    97→    97→        aria-label="Acercar"
+    98→    98→        type="button"
+    99→    99→      >
+   100→   100→        +
+   101→   101→      </button>
+   102→   102→      <button
+   103→   103→        onClick={handleZoomOut}
+   104→   104→        style={{
+   105→   105→          display: 'flex',
+   106→   106→          alignItems: 'center',
+   107→   107→          justifyContent: 'center',
+   108→   108→          width: '40px',
+   109→   109→          height: '40px',
+   110→   110→          backgroundColor: 'white',
+   111→   111→          cursor: 'pointer',
+   112→   112→          border: 'none',
+   113→   113→          fontSize: '20px',
+   114→   114→          fontWeight: 'bold',
+   115→   115→          color: '#374151',
+   116→   116→          transition: 'background-color 0.2s',
+   117→   117→        }}
+   118→   118→        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#F3F4F6'}
+   119→   119→        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'white'}
+   120→   120→        aria-label="Alejar"
+   121→   121→        type="button"
+   122→   122→      >
+   123→   123→        −
+   124→   124→      </button>
+   125→   125→    </div>
+   126→   126→  )
+   127→   127→}
+   128→   128→
+   129→   129→interface RouteStop {
+   130→   130→  name: string
+   131→   131→  city: string | null
+   132→   132→}
+   133→   133→
+   134→   134→interface PlannedRoute {
+   135→   135→  id: string
+   136→   136→  boardingStop: RouteStop & { coordinates?: { latitude: number; longitude: number } }
+   137→   137→  destinationStop: RouteStop & { coordinates?: { latitude: number; longitude: number } | null }
+   138→   138→}
+   139→   139→
+   140→   140→interface BusStop {
+   141→   141→  id: string
+   142→   142→  name: string
+   143→   143→  lat: number
+   144→   144→  lon: number
+   145→   145→}
+   146→   146→
+   147→   147→interface BusMapProps {
+   148→   148→  center: [number, number]
+   149→   149→  zoom?: number
+   150→   150→  userLocation?: [number, number] | null
+   151→   151→  originCoordinates?: {
+   152→   152→    name: string
+   153→   153→    latitude: number
+   154→   154→    longitude: number
+   155→   155→    displayName?: string
+   156→   156→  } | null
+   157→   157→  nearestStop?: {
+   158→   158→    name: string
+   159→   159→    coordinates: {
+   160→   160→      latitude: number
+   161→   161→      longitude: number
+   162→   162→    }
+   163→   163→  } | null
+   164→   164→  plannedRoutes?: PlannedRoute[] | null
+   165→   165→  plannedRoutesLength?: number | null
+   166→   166→  selectedRoute?: PlannedRoute | null
+   167→   167→  destinationCoordinates?: {
+   168→   168→    name: string
+   169→   169→    latitude: number
+   170→   170→    longitude: number
+   171→   171→    displayName?: string
+   172→   172→  } | null
+   173→   173→  routePath?: {
+   174→   174→    walking?: [number, number][]
+   175→   175→    bus?: [number, number][]
+   176→   176→    walking2?: [number, number][]
+   177→   177→    direct?: [number, number][]
+   178→   178→  } | null
+   179→   179→  busStops?: Array<{
+   180→   180→    id: string
+   181→   181→    name: string
+   182→   182→    lat: number
+   183→   183→    lon: number
+   184→   184→  }> | null
+   185→   185→  isTracking?: boolean
+   186→   186→  onMapInteraction?: () => void
+   187→   187→  tripDistance?: number
+   188→   188→  tripTime?: number
+   189→   189→  showDistanceInfo?: boolean
+   190→   190→}
+   191→   191→
+   192→   192→const BusMap = ({
+   193→   193→  center,
+   194→   194→  zoom = 13,
+   195→   195→  userLocation,
+   196→   196→  originCoordinates,
+   197→   197→  nearestStop,
+   198→   198→  plannedRoutes,
+   199→   199→  plannedRoutesLength,
+   200→   200→  selectedRoute,
+   201→   201→  destinationCoordinates,
+   202→   202→  routePath,
+   203→   203→  busStops,
+   204→   204→  isTracking,
+   205→   205→  onMapInteraction,
+   206→   206→  tripDistance = 0,
+   207→   207→  tripTime = 0,
+   208→   208→  showDistanceInfo = true,
+   209→   209→}: BusMapProps) => {
+   210→   210→  const [isMounted, setIsMounted] = useState(false)
+   211→   211→  const [L, setL] = useState<any>(null)
+   212→   212→  const [dbStops, setDbStops] = useState<any[]>([])
+   213→   213→  const [loadingDbStops, setLoadingDbStops] = useState(false)
+   214→   214→  const mapRef = useRef<any>(null)
+   215→   215→
+   216→   216→  // El mapa de Leaflet calcula su tamaño interno (_size) a partir del contenedor DOM.
+   217→   217→  // Si fitBounds()/setView() se llaman antes de que ese tamaño se haya calculado
+   218→   218→  // (por ejemplo, justo al montar el componente), Leaflet produce internamente
+   219→   219→  // "Invalid LatLng object: (NaN, NaN)" aunque las coordenadas que le pasemos sean
+   220→   220→  // válidas. Esperamos a que el mapa dispare su evento "ready" antes de permitir
+   221→   221→  // cualquier fitBounds/setView programático.
+   222→   222→  const [mapReady, setMapReady] = useState(false)
+   223→   223→
+   224→   224→  // Actualizar centro y zoom del mapa cuando cambian las props
+   225→   225→  useEffect(() => {
+   226→   226→    if (!mapRef.current || !center || !mapReady) return
+   227→   227→
+   228→   228→    const map = mapRef.current
+   229→   229→
+   230→   230→    // Validar que el centro y el zoom sean números válidos (no NaN ni infinito)
+   231→   231→    // antes de pasarlos a Leaflet, que falla con "Invalid LatLng object" si no lo son.
+   232→   232→    if (!isFinite(center[0]) || !isFinite(center[1]) || !isFinite(zoom)) {
+   233→   233→      console.warn('Centro o zoom del mapa inválidos, ignorando setView', { center, zoom })
+   234→   234→      return
+   235→   235→    }
+   236→   236→
+   237→   237→    const currentCenter = map.getCenter()
+   238→   238→    const currentZoom = map.getZoom()
+   239→   239→
+   240→   240→    // Solo actualizar si hay cambios significativos para evitar loops infinitos
+   241→   241→    const centerChanged = !currentCenter ||
+   242→   242→      Math.abs(currentCenter.lat - center[0]) > 0.0001 ||
+   243→   243→      Math.abs(currentCenter.lng - center[1]) > 0.0001
+   244→   244→    const zoomChanged = currentZoom !== zoom
+   245→   245→
+   246→   246→    if (centerChanged || zoomChanged) {
+   247→   247→      try {
+   248→   248→        map.setView(center, zoom, { animate: true })
+   249→   249→      } catch (error) {
+   250→   250→        console.error('Error al llamar setView:', error, { center, zoom })
+   251→   251→      }
+   252→   252→    }
+   253→   253→  }, [center, zoom, mapReady])
+   254→   254→
+   255→   255→  useEffect(() => {
+   256→   256→    let mounted = true
+   257→   257→
+   258→   258→    const initLeaflet = async () => {
+   259→   259→      try {
+   260→   260→        const leaflet = await getLeaflet()
+   261→   261→        if (mounted && leaflet) {
+   262→   262→          setL(leaflet)
+   263→   263→          setIsMounted(true)
+   264→   264→        }
+   265→   265→      } catch (error) {
+   266→   266→        console.error('Error al cargar Leaflet:', error)
+   267→   267→      }
+   268→   268→    }
+   269→   269→
+   270→   270→    initLeaflet()
+   271→   271→
+   272→   272→    return () => {
+   273→   273→      mounted = false
+   274→   274→    }
+   275→   275→  }, [])
+   276→   276→
+   277→   277→  // Event listeners para detectar interacción del usuario con el mapa
+   278→   278→  useEffect(() => {
+   279→   279→    if (!mapRef.current || !isTracking || !onMapInteraction) return
+   280→   280→
+   281→   281→    const map = mapRef.current
+   282→   282→    const handlers = ['movestart', 'zoomstart', 'drag', 'zoom']
+   283→   283→
+   284→   284→    handlers.forEach(event => {
+   285→   285→      map.on(event, onMapInteraction)
+   286→   286→    })
+   287→   287→
+   288→   288→    return () => {
+   289→   289→      handlers.forEach(event => {
+   290→   290→        map.off(event, onMapInteraction)
+   291→   291→      })
+   292→   292→    }
+   293→   293→  }, [mapRef.current, isTracking, onMapInteraction])
+   294→   294→
+   295→   295→  // Cargar paradas de buses de la base de datos (solo cuando se planea una ruta)
+   296→   296→  useEffect(() => {
+   297→   297→    const fetchDbStops = async () => {
+   298→   298→      // Solo cargar cuando hay una ruta planificada o cuando el usuario quiere ver paradas
+   299→   299→      if (!userLocation || !plannedRoutesLength || plannedRoutesLength === 0) return
+   300→   300→
+   301→   301→      try {
+   302→   302→        setLoadingDbStops(true)
+   303→   303→        // Reducir el radio de búsqueda de 25km a 10km para mejor rendimiento
+   304→   304→        const response = await fetch(
+   305→   305→          `/api/stops?lat=${userLocation[0]}&lon=${userLocation[1]}&radius=10`
+   306→   306→        )
+   307→   307→        const data = await response.json()
+   308→   308→
+   309→   309→        if (data.success && data.stops) {
+   310→   310→          setDbStops(data.stops)
+   311→   311→        }
+   312→   312→      } catch (error) {
+   313→   313→        console.error('Error al cargar paradas de la base de datos:', error)
+   314→   314→      } finally {
+   315→   315→        setLoadingDbStops(false)
+   316→   316→      }
+   317→   317→    }
+   318→   318→
+   319→   319→    // Debounce para evitar múltiples llamadas
+   320→   320→    const timer = setTimeout(() => {
+   321→   321→      fetchDbStops()
+   322→   322→    }, 500)
+   323→   323→
+   324→   324→    return () => {
+   325→   325→      clearTimeout(timer)
+   326→   326→    }
+   327→   327→  }, [userLocation, plannedRoutesLength])
+   328→   328→
+   329→   329→  // Crear iconos personalizados con useMemo para evitar recreaciones
+   330→   330→  const userIcon = useMemo(() => {
+   331→   331→    if (!L) return null
+   332→   332→    return L.divIcon({
+   333→   333→      className: 'custom-user-marker',
+   334→   334→      html: `
+   335→   335→        <div class="relative flex items-center justify-center">
+   336→   336→          <div class="w-4 h-4 bg-[#0052B4] rounded-full border-2 border-white shadow-lg"></div>
+   337→   337→          <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-12 h-12 bg-blue-400/30 rounded-full animate-pulse"></div>
+   338→   338→        </div>
+   339→   339→      `,
+   340→   340→      iconSize: [48, 48],
+   341→   341→      iconAnchor: [24, 24],
+   342→   342→    })
+   343→   343→  }, [L])
+   344→   344→
+   345→   345→  // Icono del usuario cuando está en viaje (tracking) con información dinámica y animación fade intercalado
+   346→   346→  const trackingIcon = useMemo(() => {
+   347→   347→    if (!L) return null
+   348→   348→    const formattedDistance = tripDistance >= 1000
+   349→   349→      ? `${(tripDistance / 1000).toFixed(0)}km`
+   350→   350→      : `${tripDistance.toFixed(0)}m`
+   351→   351→    const formattedTime = `${tripTime.toFixed(0)}min`
+   352→   352→
+   353→   353→    return L.divIcon({
+   354→   354→      className: 'custom-tracking-marker',
+   355→   355→      html: `
+   356→   356→        <style>
+   357→   357→          @keyframes fadeInOut {
+   358→   358→            0%, 100% { opacity: 0; }
+   359→   359→            50% { opacity: 1; }
+   360→   360→          }
+   361→   361→          @keyframes pulse-ring {
+   362→   362→            0% { transform: translate(-50%, -50%) scale(0.5); opacity: 1; }
+   363→   363→            100% { transform: translate(-50%, -50%) scale(1.5); opacity: 0; }
+   364→   364→          }
+   365→   365→          @keyframes pulse-ring-inner {
+   366→   366→            0% { transform: translate(-50%, -50%) scale(0.5); opacity: 0.6; }
+   367→   367→            100% { transform: translate(-50%, -50%) scale(1.2); opacity: 0; }
+   368→   368→          }
+   369→   369→          .tracking-info-fade-1 {
+   370→   370→            animation: fadeInOut 3s ease-in-out infinite;
+   371→   371→          }
+   372→   372→          .tracking-info-fade-2 {
+   373→   373→            animation: fadeInOut 3s ease-in-out infinite;
+   374→   374→            animation-delay: 1.5s;
+   375→   375→          }
+   376→   376→          .tracking-pulse-ring {
+   377→   377→            position: absolute;
+   378→   378→            top: 50%;
+   379→   379→            left: 50%;
+   380→   380→            width: 48px;
+   381→   381→            height: 48px;
+   382→   382→            border-radius: 50%;
+   383→   383→            background: rgba(227, 24, 55, 0.3);
+   384→   384→            animation: pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+   385→   385→            pointer-events: none;
+   386→   386→          }
+   387→   387→          .tracking-pulse-ring-2 {
+   388→   388→            position: absolute;
+   389→   389→            top: 50%;
+   390→   390→            left: 50%;
+   391→   391→            width: 32px;
+   392→   392→            height: 32px;
+   393→   393→            border-radius: 50%;
+   394→   394→            background: rgba(227, 24, 55, 0.2);
+   395→   395→            animation: pulse-ring-inner 2s cubic-bezier(0.4, 0, 0.6, 1) infinite 0.5s;
+   396→   396→            pointer-events: none;
+   397→   397→          }
+   398→   398→          .tracking-pulse-ring-3 {
+   399→   399→            position: absolute;
+   400→   400→            top: 50%;
+   401→   401→            left: 50%;
+   402→   402→            width: 64px;
+   403→   403→            height: 64px;
+   404→   404→            border-radius: 50%;
+   405→   405→            background: rgba(227, 24, 55, 0.15);
+   406→   406→            animation: pulse-ring-inner 2s cubic-bezier(0.4, 0, 0.6, 1) infinite 1s;
+   407→   407→            pointer-events: none;
+   408→   408→          }
+   409→   409→        </style>
+   410→   410→        <div class="relative flex flex-col items-center justify-center">
+   411→   411→          <div class="relative">
+   412→   412→            <div class="w-7 h-7 bg-[#E31837] rounded-full border-3 border-white shadow-lg flex items-center justify-center relative z-10">
+   413→   413→              <svg viewBox="0 0 24 24" class="w-4 h-4 text-white" fill="currentColor">
+   414→   414→                <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
+   415→   415→              </svg>
+   416→   416→            </div>
+   417→   417→            <div class="tracking-pulse-ring"></div>
+   418→   418→            <div class="tracking-pulse-ring-2"></div>
+   419→   419→            <div class="tracking-pulse-ring-3"></div>
+   420→   420→          </div>
+   421→   421→          ${showDistanceInfo ? `
+   422→   422→          <div class="mt-2 bg-white/95 backdrop-blur-sm px-2 py-1 rounded-full shadow-md border border-red-200 whitespace-nowrap">
+   423→   423→            <span class="text-xs font-bold text-[#E31837] tracking-info-fade-1">${formattedDistance}</span>
+   424→   424→            <span class="text-xs font-bold text-[#0052B4] tracking-info-fade-2">${formattedTime}</span>
+   425→   425→          </div>
+   426→   426→          ` : ''}
+   427→   427→        </div>
+   428→   428→      `,
+   429→   429→      iconSize: [80, 80],
+   430→   430→      iconAnchor: [40, 40],
+   431→   431→    })
+   432→   432→  }, [L, tripDistance, tripTime, showDistanceInfo])
+   433→   433→
+   434→   434→  const originIcon = useMemo(() => {
+   435→   435→    if (!L) return null
+   436→   436→    return L.divIcon({
+   437→   437→      className: 'custom-origin-marker',
+   438→   438→      html: `
+   439→   439→        <div class="relative flex items-center justify-center">
+   440→   440→          <div class="w-10 h-10 bg-[#0052B4] rounded-full border-3 border-white shadow-lg flex items-center justify-center">
+   441→   441→            <span class="text-white text-lg font-bold">📍</span>
+   442→   442→          </div>
+   443→   443→          <div class="absolute -bottom-6 left-1/2 transform -translate-x-1/2 bg-white px-2 py-1 rounded shadow-md text-xs font-semibold text-[#0052B4] whitespace-nowrap">
+   444→   444→            Origen
+   445→   445→          </div>
+   446→   446→        </div>
+   447→   447→      `,
+   448→   448→      iconSize: [48, 64],
+   449→   449→      iconAnchor: [24, 48],
+   450→   450→    })
+   451→   451→  }, [L])
+   452→   452→
+   453→   453→  const customOriginIcon = useMemo(() => {
+   454→   454→    if (!L) return null
+   455→   455→    return L.divIcon({
+   456→   456→      className: 'custom-origin-marker',
+   457→   457→      html: `
+   458→   458→        <div class="relative flex items-center justify-center">
+   459→   459→          <div class="w-10 h-10 bg-[#F59E0B] rounded-full border-3 border-white shadow-lg flex items-center justify-center">
+   460→   460→            <svg viewBox="0 0 24 24" class="w-5 h-5 text-white" fill="currentColor">
+   461→   461→              <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/>
+   462→   462→            </svg>
+   463→   463→          </div>
+   464→   464→          <div class="absolute -bottom-6 left-1/2 transform -translate-x-1/2 bg-white px-2 py-1 rounded shadow-md text-xs font-semibold text-[#F59E0B] whitespace-nowrap">
+   465→   465→            Mi Origen
+   466→   466→          </div>
+   467→   467→        </div>
+   468→   468→      `,
+   469→   469→      iconSize: [48, 64],
+   470→   470→      iconAnchor: [24, 48],
+   471→   471→    })
+   472→   472→  }, [L])
+   473→   473→
+   474→   474→  const stopIcon = useMemo(() => {
+   475→   475→    if (!L) return null
+   476→   476→    return L.divIcon({
+   477→   477→      className: 'custom-stop-marker',
+   478→   478→      html: `
+   479→   479→        <div class="relative flex items-center justify-center">
+   480→   480→          <div class="w-7 h-7 bg-[#10B981] rounded-full border-2 border-white shadow-lg flex items-center justify-center">
+   481→   481→            <svg viewBox="0 0 24 24" class="w-4 h-4 text-white" fill="currentColor">
+   482→   482→              <path d="M4 16c0 .88.39 1.67 1 2.22V20c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h8v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1.78c.61-.55 1-1.34 1-2.22V6c0-3.5-3.58-4-8-4s-8 .5-8 4v10zm3.5 1c-.83 0-1.5-.67-1.5-1.5S6.67 14 7.5 14s1.5.67 1.5 1.5S8.33 17 7.5 17zm9 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm1.5-6H6V6h12v5z"/>
+   483→   483→            </svg>
+   484→   484→          </div>
+   485→   485→        </div>
+   486→   486→      `,
+   487→   487→      iconSize: [28, 28],
+   488→   488→      iconAnchor: [14, 14],
+   489→   489→    })
+   490→   490→  }, [L])
+   491→   491→
+   492→   492→  // Icono especial para paradas de buses de la base de datos (resaltado)
+   493→   493→  const busStationIcon = useMemo(() => {
+   494→   494→    if (!L) return null
+   495→   495→    return L.divIcon({
+   496→   496→      className: 'custom-bus-station-marker',
+   497→   497→      html: `
+   498→   498→        <div class="relative flex items-center justify-center">
+   499→   499→          <div class="w-9 h-9 bg-[#E31837] rounded-full border-3 border-white shadow-lg flex items-center justify-center">
+   500→   500→            <svg viewBox="0 0 24 24" class="w-5 h-5 text-white" fill="currentColor">
+   501→   501→              <path d="M4 16c0 .88.39 1.67 1 2.22V20c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h8v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1.78c.61-.55 1-1.34 1-2.22V6c0-3.5-3.58-4-8-4s-8 .5-8 4v10zm3.5 1c-.83 0-1.5-.67-1.5-1.5S6.67 14 7.5 14s1.5.67 1.5 1.5S8.33 17 7.5 17zm9 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm1.5-6H6V6h12v5z"/>
+   502→   502→            </svg>
+   503→   503→          </div>
+   504→   504→          <div class="absolute top-0 right-0 w-3 h-3 bg-[#FBBF24] rounded-full border-2 border-white shadow-md"></div>
+   505→   505→        </div>
+   506→   506→      `,
+   507→   507→      iconSize: [36, 36],
+   508→   508→      iconAnchor: [18, 18],
+   509→   509→    })
+   510→   510→  }, [L])
+   511→   511→
+   512→   512→  const boardingIcon = useMemo(() => {
+   513→   513→    if (!L) return null
+   514→   514→    return L.divIcon({
+   515→   515→      className: 'custom-boarding-marker',
+   516→   516→      html: `
+   517→   517→        <div class="relative flex items-center justify-center">
+   518→   518→          <div class="w-10 h-10 bg-orange-500 rounded-full border-3 border-white shadow-lg flex items-center justify-center">
+   519→   519→            <span class="text-white text-lg">⬆️</span>
+   520→   520→          </div>
+   521→   521→        </div>
+   522→   522→      `,
+   523→   523→      iconSize: [40, 40],
+   524→   524→      iconAnchor: [20, 20],
+   525→   525→    })
+   526→   526→  }, [L])
+   527→   527→
+   528→   528→  const destinationIcon = useMemo(() => {
+   529→   529→    if (!L) return null
+   530→   530→    return L.divIcon({
+   531→   531→      className: 'custom-destination-marker',
+   532→   532→      html: `
+   533→   533→        <div class="relative flex items-center justify-center">
+   534→   534→          <div class="w-10 h-10 bg-[#E31837] rounded-full border-3 border-white shadow-lg flex items-center justify-center">
+   535→   535→            <span class="text-white text-lg">🏁</span>
+   536→   536→          </div>
+   537→   537→          <div class="absolute -bottom-6 left-1/2 transform -translate-x-1/2 bg-white px-2 py-1 rounded shadow-md text-xs font-semibold text-[#E31837] whitespace-nowrap">
+   538→   538→            Destino
+   539→   539→          </div>
+   540→   540→        </div>
+   541→   541→      `,
+   542→   542→      iconSize: [48, 64],
+   543→   543→      iconAnchor: [24, 48],
+   544→   544→    })
+   545→   545→  }, [L])
+   546→   546→
+   547→   547→  // Crear polilínea para la ruta seleccionada
+   548→   548→  const getRoutePolylines = () => {
+   549→   549→    const polylines: Array<{
+   550→   550→      positions: [number, number][]
+   551→   551→      color: string
+   552→   552→      weight: number
+   553→   553→      dashArray?: string
+   554→   554→    }> = []
+   555→   555→
+   556→   556→    // Si hay ruta seleccionada con caminos reales
+   557→   557→    if (selectedRoute && routePath) {
+   558→   558→      // Ruta directa (cuando no hay rutas de bus)
+   559→   559→      if (routePath.direct && routePath.direct.length > 2) {
+   560→   560→        polylines.push({
+   561→   561→          positions: routePath.direct,
+   562→   562→          color: '#E31837', // Rojo para conexión directa
+   563→   563→          weight: 4,
+   564→   564→          dashArray: '5, 5',
+   565→   565→        })
+   566→   566→      }
+   567→   567→      // Segmento 1: Camino a pie desde ubicación del usuario hasta parada de embarque
+   568→   568→      if (routePath.walking && routePath.walking.length > 0) {
+   569→   569→        polylines.push({
+   570→   570→          positions: routePath.walking,
+   571→   571→          color: '#0052B4', // Azul para caminar
+   572→   572→          weight: 5,
+   573→   573→          dashArray: '10, 10',
+   574→   574→        })
+   575→   575→      }
+   576→   576→
+   577→   577→      // Segmento 2: Ruta de autobús usando GTFS shape data o ruta calculada
+   578→   578→      if (routePath.bus && routePath.bus.length > 0) {
+   579→   579→        polylines.push({
+   580→   580→          positions: routePath.bus,
+   581→   581→          color: '#16a34a', // Verde para autobús
+   582→   582→          weight: 6,
+   583→   583→        })
+   584→   584→      }
+   585→   585→
+   586→   586→      // Segmento 3: Camino a pie desde parada de bajada hasta destino final
+   587→   587→      if (routePath.walking2 && routePath.walking2.length > 0) {
+   588→   588→        polylines.push({
+   589→   589→          positions: routePath.walking2,
+   590→   590→          color: '#0052B4', // Azul para caminar
+   591→   591→          weight: 5,
+   592→   592→          dashArray: '10, 10',
+   593→   593→        })
+   594→   594→      }
+   595→   595→    }
+   596→   596→    // Ruta directa OSRM sin ruta seleccionada (fallback)
+   597→   597→    else if (routePath?.direct && routePath.direct.length > 2) {
+   598→   598→      polylines.push({
+   599→   599→        positions: routePath.direct,
+   600→   600→        color: '#E31837', // Rojo para conexión directa
+   601→   601→        weight: 4,
+   602→   602→        dashArray: '5, 5',
+   603→   603→      })
+   604→   604→    }
+   605→   605→    // Sin datos de ruta: NO dibujar líneas rectas — se mostrará "Ruta por definir"
+   606→   606→
+   607→   607→    return polylines
+   608→   608→  }
+   609→   609→
+   610→   610→  // No renderizar nada hasta que el componente esté montado en el cliente
+   611→   611→  if (!isMounted || !L || !userIcon || !originIcon || !customOriginIcon || !stopIcon || !boardingIcon || !destinationIcon || !busStationIcon) {
+   612→   612→    return (
+   613→   613→      <div className="w-full h-full min-h-[300px] rounded-lg overflow-hidden border border-[#E5E7EB] flex items-center justify-center bg-gray-50">
+   614→   614→        <div className="text-center">
+   615→   615→          <div className="w-12 h-12 border-4 border-[#E31837] border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
+   616→   616→          <p className="text-sm text-[#6B7280]">Cargando mapa...</p>
+   617→   617→        </div>
+   618→   618→      </div>
+   619→   619→    )
+   620→   620→  }
+   621→   621→
+   622→   622→  return (
+   623→   623→    <div className="w-full h-full min-h-[300px] rounded-lg overflow-hidden">
+   624→   624→      <MapContainer
+   625→   625→        center={center}
+   626→   626→        zoom={zoom}
+   627→   627→        className="w-full h-full"
+   628→   628→        scrollWheelZoom={false}
+   629→   629→        zoomControl={false}
+   630→   630→        ref={mapRef}
+   631→   631→        whenReady={() => {
+   632→   632→          // Se dispara una vez que Leaflet terminó su inicialización interna
+   633→   633→          // (incluyendo el cálculo del tamaño del contenedor). A partir de aquí
+   634→   634→          // es seguro llamar a fitBounds()/setView() sin riesgo de NaN.
+   635→   635→          setMapReady(true)
+   636→   636→          // Por si el contenedor cambia de tamaño justo después del montaje inicial
+   637→   637→          requestAnimationFrame(() => {
+   638→   638→            mapRef.current?.invalidateSize()
+   639→   639→          })
+   640→   640→        }}
+   641→   641→      >
+   642→   642→        {/* Capa de OpenStreetMap */}
+   643→   643→        <TileLayer
+   644→   644→          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+   645→   645→          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+   646→   646→        />
+   647→   647→
+   648→   648→        {/* Controles de zoom personalizados */}
+   649→   649→        <ZoomControls />
+   650→   650→
+   651→   651→        {/* Polilíneas de la ruta seleccionada o conexión directa */}
+   652→   652→        {getRoutePolylines().map((polyline, index) => (
+   653→   653→          <Polyline
+   654→   654→            key={index}
+   655→   655→            positions={polyline.positions}
+   656→   656→            pathOptions={{
+   657→   657→              color: polyline.color,
+   658→   658→              weight: polyline.weight,
+   659→   659→              dashArray: polyline.dashArray,
+   660→   660→              opacity: 0.8,
+   661→   661→            }}
+   662→   662→          />
+   663→   663→        ))}
+   664→   664→
+   665→   665→        {/* Marcador de origen (ubicación del usuario) */}
+   666→   666→        {userLocation && (
+   667→   667→          <Marker
+   668→   668→            position={userLocation}
+   669→   669→            icon={isTracking ? trackingIcon : (selectedRoute ? userIcon : originIcon)}
+   670→   670→          >
+   671→   671→            <Popup>
+   672→   672→              <div className="text-sm p-1 min-w-32">
+   673→   673→                <strong className={isTracking ? "text-[#E31837]" : "text-[#0052B4]"}>
+   674→   674→                  {isTracking ? "🚗 Tu posición" : "📍 Origen"}
+   675→   675→                </strong>
+   676→   676→                <br />
+   677→   677→                <span className="text-xs text-[#6B7280]">
+   678→   678→                  {isTracking ? "Rastreando en tiempo real" : "Tu ubicación actual"}
+   679→   679→                </span>
+   680→   680→              </div>
+   681→   681→            </Popup>
+   682→   682→          </Marker>
+   683→   683→        )}
+   684→   684→
+   685→   685→        {/* Marcador de origen personalizado */}
+   686→   686→        {originCoordinates && (
+   687→   687→          <Marker
+   688→   688→            position={[originCoordinates.latitude, originCoordinates.longitude]}
+   689→   689→            icon={customOriginIcon}
+   690→   690→          >
+   691→   691→            <Popup>
+   692→   692→              <div className="text-sm p-1 min-w-32">
+   693→   693→                <strong className="text-[#F59E0B]">🏠 Mi Origen</strong>
+   694→   694→                <br />
+   695→   695→                <span className="text-xs text-[#6B7280]">{originCoordinates.displayName || originCoordinates.name}</span>
+   696→   696→              </div>
+   697→   697→            </Popup>
+   698→   698→          </Marker>
+   699→   699→        )}
+   700→   700→
+   701→   701→        {/* Marcadores de paradas de buses de la base de datos (resaltados) */}
+   702→   702→        {dbStops && dbStops.length > 0 && (
+   703→   703→          <>
+   704→   704→            {dbStops.map((stop) => (
+   705→   705→              <Marker
+   706→   706→                key={`db-${stop.id}`}
+   707→   707→                position={[stop.latitude, stop.longitude]}
+   708→   708→                icon={busStationIcon}
+   709→   709→              >
+   710→   710→                <Popup>
+   711→   711→                  <div className="text-sm p-1 min-w-40">
+   712→   712→                    <div className="flex items-center gap-2 mb-2">
+   713→   713→                      <div className="w-6 h-6 bg-[#E31837] rounded-full flex items-center justify-center">
+   714→   714→                        <svg viewBox="0 0 24 24" className="w-4 h-4 text-white" fill="currentColor">
+   715→   715→                          <path d="M4 16c0 .88.39 1.67 1 2.22V20c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h8v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1.78c.61-.55 1-1.34 1-2.22V6c0-3.5-3.58-4-8-4s-8 .5-8 4v10zm3.5 1c-.83 0-1.5-.67-1.5-1.5S6.67 14 7.5 14s1.5.67 1.5 1.5S8.33 17 7.5 17zm9 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm1.5-6H6V6h12v5z"/>
+   716→   716→                        </svg>
+   717→   717→                      </div>
+   718→   718→                      <strong className="text-[#E31837]">Parada de Bus</strong>
+   719→   719→                    </div>
+   720→   720→                    <p className="font-semibold text-[#374151]">{stop.name}</p>
+   721→   721→                    {stop.city && <p className="text-xs text-[#6B7280] mt-1">{stop.city}</p>}
+   722→   722→                    {stop.distance !== undefined && (
+   723→   723→                      <p className="text-xs text-[#0052B4] mt-1 font-medium">
+   724→   724→                        {stop.distance.toFixed(1)} km de tu ubicación
+   725→   725→                      </p>
+   726→   726→                    )}
+   727→   727→                  </div>
+   728→   728→                </Popup>
+   729→   729→              </Marker>
+   730→   730→            ))}
+   731→   731→          </>
+   732→   732→        )}
+   733→   733→
+   734→   734→        {/* Marcador de parada de embarque */}
+   735→   735→        {selectedRoute?.boardingStop?.coordinates && (
+   736→   736→          <Marker
+   737→   737→            position={[selectedRoute.boardingStop.coordinates.latitude, selectedRoute.boardingStop.coordinates.longitude]}
+   738→   738→            icon={boardingIcon}
+   739→   739→          >
+   740→   740→            <Popup>
+   741→   741→              <div className="text-sm p-1 min-w-32">
+   742→   742→                <strong className="text-orange-600">⬆️ Sube aquí</strong>
+   743→   743→                <br />
+   744→   744→                {selectedRoute.boardingStop.name}
+   745→   745→                {selectedRoute.boardingStop.city && <><br /><span className="text-xs text-[#6B7280]">{selectedRoute.boardingStop.city}</span></>}
+   746→   746→              </div>
+   747→   747→            </Popup>
+   748→   748→          </Marker>
+   749→   749→        )}
+   750→   750→
+   751→   751→        {/* Marcador de destino */}
+   752→   752→        {selectedRoute?.destinationStop?.coordinates && (
+   753→   753→          <Marker
+   754→   754→            position={[selectedRoute.destinationStop.coordinates.latitude, selectedRoute.destinationStop.coordinates.longitude]}
+   755→   755→            icon={destinationIcon}
+   756→   756→          >
+   757→   757→            <Popup>
+   758→   758→              <div className="text-sm p-1 min-w-32">
+   759→   759→                <strong className="text-[#E31837]">🏁 Destino</strong>
+   760→   760→                <br />
+   761→   761→                {selectedRoute.destinationStop.name}
+   762→   762→                {selectedRoute.destinationStop.city && <><br /><span className="text-xs text-[#6B7280]">{selectedRoute.destinationStop.city}</span></>}
+   763→   763→              </div>
+   764→   764→            </Popup>
+   765→   765→          </Marker>
+   766→   766→        )}
+   767→   767→
+   768→   768→        {/* Marcador de destino seleccionado */}
+   769→   769→        {destinationCoordinates && (
+   770→   770→          <Marker
+   771→   771→            position={[destinationCoordinates.latitude, destinationCoordinates.longitude]}
+   772→   772→            icon={destinationIcon}
+   773→   773→          >
+   774→   774→            <Popup>
+   775→   775→              <div className="text-sm p-1 min-w-32">
+   776→   776→                <strong className="text-[#E31837]">🏁 Destino</strong>
+   777→   777→                <br />
+   778→   778→                {destinationCoordinates.displayName || destinationCoordinates.name}
+   779→   779→              </div>
+   780→   780→            </Popup>
+   781→   781→          </Marker>
+   782→   782→        )}
+   783→   783→
+   784→   784→        {/* Marcador de parada más cercana (solo cuando no hay ruta ni destino seleccionado) */}
+   785→   785→        {!selectedRoute && !destinationCoordinates && nearestStop && (
+   786→   786→          <Marker
+   787→   787→            position={[nearestStop.coordinates.latitude, nearestStop.coordinates.longitude]}
+   788→   788→            icon={stopIcon}
+   789→   789→          >
+   790→   790→            <Popup>
+   791→   791→              <div className="text-sm p-1 min-w-32">
+   792→   792→                <strong className="text-[#10B981]">🚌 Parada más cercana</strong>
+   793→   793→                <br />
+   794→   794→                {nearestStop.name}
+   795→   795→              </div>
+   796→   796→            </Popup>
+   797→   797→          </Marker>
+   798→   798→        )}
+   799→   799→
+   800→   800→        {/* Marcadores de paradas de autobús de OpenStreetMap */}
+   801→   801→        {busStops && busStops.length > 0 && (
+   802→   802→          <>
+   803→   803→            {busStops.map((stop) => (
+   804→   804→              <Marker
+   805→   805→                key={stop.id}
+   806→   806→                position={[stop.lat, stop.lon]}
+   807→   807→                icon={stopIcon}
+   808→   808→              >
+   809→   809→                <Popup>
+   810→   810→                  <div className="text-sm p-1 min-w-32">
+   811→   811→                    <strong className="text-[#10B981]">🚌 Parada</strong>
+   812→   812→                    <br />
+   813→   813→                    {stop.name || 'Sin nombre'}
+   814→   814→                  </div>
+   815→   815→                </Popup>
+   816→   816→              </Marker>
+   817→   817→            ))}
+   818→   818→          </>
+   819→   819→        )}
+   820→   820→      </MapContainer>
+   821→   821→    </div>
+   822→   822→  )
+   823→   823→}
+   824→   824→
+   825→   825→export default BusMap

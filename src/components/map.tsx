@@ -52,6 +52,82 @@ const Polyline = dynamic(
   { ssr: false }
 )
 
+// Componente que ajusta el mapa para mostrar la ruta completa con zoom óptimo
+function RouteBoundsFitter({
+  routePath,
+  userLocation,
+  originCoordinates,
+  destinationCoordinates,
+  selectedRoute,
+  isTracking,
+}: {
+  routePath: BusMapProps['routePath']
+  userLocation?: [number, number] | null
+  originCoordinates?: BusMapProps['originCoordinates']
+  destinationCoordinates?: BusMapProps['destinationCoordinates']
+  selectedRoute?: PlannedRoute | null
+  isTracking?: boolean
+}) {
+  const map = useMap()
+  const prevRoutePathRef = useRef<string>('')
+
+  useEffect(() => {
+    // No ajustar bounds durante tracking en tiempo real
+    if (isTracking) return
+
+    // Serializar routePath para comparar cambios
+    const routeKey = JSON.stringify(routePath)
+    if (routeKey === prevRoutePathRef.current) return
+    prevRoutePathRef.current = routeKey
+
+    if (!routePath) return
+
+    const allPoints: [number, number][] = []
+    if (routePath.walking && routePath.walking.length > 0) allPoints.push(...routePath.walking)
+    if (routePath.bus && routePath.bus.length > 0) allPoints.push(...routePath.bus)
+    if (routePath.walking2 && routePath.walking2.length > 0) allPoints.push(...routePath.walking2)
+    if (routePath.direct && routePath.direct.length > 0) allPoints.push(...routePath.direct)
+
+    if (allPoints.length === 0) return
+
+    // Incluir la ubicación del usuario/origen en los bounds
+    if (originCoordinates) {
+      allPoints.push([originCoordinates.latitude, originCoordinates.longitude])
+    } else if (userLocation) {
+      allPoints.push(userLocation)
+    }
+
+    // Incluir el destino en los bounds
+    if (destinationCoordinates) {
+      allPoints.push([destinationCoordinates.latitude, destinationCoordinates.longitude])
+    } else if (selectedRoute?.destinationStop?.coordinates) {
+      allPoints.push([selectedRoute.destinationStop.coordinates.latitude, selectedRoute.destinationStop.coordinates.longitude])
+    }
+
+    try {
+      // Leaflet fitBounds acepta arrays de [lat, lng] directamente
+      // NOTA: minZoom no es opción válida de fitBounds en Leaflet;
+      // se corrige post-animación si el zoom resultante es muy bajo.
+      map.fitBounds(allPoints, {
+        maxZoom: 15,    // No acercarse más de 15
+        padding: [60, 60],
+        animate: true,
+        duration: 0.8,
+      })
+      // fitBounds puede zoom out demasiado; corregir al terminar la animación
+      map.once('zoomend moveend', () => {
+        if (map.getZoom() < 12) {
+          map.setZoom(12, { animate: true })
+        }
+      })
+    } catch (e) {
+      console.error('Error al ajustar bounds de ruta:', e)
+    }
+  }, [routePath, isTracking, map, userLocation, originCoordinates, destinationCoordinates, selectedRoute])
+
+  return null
+}
+
 // Componente para controles de zoom personalizados
 function ZoomControls() {
   const map = useMap()
@@ -222,8 +298,11 @@ const BusMap = ({
   const [mapReady, setMapReady] = useState(false)
 
   // Actualizar centro y zoom del mapa cuando cambian las props
+  // NO actualizar cuando hay una ruta dibujada — RouteBoundsFitter se encarga
   useEffect(() => {
     if (!mapRef.current || !center || !mapReady) return
+    // Si hay ruta dibujada, RouteBoundsFitter controla el zoom via fitBounds
+    if (routePath) return
 
     const map = mapRef.current
 
@@ -250,7 +329,7 @@ const BusMap = ({
         console.error('Error al llamar setView:', error, { center, zoom })
       }
     }
-  }, [center, zoom, mapReady])
+  }, [center, zoom, mapReady, routePath])
 
   useEffect(() => {
     let mounted = true
@@ -643,6 +722,16 @@ const BusMap = ({
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        />
+
+        {/* Ajustar zoom para mostrar ruta completa */}
+        <RouteBoundsFitter
+          routePath={routePath}
+          userLocation={userLocation}
+          originCoordinates={originCoordinates}
+          destinationCoordinates={destinationCoordinates}
+          selectedRoute={selectedRoute}
+          isTracking={isTracking}
         />
 
         {/* Controles de zoom personalizados */}
