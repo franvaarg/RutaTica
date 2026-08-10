@@ -1020,3 +1020,26 @@ Stage Summary:
 - Toggle button for tracking panel: added at right edge ✅
 - Map focus on user location at trip start: working ✅
 - Server compiles and serves without errors ✅
+---
+Task ID: 2
+Agent: Main Agent
+Task: Tracking panel only shows on toggle tap and doesn't cover route
+
+Work Log:
+- Changed `setTrackingPanelVisible(true)` to `false` in `executeStartTrip` (line 1053) - panel no longer auto-appears
+- Changed `setTrackingPanelVisible(true)` to `false` in `handleResetSearch` (line 972)
+- Removed `onClick` wrapper on root div that toggled panel on map click
+- Redesigned tracking panel from full-height side panel (280px × full height) to compact floating card (200px × ~145px)
+- Panel positioned at `bottom-36 right-2` as a rounded card with shadow
+- Toggle button changed from chevron side-arrows to green circular button with ChevronUp/ChevronDown at `bottom-24 right-3`
+- Panel uses opacity/scale/translate animation: `opacity-0 translate-y-4 scale-95 pointer-events-none` when hidden
+- Panel is always rendered in DOM (not conditionally) so CSS transitions work smoothly
+- Added `ChevronUp` and `ChevronDown` to lucide-react imports
+
+Stage Summary:
+- Tracking panel does NOT auto-appear when trip starts ✅
+- Panel only appears when user taps the green toggle button ✅
+- Compact card (200px × 145px) doesn't cover the route line ✅
+- Green circular toggle button clearly visible and accessible ✅
+- Smooth fade/slide animation for show/hide ✅
+- Lint clean (0 errors) ✅

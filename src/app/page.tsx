@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { MapPin, Bus, Navigation, Clock, DollarSign, ArrowRight, Loader2, Map, Home, Star, Bell, Menu, Search, Heart, User, Wallet, X, ChevronLeft, ChevronRight } from 'lucide-react'
+import { MapPin, Bus, Navigation, Clock, DollarSign, ArrowRight, Loader2, Map, Home, Star, Bell, Menu, Search, Heart, User, Wallet, X, ChevronLeft, ChevronRight, ChevronUp, ChevronDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -969,7 +969,7 @@ export default function BusPlannerApp() {
       clearInterval(countdownRef.current)
       countdownRef.current = null
     }
-    setTrackingPanelVisible(true)
+    setTrackingPanelVisible(false)
 
     setDestination('')
     setSelectedDestination(null)
@@ -1050,7 +1050,7 @@ export default function BusPlannerApp() {
     totalPausedMsRef.current = 0
     setTripStartTime(new Date())
     setElapsedTime(0)
-    setTrackingPanelVisible(true)
+    setTrackingPanelVisible(false)
     setRoutePanelDismissed(true) // Cerrar panel de rutas al empezar viaje
 
     // Calcular distancia inicial al destino
@@ -1229,7 +1229,6 @@ export default function BusPlannerApp() {
   return (
     <div
       className="relative h-screen w-screen overflow-hidden bg-gray-100"
-      onClick={() => isTracking && setTrackingPanelVisible(!trackingPanelVisible)}
     >
       {/* Full Screen Map - Siempre visible */}
       <div className="absolute inset-0 z-0">
@@ -1913,124 +1912,118 @@ export default function BusPlannerApp() {
         </div>
       )}
 
-      {/* Tracking Panel Toggle Button */}
+      {/* Tracking Panel Toggle Button - Botón flotante verde */}
       {isTracking && (
         <Button
           onClick={(e) => { e.stopPropagation(); setTrackingPanelVisible(!trackingPanelVisible) }}
-          className="absolute top-20 right-0 z-[41] w-8 h-8 p-0 rounded-l-lg rounded-r-none bg-white/95 backdrop-blur-sm border border-[#E5E7EB] border-r-0 shadow-md hover:bg-gray-50 transition-all duration-300"
+          className="absolute bottom-24 right-3 z-[41] w-10 h-10 p-0 rounded-full bg-[#10B981] shadow-lg hover:bg-[#059669] transition-all duration-300 border-2 border-white"
         >
           {trackingPanelVisible ? (
-            <ChevronRight className="w-4 h-4 text-gray-600" />
+            <ChevronDown className="w-5 h-5 text-white" />
           ) : (
-            <ChevronLeft className="w-4 h-4 text-gray-600" />
+            <ChevronUp className="w-5 h-5 text-white" />
           )}
         </Button>
       )}
 
-      {/* Tracking Panel - Lado derecho, slide in/out */}
+      {/* Tracking Panel - Tarjeta flotante compacta, abajo-derecha, no tapa la ruta */}
       {isTracking && !isTripPaused && (
-        <div className={`absolute top-0 right-0 bottom-0 z-40 w-[280px] max-w-[75vw] bg-white/95 backdrop-blur-sm border-l border-[#E5E7EB] shadow-[-4px_0_20px_rgba(0,0,0,0.1)] transition-transform duration-300 ease-out ${trackingPanelVisible ? 'translate-x-0' : 'translate-x-full'}`} onClick={(e) => e.stopPropagation()}>
-          <div className="p-3 space-y-3 h-full flex flex-col">
+        <div className={`absolute bottom-36 right-2 z-[42] w-[200px] max-w-[55vw] bg-white/95 backdrop-blur-sm rounded-xl border border-[#E5E7EB] shadow-lg transition-all duration-300 ease-out ${trackingPanelVisible ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-4 scale-95 pointer-events-none'}`} onClick={(e) => e.stopPropagation()}>
+          <div className="p-3 space-y-2">
             {/* Trip info row */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 bg-[#10B981] rounded-full flex items-center justify-center">
-                  <Bus className="w-4 h-4 text-white animate-pulse" />
+            <div className="flex items-center gap-2">
+              <div className="w-6 h-6 bg-[#10B981] rounded-full flex items-center justify-center flex-shrink-0">
+                <Bus className="w-3.5 h-3.5 text-white animate-pulse" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-[11px] text-gray-800">{selectedRoute?.routeNumber || 'Directo'}</span>
+                  <Badge className="bg-green-100 text-[#10B981] border-none text-[9px] px-1.5 py-0">
+                    Activo
+                  </Badge>
                 </div>
-                <div>
-                  <h3 className="font-bold text-xs text-gray-800">Viaje en curso</h3>
-                  <p className="text-[10px] text-[#6B7280]">
-                    {selectedRoute?.routeNumber || 'Directo'} → {selectedRoute?.destinationStop?.name || destination}
-                  </p>
-                </div>
-                <Badge className="bg-green-100 text-[#10B981] border-none text-[10px]">
-                  Activo
-                </Badge>
+                <p className="text-[9px] text-[#6B7280] truncate">→ {selectedRoute?.destinationStop?.name || destination}</p>
               </div>
             </div>
 
-            {/* Metrics */}
-            <div className="space-y-2">
-              <div className="bg-blue-50 rounded-lg p-3">
-                <p className="text-[10px] text-[#6B7280]">Distancia restante</p>
-                <p className="font-bold text-[#E31837] text-lg">{distanceRemaining.toFixed(1)} km</p>
+            {/* Metrics - inline compact */}
+            <div className="flex gap-2">
+              <div className="flex-1 bg-blue-50 rounded-lg p-2 text-center">
+                <p className="text-[8px] text-[#6B7280]">Restante</p>
+                <p className="font-bold text-[#E31837] text-sm">{distanceRemaining.toFixed(1)} km</p>
               </div>
-              <div className="bg-blue-50 rounded-lg p-3">
-                <p className="text-[10px] text-[#6B7280]">Tiempo de viaje</p>
-                <p className="font-bold text-[#0052B4] text-lg">
+              <div className="flex-1 bg-blue-50 rounded-lg p-2 text-center">
+                <p className="text-[8px] text-[#6B7280]">Tiempo</p>
+                <p className="font-bold text-[#0052B4] text-sm">
                   {elapsedTime < 60
-                    ? `${Math.floor(elapsedTime)} min`
-                    : `${Math.floor(elapsedTime / 60)}h ${Math.floor(elapsedTime % 60)}m`}
+                    ? `${Math.floor(elapsedTime)}m`
+                    : `${Math.floor(elapsedTime / 60)}h${Math.floor(elapsedTime % 60)}m`}
                 </p>
               </div>
             </div>
 
             {/* Stop button */}
-            <div className="mt-auto">
-              <Button
-                onClick={(e) => { e.stopPropagation(); handleStopTrip(); }}
-                className="w-full h-11 text-sm font-semibold bg-red-600 hover:bg-red-700 text-white shadow-sm"
-              >
-                <X className="w-4 h-4 mr-2" />
-                Detener Viaje
-              </Button>
-            </div>
+            <Button
+              onClick={(e) => { e.stopPropagation(); handleStopTrip(); }}
+              className="w-full h-8 text-[11px] font-semibold bg-red-600 hover:bg-red-700 text-white shadow-sm"
+            >
+              <X className="w-3 h-3 mr-1" />
+              Detener Viaje
+            </Button>
           </div>
         </div>
       )}
 
-      {/* Paused Tracking Panel - Lado derecho */}
+      {/* Paused Tracking Panel - Tarjeta flotante compacta */}
       {isTracking && isTripPaused && (
-        <div className={`absolute top-0 right-0 bottom-0 z-40 w-[280px] max-w-[75vw] bg-white/95 backdrop-blur-sm border-l border-[#E5E7EB] shadow-[-4px_0_20px_rgba(0,0,0,0.1)] transition-transform duration-300 ease-out ${trackingPanelVisible ? 'translate-x-0' : 'translate-x-full'}`} onClick={(e) => e.stopPropagation()}>
-          <div className="p-3 space-y-3 h-full flex flex-col">
+        <div className={`absolute bottom-36 right-2 z-[42] w-[200px] max-w-[55vw] bg-white/95 backdrop-blur-sm rounded-xl border border-[#E5E7EB] shadow-lg transition-all duration-300 ease-out ${trackingPanelVisible ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-4 scale-95 pointer-events-none'}`} onClick={(e) => e.stopPropagation()}>
+          <div className="p-3 space-y-2">
             {/* Trip info row */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 bg-[#F59E0B] rounded-full flex items-center justify-center">
-                  <Bus className="w-4 h-4 text-white" />
+            <div className="flex items-center gap-2">
+              <div className="w-6 h-6 bg-[#F59E0B] rounded-full flex items-center justify-center flex-shrink-0">
+                <Bus className="w-3.5 h-3.5 text-white" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-[11px] text-gray-800">{selectedRoute?.routeNumber || 'Directo'}</span>
+                  <Badge className="bg-amber-100 text-[#F59E0B] border-none text-[9px] px-1.5 py-0">
+                    Pausado
+                  </Badge>
                 </div>
-                <div>
-                  <h3 className="font-bold text-xs text-gray-800">Viaje en curso</h3>
-                  <p className="text-[10px] text-[#6B7280]">
-                    {selectedRoute?.routeNumber || 'Directo'} → {selectedRoute?.destinationStop?.name || destination}
-                  </p>
-                </div>
-                <Badge className="bg-amber-100 text-[#F59E0B] border-none text-[10px]">
-                  Pausado
-                </Badge>
+                <p className="text-[9px] text-[#6B7280] truncate">→ {selectedRoute?.destinationStop?.name || destination}</p>
               </div>
             </div>
 
             {/* Metrics */}
-            <div className="space-y-2">
-              <div className="bg-blue-50 rounded-lg p-3">
-                <p className="text-[10px] text-[#6B7280]">Distancia restante</p>
-                <p className="font-bold text-[#E31837] text-lg">{distanceRemaining.toFixed(1)} km</p>
+            <div className="flex gap-2">
+              <div className="flex-1 bg-blue-50 rounded-lg p-2 text-center">
+                <p className="text-[8px] text-[#6B7280]">Restante</p>
+                <p className="font-bold text-[#E31837] text-sm">{distanceRemaining.toFixed(1)} km</p>
               </div>
-              <div className="bg-blue-50 rounded-lg p-3">
-                <p className="text-[10px] text-[#6B7280]">Tiempo de viaje</p>
-                <p className="font-bold text-[#0052B4] text-lg">
+              <div className="flex-1 bg-blue-50 rounded-lg p-2 text-center">
+                <p className="text-[8px] text-[#6B7280]">Tiempo</p>
+                <p className="font-bold text-[#0052B4] text-sm">
                   {elapsedTime < 60
-                    ? `${Math.floor(elapsedTime)} min`
-                    : `${Math.floor(elapsedTime / 60)}h ${Math.floor(elapsedTime % 60)}m`}
+                    ? `${Math.floor(elapsedTime)}m`
+                    : `${Math.floor(elapsedTime / 60)}h${Math.floor(elapsedTime % 60)}m`}
                 </p>
               </div>
             </div>
 
-            {/* Paused action buttons */}
-            <div className="space-y-2 mt-auto">
+            {/* Action buttons */}
+            <div className="space-y-1">
               <Button
-                onClick={handleResumeTrip}
-                className="h-10 text-xs font-semibold bg-[#10B981] hover:bg-[#059669] text-white shadow-sm"
+                onClick={(e) => { e.stopPropagation(); handleResumeTrip(); }}
+                className="w-full h-8 text-[11px] font-semibold bg-[#10B981] hover:bg-[#059669] text-white shadow-sm"
               >
-                <Navigation className="w-4 h-4 mr-1" />
+                <Navigation className="w-3 h-3 mr-1" />
                 Continuar Viaje
               </Button>
               <Button
-                onClick={handleFullStopTrip}
-                className="h-10 text-xs font-semibold bg-red-600 hover:bg-red-700 text-white shadow-sm"
+                onClick={(e) => { e.stopPropagation(); handleFullStopTrip(); }}
+                className="w-full h-8 text-[11px] font-semibold bg-red-600 hover:bg-red-700 text-white shadow-sm"
               >
-                <X className="w-4 h-4 mr-1" />
+                <X className="w-3 h-3 mr-1" />
                 Finalizar Viaje
               </Button>
             </div>
