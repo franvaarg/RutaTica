@@ -991,3 +991,32 @@ Stage Summary:
 - **Antes**: Zoom hardcodeado a 10 (~600km visibles) para TODAS las rutas — demasiado alejado
 - **Después**: Zoom dinámico via `fitBounds` con `maxZoom: 15` y corrección mínima a 12 — se ajusta automáticamente al tamaño de la ruta
 - Archivos modificados: src/components/map.tsx (RouteBoundsFitter + guard center/zoom), src/app/page.tsx (fitRouteToBounds simplificado)
+---
+Task ID: 1
+Agent: Main Agent
+Task: Fix and improve RutaTica route/tracking panels
+
+Work Log:
+- Fixed JSX syntax error: `{/* Metrics */` was missing closing `}` (line 1938)
+- Fixed JSX comment: `// Stop button` changed to `{/* Stop button */}` (line 1954)
+- Fixed JSX comments in paused tracking panel: `// Metrics` and `// Paused action buttons` converted to proper JSX comments
+- Added `animate-[slideInRight_0.3s_ease-out]` to route results panel for slide-in animation
+- Changed tracking panels from conditional rendering to CSS transition approach:
+  - Always render when `isTracking` is true (regardless of `trackingPanelVisible`)
+  - Use `translate-x-0` / `translate-x-full` with `transition-transform duration-300 ease-out`
+  - This enables smooth slide-in AND slide-out animations
+- Added tracking panel toggle button (ChevronRight/ChevronLeft) at `top-20 right-0 z-[41]`
+  - Visible only during tracking (`isTracking`)
+  - Clicking toggles `trackingPanelVisible` state
+  - Positioned at right edge, always accessible even when panel covers most of the screen
+- Verified route results panel is on the right side (confirmed via VLM analysis)
+- Verified tracking panel slides in from right and can be toggled
+- Verified map focuses on user location when trip starts (zoom 14, center on current position)
+- All lint errors fixed (0 errors, 0 warnings)
+
+Stage Summary:
+- Route results panel: right side, with slide-in animation ✅
+- Tracking panel: right side, with slide-in/out CSS transitions ✅
+- Toggle button for tracking panel: added at right edge ✅
+- Map focus on user location at trip start: working ✅
+- Server compiles and serves without errors ✅

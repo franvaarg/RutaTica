@@ -1666,7 +1666,7 @@ export default function BusPlannerApp() {
 
       {/* Route Results Panel - Lado derecho */}
       {hasPlanned && !routePanelDismissed && !isTracking && (
-        <div className="absolute top-0 right-0 bottom-0 z-40 w-[320px] max-w-[85vw] bg-white/95 backdrop-blur-sm border-l border-[#E5E7EB] shadow-[-4px_0_20px_rgba(0,0,0,0.1)] flex flex-col">
+        <div className="absolute top-0 right-0 bottom-0 z-40 w-[320px] max-w-[85vw] bg-white/95 backdrop-blur-sm border-l border-[#E5E7EB] shadow-[-4px_0_20px_rgba(0,0,0,0.1)] flex flex-col animate-[slideInRight_0.3s_ease-out]">
           {/* Compact Header — sin botón de cerrar; el panel se cierra al iniciar el viaje */}
           <div className="px-3 py-1.5 flex items-center border-b border-[#E5E7EB]">
             <h2 className="text-xs font-bold flex items-center gap-1 text-gray-800">
@@ -1913,9 +1913,23 @@ export default function BusPlannerApp() {
         </div>
       )}
 
+      {/* Tracking Panel Toggle Button */}
+      {isTracking && (
+        <Button
+          onClick={(e) => { e.stopPropagation(); setTrackingPanelVisible(!trackingPanelVisible) }}
+          className="absolute top-20 right-0 z-[41] w-8 h-8 p-0 rounded-l-lg rounded-r-none bg-white/95 backdrop-blur-sm border border-[#E5E7EB] border-r-0 shadow-md hover:bg-gray-50 transition-all duration-300"
+        >
+          {trackingPanelVisible ? (
+            <ChevronRight className="w-4 h-4 text-gray-600" />
+          ) : (
+            <ChevronLeft className="w-4 h-4 text-gray-600" />
+          )}
+        </Button>
+      )}
+
       {/* Tracking Panel - Lado derecho, slide in/out */}
-      {isTracking && trackingPanelVisible && !isTripPaused && (
-        <div className="absolute top-0 right-0 bottom-0 z-40 w-[280px] max-w-[75vw] bg-white/95 backdrop-blur-sm border-l border-[#E5E7EB] shadow-[-4px_0_20px_rgba(0,0,0,0.1)] animate-[slideInRight_0.3s_ease-out]" onClick={(e) => e.stopPropagation()}>
+      {isTracking && !isTripPaused && (
+        <div className={`absolute top-0 right-0 bottom-0 z-40 w-[280px] max-w-[75vw] bg-white/95 backdrop-blur-sm border-l border-[#E5E7EB] shadow-[-4px_0_20px_rgba(0,0,0,0.1)] transition-transform duration-300 ease-out ${trackingPanelVisible ? 'translate-x-0' : 'translate-x-full'}`} onClick={(e) => e.stopPropagation()}>
           <div className="p-3 space-y-3 h-full flex flex-col">
             {/* Trip info row */}
             <div className="flex items-center justify-between">
@@ -1935,7 +1949,7 @@ export default function BusPlannerApp() {
               </div>
             </div>
 
-            {/* Metrics */
+            {/* Metrics */}
             <div className="space-y-2">
               <div className="bg-blue-50 rounded-lg p-3">
                 <p className="text-[10px] text-[#6B7280]">Distancia restante</p>
@@ -1951,7 +1965,7 @@ export default function BusPlannerApp() {
               </div>
             </div>
 
-            // Stop button
+            {/* Stop button */}
             <div className="mt-auto">
               <Button
                 onClick={(e) => { e.stopPropagation(); handleStopTrip(); }}
@@ -1966,8 +1980,8 @@ export default function BusPlannerApp() {
       )}
 
       {/* Paused Tracking Panel - Lado derecho */}
-      {isTracking && trackingPanelVisible && isTripPaused && (
-        <div className="absolute top-0 right-0 bottom-0 z-40 w-[280px] max-w-[75vw] bg-white/95 backdrop-blur-sm border-l border-[#E5E7EB] shadow-[-4px_0_20px_rgba(0,0,0,0.1)] animate-[slideInRight_0.3s_ease-out]" onClick={(e) => e.stopPropagation()}>
+      {isTracking && isTripPaused && (
+        <div className={`absolute top-0 right-0 bottom-0 z-40 w-[280px] max-w-[75vw] bg-white/95 backdrop-blur-sm border-l border-[#E5E7EB] shadow-[-4px_0_20px_rgba(0,0,0,0.1)] transition-transform duration-300 ease-out ${trackingPanelVisible ? 'translate-x-0' : 'translate-x-full'}`} onClick={(e) => e.stopPropagation()}>
           <div className="p-3 space-y-3 h-full flex flex-col">
             {/* Trip info row */}
             <div className="flex items-center justify-between">
@@ -1987,7 +2001,7 @@ export default function BusPlannerApp() {
               </div>
             </div>
 
-            // Metrics
+            {/* Metrics */}
             <div className="space-y-2">
               <div className="bg-blue-50 rounded-lg p-3">
                 <p className="text-[10px] text-[#6B7280]">Distancia restante</p>
@@ -2003,7 +2017,7 @@ export default function BusPlannerApp() {
               </div>
             </div>
 
-            // Paused action buttons
+            {/* Paused action buttons */}
             <div className="space-y-2 mt-auto">
               <Button
                 onClick={handleResumeTrip}
