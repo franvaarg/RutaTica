@@ -143,3 +143,29 @@ Durante la validación local también se detectó que Next.js 16.3.4, ejecutado 
 - `npx next build --webpack`: **PASS**.
 - La compilación de producción terminó correctamente y generó las 19 páginas estáticas previstas.
 - El primer intento falló antes de compilar porque Next.js no pudo interpretar la salida capturada de `TypeScript --showConfig`; tras aplicar el ajuste documentado para usar la API de TypeScript, el segundo intento finalizó con código de salida 0.
+
+---
+
+## 2026-09-02 - Validación segura de archivos en la API de descarga
+
+### Error
+
+El build reportaba un error de TypeScript en `src/app/api/download/route.ts` porque el resultado de `allowedFiles[filename]` podía ser `undefined` al pasarlo directamente a `path.join`.
+
+### Causa
+
+`filename` se obtiene del parámetro `file` de la query string mediante `request.nextUrl.searchParams.get`, por lo que puede ser `null`. Además, `allowedFiles` estaba declarado como `Record<string, string>` y la ruta se consultaba varias veces mediante una clave procedente de la solicitud, sin conservar en una variable el valor ya validado.
+
+### Solución
+
+- Se declaró `allowedFiles` como una allow-list literal e inmutable.
+- Se añadió un type guard basado en `Object.hasOwn` para aceptar únicamente claves propias de `allowedFiles`.
+- Se valida que `filename` exista, sea de tipo `string` y corresponda a una clave permitida antes de acceder a la allow-list.
+- La ruta asociada se guarda en `relativePath` y se vuelve a validar antes de usarla, sin aserciones de tipo, operador de non-null ni desactivación de validaciones.
+- La ruta final se resuelve desde `process.cwd()` y se comprueba que permanezca dentro del directorio del proyecto, evitando path traversal. No se aceptan rutas arbitrarias enviadas por el usuario.
+
+### Validación
+
+- `npx next build --webpack`: **PASS**. Compilación completada y 19 páginas generadas.
+- Comprobación TypeScript aislada de `src/app/api/download/route.ts`: **PASS**.
+- `git diff --check`: **PASS**.
