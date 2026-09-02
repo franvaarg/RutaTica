@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import dynamic from 'next/dynamic'
 import { useMap } from 'react-leaflet'
+import { Focus, Minus, Plus } from '@/components/app-icons'
 
 // Variable global para cachear la instancia de Leaflet
 let leafletInstance: any = null
@@ -129,7 +130,17 @@ function RouteBoundsFitter({
 }
 
 // Componente para controles de zoom personalizados
-function ZoomControls() {
+function MapControls({
+  routePath,
+  userLocation,
+  originCoordinates,
+  destinationCoordinates,
+}: {
+  routePath: BusMapProps['routePath']
+  userLocation?: [number, number] | null
+  originCoordinates?: BusMapProps['originCoordinates']
+  destinationCoordinates?: BusMapProps['destinationCoordinates']
+}) {
   const map = useMap()
 
   const handleZoomIn = () => {
@@ -140,6 +151,27 @@ function ZoomControls() {
     map.zoomOut()
   }
 
+  const handleFocus = () => {
+    const points: [number, number][] = []
+    if (routePath) {
+      for (const segment of [routePath.walking, routePath.bus, routePath.walking2, routePath.direct]) {
+        if (segment?.length) points.push(...segment)
+      }
+    }
+    if (!points.length && originCoordinates) {
+      points.push([originCoordinates.latitude, originCoordinates.longitude])
+    } else if (!points.length && userLocation) {
+      points.push(userLocation)
+    }
+    if (!points.length && destinationCoordinates) {
+      points.push([destinationCoordinates.latitude, destinationCoordinates.longitude])
+    } else if (points.length && destinationCoordinates && !routePath) {
+      points.push([destinationCoordinates.latitude, destinationCoordinates.longitude])
+    }
+    if (points.length > 1) map.fitBounds(points, { padding: [48, 48], maxZoom: 16, animate: true })
+    else if (points.length === 1) map.setView(points[0], 15, { animate: true })
+  }
+
   return (
     <div style={{
       position: 'absolute',
@@ -148,7 +180,6 @@ function ZoomControls() {
       zIndex: 1000,
       boxShadow: '0 2px 8px rgba(0, 0, 0, 0.15)',
       borderRadius: '8px',
-      overflow: 'hidden',
       border: '2px solid rgba(255, 255, 255, 0.9)',
     }}>
       <button
@@ -157,8 +188,8 @@ function ZoomControls() {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          width: '40px',
-          height: '40px',
+          width: '44px',
+          height: '44px',
           backgroundColor: 'white',
           cursor: 'pointer',
           border: 'none',
@@ -173,7 +204,7 @@ function ZoomControls() {
         aria-label="Acercar"
         type="button"
       >
-        +
+        <Plus aria-hidden="true" size={20} />
       </button>
       <button
         onClick={handleZoomOut}
@@ -181,8 +212,8 @@ function ZoomControls() {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          width: '40px',
-          height: '40px',
+          width: '44px',
+          height: '44px',
           backgroundColor: 'white',
           cursor: 'pointer',
           border: 'none',
@@ -196,7 +227,20 @@ function ZoomControls() {
         aria-label="Alejar"
         type="button"
       >
-        −
+        <Minus aria-hidden="true" size={20} />
+      </button>
+      <button
+        onClick={handleFocus}
+        title="Volver a encuadrar el mapa"
+        aria-label="Volver a encuadrar el mapa"
+        type="button"
+        style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          width: '44px', height: '44px', backgroundColor: 'white', cursor: 'pointer',
+          border: 'none', borderTop: '1px solid #E5E7EB', color: '#374151',
+        }}
+      >
+        <Focus aria-hidden="true" size={19} />
       </button>
     </div>
   )
@@ -735,7 +779,12 @@ const BusMap = ({
         />
 
         {/* Controles de zoom personalizados */}
-        <ZoomControls />
+        <MapControls
+          routePath={routePath}
+          userLocation={userLocation}
+          originCoordinates={originCoordinates}
+          destinationCoordinates={destinationCoordinates}
+        />
 
         {/* Polilíneas de la ruta seleccionada o conexión directa */}
         {getRoutePolylines().map((polyline, index) => (

@@ -1,13 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { haversineDistance, findNearestStops, walkingTimeMinutes } from '@/lib/spatial';
-import { timeToMinutes, minutesToTime, getCurrentServiceId, getNextDepartureTime } from '@/lib/time-utils';
+import { findNearestStops, pathDistanceKm, slicePathBetween, walkingTimeMinutes } from '@/lib/spatial';
+import { timeToMinutes, minutesToTime, getActiveServiceIdsToday } from '@/lib/time-utils';
 import { loadScoringConfig, scoreAndSortRoutes, RouteOption } from '@/lib/route-scoring';
+import { planWithOtp } from '@/lib/otp-client';
 
 interface RouteResult {
   score: number;
   totalTimeMinutes: number;
   walkingDistanceKm: number;
+  distanceKm: number;
+  transitDistanceKm: number;
+  distanceSource: 'otp' | 'gtfs_shape_dist_traveled' | 'gtfs_shape_geometry' | 'stop_geometry';
+  durationSource: 'otp' | 'gtfs_schedule';
   transfers: number;
   costCRC: number;
   boardingStop: { name: string; lat: number; lon: number; distanceKm: number };
@@ -24,6 +29,7 @@ interface BestRouteResponse {
   origin: { lat: number; lon: number };
   destination: { lat: number; lon: number };
   routes: RouteResult[];
+  routingSource?: 'otp' | 'gtfs-local';
 }
 
 export async function GET(request: NextRequest) {
@@ -54,7 +60,61 @@ export async function GET(request: NextRequest) {
     }
 
     const departAfterMinutes = timeToMinutes(departAfter);
-    const serviceId = getCurrentServiceId();
+    const serviceIds = await getActiveServiceIdsToday();
+
+    // OTP 2 GTFS GraphQL is preferred when configured. A failed or empty OTP
+    // response falls through to the existing local GTFS planner.
+    const departure = new Date();
+    if (searchParams.has('departAfter')) {
+      const [hours = 0, minutes = 0, seconds = 0] = departAfter.split(':').map(Number);
+      departure.setHours(hours % 24, minutes, seconds, 0);
+    }
+    const otpRoutes = await planWithOtp(
+      { lat: originLat, lon: originLon },
+      { lat: destLat, lon: destLon },
+      departure
+    );
+    if (otpRoutes?.length) {
+      const routes: RouteResult[] = otpRoutes.map((itinerary) => {
+        const transitLegs = itinerary.legs.filter((leg) => leg.mode !== 'WALK');
+        const firstTransit = transitLegs[0] || itinerary.legs[0];
+        const lastTransit = transitLegs.at(-1) || itinerary.legs.at(-1)!;
+        const transitDistanceKm = transitLegs.reduce((sum, leg) => sum + leg.distanceKm, 0);
+        return {
+          score: 0,
+          totalTimeMinutes: Math.round(itinerary.durationMin * 10) / 10,
+          walkingDistanceKm: Math.round(itinerary.walkingDistanceKm * 1000) / 1000,
+          distanceKm: Math.round(itinerary.distanceKm * 1000) / 1000,
+          transitDistanceKm: Math.round(transitDistanceKm * 1000) / 1000,
+          distanceSource: 'otp',
+          durationSource: 'otp',
+          transfers: itinerary.transfers,
+          costCRC: 0,
+          boardingStop: { ...firstTransit.from, distanceKm: itinerary.legs[0]?.distanceKm || 0 },
+          alightingStop: { ...lastTransit.to, distanceKm: itinerary.legs.at(-1)?.distanceKm || 0 },
+          route: {
+            routeId: firstTransit.route?.gtfsId || 'OTP',
+            shortName: firstTransit.route?.shortName || '',
+            longName: firstTransit.route?.longName || '',
+            color: '#16a34a',
+            company: firstTransit.agency || '',
+          },
+          departTime: '',
+          arriveTime: '',
+          stops: itinerary.legs.flatMap((leg) => [
+            { name: leg.from.name, lat: leg.from.lat, lon: leg.from.lon, time: '' },
+            { name: leg.to.name, lat: leg.to.lat, lon: leg.to.lon, time: '' },
+          ]),
+          shapePoints: itinerary.geometry,
+        };
+      });
+      return NextResponse.json({
+        origin: { lat: originLat, lon: originLon },
+        destination: { lat: destLat, lon: destLon },
+        routes,
+        routingSource: 'otp',
+      });
+    }
 
     // Step 1: Find nearest origin stops (within 1km)
     const originStops = await findNearestStops(originLat, originLon, 1, 10);
@@ -178,6 +238,7 @@ export async function GET(request: NextRequest) {
       });
 
       for (const fr of fareRules) {
+        if (!fr.route_id) continue;
         const existing = fareMap.get(fr.route_id);
         if (existing === undefined || fr.fare.price < existing) {
           fareMap.set(fr.route_id, fr.fare.price);
@@ -208,7 +269,7 @@ export async function GET(request: NextRequest) {
       const trips = await db.gtfsTrip.findMany({
         where: {
           route_id: routeId,
-          service_id: serviceId,
+          service_id: { in: serviceIds },
         },
         select: { trip_id: true, shape_id: true },
       });
@@ -222,6 +283,8 @@ export async function GET(request: NextRequest) {
         boardTime: string;
         alightTime: string;
         intermediateStops: { name: string; lat: number; lon: number; time: string }[];
+        boardShapeDistance: number | null;
+        alightShapeDistance: number | null;
       } | null = null;
 
       for (const trip of trips) {
@@ -237,6 +300,7 @@ export async function GET(request: NextRequest) {
             stop_sequence: true,
             arrival_time: true,
             departure_time: true,
+            shape_dist_traveled: true,
           },
         });
 
@@ -285,6 +349,8 @@ export async function GET(request: NextRequest) {
             boardTime: boardSt.departure_time,
             alightTime: alightSt.arrival_time,
             intermediateStops,
+            boardShapeDistance: boardSt.shape_dist_traveled,
+            alightShapeDistance: alightSt.shape_dist_traveled,
           };
         }
       }
@@ -312,6 +378,16 @@ export async function GET(request: NextRequest) {
       const travelTime =
         timeToMinutes(bestOption.alightTime) - timeToMinutes(bestOption.boardTime);
       const totalTime = walkTimeOrigin + travelTime + walkTimeDest;
+      const shapeDistance =
+        bestOption.boardShapeDistance !== null &&
+        bestOption.alightShapeDistance !== null &&
+        bestOption.alightShapeDistance >= bestOption.boardShapeDistance
+          ? bestOption.alightShapeDistance - bestOption.boardShapeDistance
+          : null;
+      const stopGeometryDistance = pathDistanceKm(
+        bestOption.intermediateStops.map((stop) => ({ lat: stop.lat, lon: stop.lon }))
+      );
+      const transitDistanceKm = shapeDistance ?? stopGeometryDistance;
 
       const cost = fareMap.get(routeId) ?? 0;
       const rd = routeDetails.get(routeId);
@@ -320,6 +396,10 @@ export async function GET(request: NextRequest) {
         score: 0,
         totalTimeMinutes: Math.round(totalTime * 10) / 10,
         walkingDistanceKm: Math.round(totalWalkingKm * 1000) / 1000,
+        distanceKm: Math.round((totalWalkingKm + transitDistanceKm) * 1000) / 1000,
+        transitDistanceKm: Math.round(transitDistanceKm * 1000) / 1000,
+        distanceSource: shapeDistance === null ? 'stop_geometry' : 'gtfs_shape_dist_traveled',
+        durationSource: 'gtfs_schedule',
         transfers: 0,
         costCRC: cost,
         boardingStop: {
@@ -358,7 +438,7 @@ export async function GET(request: NextRequest) {
         destStopIds,
         originRoutesByStop,
         destRoutesByStop,
-        serviceId,
+        serviceIds,
         departAfterMinutes,
         routeDetails,
         fareMap,
@@ -397,7 +477,17 @@ export async function GET(request: NextRequest) {
       for (const option of routeOptions) {
         const opt = option as unknown as { _shapeId?: string };
         if (opt._shapeId) {
-          option.shapePoints = shapesByRoute.get(opt._shapeId) || [];
+          const completeShape = shapesByRoute.get(opt._shapeId) || [];
+          option.shapePoints = slicePathBetween(
+            completeShape,
+            { lat: option.boardingStop.lat, lon: option.boardingStop.lon },
+            { lat: option.alightingStop.lat, lon: option.alightingStop.lon }
+          );
+          if (option.distanceSource === 'stop_geometry' && option.shapePoints.length > 1) {
+            option.transitDistanceKm = pathDistanceKm(option.shapePoints);
+            option.distanceKm = option.walkingDistanceKm + option.transitDistanceKm;
+            option.distanceSource = 'gtfs_shape_geometry';
+          }
           delete opt._shapeId;
         }
       }
@@ -419,6 +509,7 @@ export async function GET(request: NextRequest) {
       origin: { lat: originLat, lon: originLon },
       destination: { lat: destLat, lon: destLon },
       routes: topRoutes,
+      routingSource: 'gtfs-local',
     };
 
     return NextResponse.json(response);
@@ -439,7 +530,7 @@ async function findTransferRoutes(
   destStopIds: string[],
   originRoutesByStop: Map<string, string[]>,
   destRoutesByStop: Map<string, string[]>,
-  serviceId: string,
+  serviceIds: string[],
   departAfterMinutes: number,
   routeDetails: Map<string, { routeId: string; shortName: string; longName: string; color: string; textColor: string; agencyName: string; shapeId: string | null }>,
   fareMap: Map<string, number>,
@@ -571,6 +662,7 @@ async function findTransferRoutes(
       include: { fare: true },
     });
     for (const fr of fareRules) {
+      if (!fr.route_id) continue;
       const existing = fareMap.get(fr.route_id);
       if (existing === undefined || fr.fare.price < existing) {
         fareMap.set(fr.route_id, fr.fare.price);
@@ -585,7 +677,7 @@ async function findTransferRoutes(
 
     // Find next trip for first leg
     const firstTrips = await db.gtfsTrip.findMany({
-      where: { route_id: firstRouteId, service_id: serviceId },
+      where: { route_id: firstRouteId, service_id: { in: serviceIds } },
       select: { trip_id: true, shape_id: true },
     });
 
@@ -651,7 +743,7 @@ async function findTransferRoutes(
     );
 
     const secondTrips = await db.gtfsTrip.findMany({
-      where: { route_id: secondRouteId, service_id: serviceId },
+      where: { route_id: secondRouteId, service_id: { in: serviceIds } },
       select: { trip_id: true, shape_id: true },
     });
 
@@ -744,11 +836,17 @@ async function findTransferRoutes(
       { name: transferStop.name, lat: transferStop.lat, lon: transferStop.lon, time: bestSecondLeg.departTime },
       ...bestSecondLeg.stops.slice(1),
     ];
+    const transitDistanceKm = pathDistanceKm(allStops.map((stop) => ({ lat: stop.lat, lon: stop.lon })));
+    const walkingDistanceKm = walkDistOrigin + walkDistDest;
 
     options.push({
       score: 0,
       totalTimeMinutes: Math.round(totalTime * 10) / 10,
-      walkingDistanceKm: Math.round((walkDistOrigin + walkDistDest) * 1000) / 1000,
+      walkingDistanceKm: Math.round(walkingDistanceKm * 1000) / 1000,
+      distanceKm: Math.round((walkingDistanceKm + transitDistanceKm) * 1000) / 1000,
+      transitDistanceKm: Math.round(transitDistanceKm * 1000) / 1000,
+      distanceSource: 'stop_geometry',
+      durationSource: 'gtfs_schedule',
       transfers: 1,
       costCRC: cost,
       boardingStop: {

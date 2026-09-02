@@ -23,6 +23,7 @@ interface PlanatedRoute {
   currency: string
   distanceKm?: number | null
   durationMin?: number | null
+  transitDistanceKm?: number | null
   boardingStop: {
     name: string
     city: string | null
@@ -314,9 +315,9 @@ export default function BusPlannerApp() {
           resolve,
           reject,
           {
-            enableHighAccuracy: false,
-            timeout: 10000,
-            maximumAge: 60000,
+            enableHighAccuracy: true,
+            timeout: 12000,
+            maximumAge: 30000,
           }
         )
       })
@@ -337,10 +338,14 @@ export default function BusPlannerApp() {
         .finally(() => {
           setLoadingAddress(false)
         })
-    } catch {
+    } catch (geolocationError) {
       // GPS no disponible o denegado — usar San José como ubicación por defecto
       setCurrentLocation({ latitude: 9.9281, longitude: -84.0907 })
       setCurrentAddress('San José, Costa Rica (ubicación aproximada)')
+      const code = (geolocationError as GeolocationPositionError)?.code
+      if (code === 1) setError('Permiso de ubicación rechazado. Puedes elegir el origen manualmente.')
+      else if (code === 3) setError('La ubicación tardó demasiado. Puedes intentar de nuevo o elegir el origen.')
+      else setError('No fue posible obtener la ubicación. Puedes elegir el origen manualmente.')
     } finally {
       setLoadingLocation(false)
     }
@@ -546,7 +551,8 @@ export default function BusPlannerApp() {
           destination: r.alightingStop?.name || 'Destino',
           price: r.costCRC || 0,
           currency: 'CRC',
-          distanceKm: r.walkingDistanceKm ? r.walkingDistanceKm : null,
+          distanceKm: r.distanceKm ?? null,
+          transitDistanceKm: r.transitDistanceKm ?? null,
           durationMin: r.totalTimeMinutes || null,
           boardingStop: {
             name: r.boardingStop?.name || '',
@@ -597,7 +603,9 @@ export default function BusPlannerApp() {
           )
         }
 
-        if (bestRoute.boardingStop && bestRoute.alightingStop) {
+        if (bestRoute.shapePoints?.length > 1) {
+          newRoutePath.bus = bestRoute.shapePoints.map((point: { lat: number; lon: number }) => [point.lat, point.lon])
+        } else if (bestRoute.boardingStop && bestRoute.alightingStop) {
           routePromises.push(
             getOSRMRoute([bestRoute.boardingStop.lat, bestRoute.boardingStop.lon], [bestRoute.alightingStop.lat, bestRoute.alightingStop.lon], 'driving')
               .then((coords) => {
@@ -755,7 +763,8 @@ export default function BusPlannerApp() {
           destination: r.alightingStop?.name || 'Destino',
           price: r.costCRC || 0,
           currency: 'CRC',
-          distanceKm: r.walkingDistanceKm ? r.walkingDistanceKm : null,
+          distanceKm: r.distanceKm ?? null,
+          transitDistanceKm: r.transitDistanceKm ?? null,
           durationMin: r.totalTimeMinutes || null,
           boardingStop: {
             name: r.boardingStop?.name || '',
@@ -838,9 +847,10 @@ export default function BusPlannerApp() {
           )
         }
 
-        // Bus route: always use OSRM driving to follow actual streets
-        // GTFS shape points are approximate and may contain bad coordinates
-        if (bestRoute.boardingStop && bestRoute.alightingStop) {
+        // OTP geometry or the selected segment of the GTFS shape is authoritative.
+        if (bestRoute.shapePoints?.length > 1) {
+          newRoutePath.bus = bestRoute.shapePoints.map((point: { lat: number; lon: number }) => [point.lat, point.lon])
+        } else if (bestRoute.boardingStop && bestRoute.alightingStop) {
           routePromises.push(
             getOSRMRoute(
               [bestRoute.boardingStop.lat, bestRoute.boardingStop.lon],
@@ -1077,6 +1087,12 @@ export default function BusPlannerApp() {
     setMapCenter([startLat, startLon])
     setMapZoom(14)
 
+    if (!navigator.geolocation) {
+      setError('Este navegador no ofrece geolocalización. La ruta sigue disponible sin seguimiento.')
+      setIsTracking(false)
+      return
+    }
+
     // Iniciar seguimiento de posición con watchPosition
     const id = navigator.geolocation.watchPosition(
       (position) => {
@@ -1113,7 +1129,7 @@ export default function BusPlannerApp() {
       {
         enableHighAccuracy: true,
         timeout: 10000,
-        maximumAge: 0,
+        maximumAge: 5000,
       }
     )
 
@@ -1168,6 +1184,12 @@ export default function BusPlannerApp() {
       pausedAtRef.current = 0
     }
     setIsTripPaused(false)
+
+    if (!navigator.geolocation) {
+      setError('Este navegador no ofrece geolocalización.')
+      setIsTripPaused(true)
+      return
+    }
 
     // Restart geolocation watch
     const id = navigator.geolocation.watchPosition(
@@ -1228,7 +1250,7 @@ export default function BusPlannerApp() {
 
   return (
     <div
-      className="relative h-screen w-screen overflow-hidden bg-gray-100"
+      className="app-viewport relative w-full overflow-hidden bg-gray-100"
     >
       {/* Full Screen Map - Siempre visible */}
       <div className="absolute inset-0 z-0">
@@ -1308,17 +1330,16 @@ export default function BusPlannerApp() {
       )}
 
       {/* Header - Floating on top of map */}
-      <header className="absolute top-0 left-0 right-0 z-30 shadow-md overflow-hidden">
-        <img src="/RutaTica_bus.png" alt="" className="absolute inset-0 w-full h-full object-cover object-center" aria-hidden="true" />
-        <div className="container mx-auto px-4 py-3 relative z-10">
+      <header className="absolute top-0 left-0 right-0 z-30 bg-[#E31837] shadow-md">
+        <div className="container mx-auto px-3 py-2.5 sm:px-4 relative z-10 safe-area-top">
           <div className="flex items-center justify-between">
             <Sheet open={isMenuOpen} onOpenChange={setIsMenuOpen}>
               <SheetTrigger asChild>
-                <Button variant="ghost" size="icon" className="text-white bg-white/25 hover:bg-white/35 backdrop-blur-sm rounded-lg border border-white/30">
+                <Button aria-label="Abrir menú" variant="ghost" size="icon" className="min-h-11 min-w-11 text-white bg-white/20 hover:bg-white/30 rounded-lg border border-white/30">
                   <Menu className="w-6 h-6" />
                 </Button>
               </SheetTrigger>
-              <SheetContent side="left" className="w-full sm:w-96 overflow-y-auto">
+              <SheetContent side="left" className="w-full sm:w-96 overflow-y-auto overscroll-contain safe-area-bottom">
                 <SheetTitle className="sr-only">Menú de RutaTica</SheetTitle>
                 <SheetDescription className="sr-only">Planifica tu viaje en autobús por Costa Rica</SheetDescription>
                 <div className="mt-8 space-y-4">
@@ -1853,6 +1874,15 @@ export default function BusPlannerApp() {
                           </div>
                           <span className="text-sm font-bold">
                             {route.durationMin ? formatDuration(route.durationMin) : '--'}
+                          </span>
+                        </div>
+                        <div className="mt-1 pt-1 border-t border-white/20 flex items-center justify-between text-white">
+                          <div className="flex items-center gap-1">
+                            <Map className="w-3 h-3" />
+                            <span className="text-[10px] font-medium">Distancia</span>
+                          </div>
+                          <span className="text-sm font-bold">
+                            {route.distanceKm != null ? `${route.distanceKm.toFixed(1)} km` : '--'}
                           </span>
                         </div>
                         <div className="mt-1 pt-1 border-t border-white/20 flex items-center justify-between text-white/90">

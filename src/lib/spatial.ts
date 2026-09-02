@@ -22,6 +22,57 @@ export function haversineDistance(
   return R * c;
 }
 
+export type Coordinate = { lat: number; lon: number };
+
+/** Distance along an ordered path, rather than the straight line between endpoints. */
+export function pathDistanceKm(points: Coordinate[]): number {
+  let distance = 0;
+  for (let index = 1; index < points.length; index += 1) {
+    distance += haversineDistance(
+      points[index - 1].lat,
+      points[index - 1].lon,
+      points[index].lat,
+      points[index].lon
+    );
+  }
+  return distance;
+}
+
+/**
+ * Extract the part of a GTFS shape between two stops. GTFS shapes are ordered,
+ * but the schema does not link an individual point to a stop, so the closest
+ * ordered points are used when shape_dist_traveled is unavailable.
+ */
+export function slicePathBetween(
+  points: Coordinate[],
+  from: Coordinate,
+  to: Coordinate
+): Coordinate[] {
+  if (points.length < 2) return points;
+
+  let fromIndex = 0;
+  let fromDistance = Number.POSITIVE_INFINITY;
+  for (let index = 0; index < points.length; index += 1) {
+    const distance = haversineDistance(from.lat, from.lon, points[index].lat, points[index].lon);
+    if (distance < fromDistance) {
+      fromDistance = distance;
+      fromIndex = index;
+    }
+  }
+
+  let toIndex = fromIndex;
+  let toDistance = Number.POSITIVE_INFINITY;
+  for (let index = fromIndex; index < points.length; index += 1) {
+    const distance = haversineDistance(to.lat, to.lon, points[index].lat, points[index].lon);
+    if (distance < toDistance) {
+      toDistance = distance;
+      toIndex = index;
+    }
+  }
+
+  return points.slice(fromIndex, Math.max(fromIndex + 2, toIndex + 1));
+}
+
 /**
  * Calculate the bounding box for a given center point and radius in km.
  * Returns [minLat, minLon, maxLat, maxLon].

@@ -95,35 +95,21 @@ export function getTodayDateStr(): string {
  * Get active service IDs for today considering calendar and exceptions.
  */
 export async function getActiveServiceIdsToday(): Promise<string[]> {
-  const serviceId = getCurrentServiceId();
   const todayStr = getTodayDateStr();
-
-  const calendar = await db.gtfsCalendar.findUnique({
-    where: { service_id: serviceId },
-  });
-
-  if (!calendar) return [];
-
-  const dayMap: Record<string, boolean> = {
-    '0': calendar.sunday,
-    '1': calendar.monday,
-    '2': calendar.tuesday,
-    '3': calendar.wednesday,
-    '4': calendar.thursday,
-    '5': calendar.friday,
-    '6': calendar.saturday,
-  };
-
-  const dayOfWeek = new Date().getDay().toString();
-  const isServiceDay = dayMap[dayOfWeek] ?? false;
-
-  if (!isServiceDay) {
-    const exception = await getServiceException(serviceId, todayStr);
-    if (exception !== 1) return [];
+  const day = new Date().getDay();
+  const dayField = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][day];
+  const [calendars, exceptions] = await Promise.all([
+    db.gtfsCalendar.findMany({
+      where: { start_date: { lte: todayStr }, end_date: { gte: todayStr } },
+    }),
+    db.gtfsCalendarDate.findMany({ where: { date: todayStr } }),
+  ]);
+  const active = new Set(
+    calendars.filter((calendar) => Boolean(calendar[dayField as keyof typeof calendar])).map((calendar) => calendar.service_id)
+  );
+  for (const exception of exceptions) {
+    if (exception.exception_type === 1) active.add(exception.service_id);
+    if (exception.exception_type === 2) active.delete(exception.service_id);
   }
-
-  const removedException = await getServiceException(serviceId, todayStr);
-  if (removedException === 2) return [];
-
-  return [serviceId];
+  return [...active];
 }
