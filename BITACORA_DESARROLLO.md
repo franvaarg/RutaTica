@@ -112,3 +112,34 @@ La mejora quedó implementada y el build de producción fue validado con webpack
 - Separar backups/examples del alcance de lint y TypeScript o corregir su deuda técnica.
 - Sustituir los iconos centralizados cuando se reciban los activos definitivos.
 - Evaluar PostgreSQL/PostGIS en una etapa futura con respaldos e infraestructura aprobados.
+
+---
+
+## 2026-09-02 - Desactivar la salida standalone en Vercel
+
+### Problema
+
+El build de Vercel fallaba con `ENOENT: no such file or directory, open '/vercel/path0/.next/next-server.js.nft.json'`.
+
+### Causa probable
+
+La opción `output: "standalone"` estaba activa de forma incondicional y entraba en conflicto con el proceso de trazado y empaquetado que realiza la integración de Next.js en Vercel.
+
+Durante la validación local también se detectó que Next.js 16.3.4, ejecutado con Node.js 24.20.0, no conseguía capturar el JSON generado por el CLI de TypeScript mediante `--showConfig`, aunque el mismo comando ejecutado directamente sí devolvía JSON válido.
+
+### Archivo modificado
+
+- `next.config.ts`
+- `BITACORA_DESARROLLO.md`
+
+### Solución aplicada
+
+- Se cambió `output: "standalone"` por `output: process.env.VERCEL ? undefined : "standalone"`, de modo que Vercel use su salida administrada y los demás entornos conserven la salida standalone.
+- Se añadió `experimental.useTypeScriptCli: false`, conforme a la documentación incluida con Next.js 16.3.4, para usar la API de TypeScript 5 y permitir la validación local con Node.js 24.20.0.
+- No se modificaron las demás opciones ni los scripts de `package.json`.
+
+### Resultado del build
+
+- `npx next build --webpack`: **PASS**.
+- La compilación de producción terminó correctamente y generó las 19 páginas estáticas previstas.
+- El primer intento falló antes de compilar porque Next.js no pudo interpretar la salida capturada de `TypeScript --showConfig`; tras aplicar el ajuste documentado para usar la API de TypeScript, el segundo intento finalizó con código de salida 0.
