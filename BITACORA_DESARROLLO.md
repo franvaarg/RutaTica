@@ -83,6 +83,7 @@ Corregir la distancia y duración mostradas entre origen y destino, preparar la 
 - `npx prisma generate`: **PASS**. Prisma Client 6.19.3 generado correctamente.
 - `npx next build --webpack`: **PASS**. Compilación completada y 19 páginas generadas.
 - `git diff --check`: **PASS**.
+
 - Auditoría Prisma de solo lectura: **PASS**.
 - `npm run lint`: **FAIL**. Se detectaron 23 errores de reglas React Compiler en código activo y directorios de respaldo; incluyen funciones usadas antes de declararse, actualizaciones de estado dentro de effects y acceso a `mapRef.current` en dependencias.
 - `npm run build`: **FAIL** en Turbopack por una restricción del entorno al intentar enlazar un puerto interno. La compilación equivalente con webpack fue exitosa.
@@ -169,3 +170,31 @@ El build reportaba un error de TypeScript en `src/app/api/download/route.ts` por
 - `npx next build --webpack`: **PASS**. Compilación completada y 19 páginas generadas.
 - Comprobación TypeScript aislada de `src/app/api/download/route.ts`: **PASS**.
 - `git diff --check`: **PASS**.
+
+---
+
+## 2026-09-02 - Separación del build estándar y el empaquetado standalone
+
+### Problema
+
+El script `build` ejecutaba `next build` y después copiaba `.next/static` y `public` dentro de `.next/standalone`. En Vercel, `next.config.ts` desactiva `output: "standalone"` cuando existe `process.env.VERCEL`, por lo que ese directorio no se genera y las copias posteriores podían fallar.
+
+### Causa
+
+El build estándar de la aplicación y el empaquetado adicional para un despliegue autogestionado estaban acoplados en un único script. La copia manual sólo es válida cuando Next.js genera `.next/standalone` y se pretende ejecutar su servidor mínimo.
+
+### Modificación de `package.json`
+
+- `build` quedó como `next build`.
+- Se añadió `build:standalone` con `next build && cp -r .next/static .next/standalone/.next/ && cp -r public .next/standalone/`.
+- Se conservó el empaquetado standalone porque el script `start` existente todavía ejecuta `.next/standalone/server.js` y puede ser necesario para desarrollo o despliegues alternativos.
+- No se modificaron otros scripts.
+
+### Razón para no depender de `.next/standalone` en Vercel
+
+Vercel administra la salida y el empaquetado de Next.js. Como `output: "standalone"` se desactiva allí de forma intencional, el flujo de Vercel no debe asumir que existe `.next/standalone` ni ejecutar copias hacia ese directorio. El empaquetado standalone queda reservado para entornos autogestionados que lo soliciten explícitamente mediante `npm run build:standalone`.
+
+### Resultados de las pruebas
+
+- `npm run build`: **FAIL por restricción del entorno de ejecución**. Se confirmó que el script invoca únicamente `next build`; Next.js 16.3.4 con Turbopack falló al procesar `src/app/globals.css` porque no pudo enlazar un puerto interno (`Operation not permitted`, error 1). El resultado se reprodujo incluso al reintentar con permisos ampliados, por lo que no está relacionado con las copias eliminadas ni con `.next/standalone`.
+- `npx next build --webpack`: **PASS**. Compiló correctamente, generó las 19 páginas estáticas previstas, terminó la recolección de trazas y finalizó con código de salida 0.
