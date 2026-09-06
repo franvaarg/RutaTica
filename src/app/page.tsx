@@ -1330,7 +1330,14 @@ export default function BusPlannerApp() {
       )}
 
       {/* Header - Floating on top of map */}
-      <header className="absolute top-0 left-0 right-0 z-30 bg-[#E31837] shadow-md">
+      <header className="bus-banner absolute top-0 left-0 right-0 z-30 bg-[#E31837] shadow-md overflow-hidden">
+        <img
+          src="/RutaTica_bus.png"
+          alt=""
+          aria-hidden="true"
+          className="bus-banner__image absolute inset-0 h-full w-full object-cover"
+        />
+        <div className="bus-banner__overlay absolute inset-0" aria-hidden="true" />
         <div className="container mx-auto px-3 py-2.5 sm:px-4 relative z-10 safe-area-top">
           <div className="flex items-center justify-between">
             <Sheet open={isMenuOpen} onOpenChange={setIsMenuOpen}>
@@ -1657,9 +1664,9 @@ export default function BusPlannerApp() {
               </SheetContent>
             </Sheet>
 
-            <div className="flex items-center gap-2">
-              <img src="/RutaTica_Logo.png" alt="RutaTica" className="h-8 w-auto object-contain mix-blend-multiply" />
-              <p className="text-xs text-white drop-shadow-sm">
+            <div className="flex min-w-0 items-center gap-2 px-2 sm:px-0">
+              <img src="/RutaTica_Logo.png" alt="RutaTica" className="h-7 w-auto object-contain mix-blend-multiply sm:h-8" />
+              <p className="hidden text-xs text-white drop-shadow-sm md:block">
                 {isTracking ? '🚌 Viaje en curso' : hasPlanned ? `Ruta a ${destination}` : '¿A dónde vamos hoy?'}
               </p>
             </div>

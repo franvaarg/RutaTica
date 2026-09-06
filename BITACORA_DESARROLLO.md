@@ -198,3 +198,34 @@ Vercel administra la salida y el empaquetado de Next.js. Como `output: "standalo
 
 - `npm run build`: **FAIL por restricción del entorno de ejecución**. Se confirmó que el script invoca únicamente `next build`; Next.js 16.3.4 con Turbopack falló al procesar `src/app/globals.css` porque no pudo enlazar un puerto interno (`Operation not permitted`, error 1). El resultado se reprodujo incluso al reintentar con permisos ampliados, por lo que no está relacionado con las copias eliminadas ni con `.next/standalone`.
 - `npx next build --webpack`: **PASS**. Compiló correctamente, generó las 19 páginas estáticas previstas, terminó la recolección de trazas y finalizó con código de salida 0.
+
+---
+
+## 2026-09-06 - Restauración responsive del banner original del bus
+
+### Objetivo
+
+Restaurar la imagen panorámica original del bus en el encabezado actual sin aumentar su altura, deformar el asset ni interferir con el logo RutaTica y los controles.
+
+### Asset restaurado
+
+- Se reutilizó exactamente `public/RutaTica_bus.png` (1669 × 424 px), el asset panorámico original que ya formaba parte del proyecto.
+- La imagen se mantiene decorativa (`alt=""` y `aria-hidden="true"`) para no duplicar información en lectores de pantalla.
+
+### Ajustes responsive
+
+- El bus se renderiza como una capa absoluta con `width` y `height` al 100% y `object-fit: cover`, por lo que conserva su proporción y no modifica la altura existente del header.
+- Se definió `object-position` específico para desktop y móvil para mantener un encuadre útil del bus en relaciones de aspecto distintas.
+- Se conservó el rojo de marca mediante el fondo `#E31837` y un overlay responsive. El centro protege la lectura del logo y los extremos mantienen contraste detrás del menú y la campana.
+- En móvil se redujo el logo de forma proporcional y se oculta el texto secundario para evitar solapamientos, manteniendo intactos los objetivos táctiles de los controles.
+- No se modificaron mapa, routing, Zoom In, Zoom Out, Set Focus ni base de datos.
+
+### Validación visual y técnica
+
+- Captura desktop validada a 1440 × 900 px con Firefox headless.
+- Captura móvil validada a 390 × 844 px con Firefox headless.
+- En ambos tamaños el header conserva su altura, el bus queda correctamente encuadrado, el logo y los controles permanecen visibles y no hay deformación.
+- `npx next build --webpack`: **PASS**. Compilación de producción y generación de 19 páginas completadas.
+- `npm run build` (Turbopack): no concluye por la restricción conocida del entorno al enlazar un puerto interno durante el procesamiento de CSS (`Operation not permitted`).
+- `npm run lint`: mantiene 23 errores preexistentes en hooks de React, incluidos archivos de respaldo; el cambio del banner no introduce reglas de lint nuevas.
+- `git diff --check`: **PASS**.

@@ -136,6 +136,29 @@
 .safe-area-top { padding-top: max(0.625rem, env(safe-area-inset-top)); }
 .safe-area-bottom { padding-bottom: max(1rem, env(safe-area-inset-bottom)); }
 
+/* Banner panorámico: conserva la altura del header y encuadra el bus sin deformarlo. */
+.bus-banner__image {
+  object-position: 50% 58%;
+}
+
+.bus-banner__overlay {
+  background:
+    linear-gradient(90deg, rgb(227 24 55 / 78%) 0%, rgb(227 24 55 / 58%) 30%, rgb(227 24 55 / 94%) 42%, rgb(227 24 55 / 94%) 62%, rgb(227 24 55 / 60%) 72%, rgb(227 24 55 / 78%) 100%),
+    rgb(227 24 55 / 18%);
+}
+
+@media (max-width: 640px) {
+  .bus-banner__image {
+    object-position: 47% 60%;
+  }
+
+  .bus-banner__overlay {
+    background:
+      linear-gradient(90deg, rgb(227 24 55 / 82%) 0%, rgb(227 24 55 / 94%) 34%, rgb(227 24 55 / 94%) 70%, rgb(227 24 55 / 84%) 100%),
+      rgb(227 24 55 / 22%);
+  }
+}
+
 button, input, [role="button"] { touch-action: manipulation; }
 
 .leaflet-container { overscroll-behavior: contain; }
