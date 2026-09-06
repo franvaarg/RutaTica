@@ -134,3 +134,49 @@ PostGIS beneficiaría cercanía de paradas, corredores, transferencias y matchin
 - Recibir y sustituir los iconos definitivos en el punto central indicado.
 - Provisionar PostgreSQL/PostGIS y ensayar la migración con copias, respaldos y validación antes de cualquier cambio de producción.
 - Migrar de `plan` a `planConnection` cuando se fije la versión/esquema OTP objetivo.
+
+---
+
+## 2026-09-06 - Restauración y ajuste responsive del banner original del bus
+
+**Fecha:** 2026-09-06
+
+**Proceso:** Restauración y ajuste responsive del banner original del bus
+
+### Problema
+
+El banner superior había sido reemplazado por una franja roja plana.
+
+### Cambio realizado
+
+Se restauró la imagen original del bus usada anteriormente en el banner, reutilizando el asset existente `public/RutaTica_bus.png` sin modificarlo.
+
+### Ajuste visual
+
+- La imagen del bus fue adaptada al tamaño actual del banner.
+- Se mantuvo su proporción mediante `object-fit: cover`.
+- Se ajustó el encuadre para desktop y móvil.
+- Se evitó que tape el logo o los controles mediante capas y ajustes responsive.
+- Se mantuvo la identidad roja de RutaTica donde corresponde, con el fondo y el overlay del banner.
+
+### Archivos modificados
+
+- `src/app/page.tsx`: restauración de la imagen del bus y ajuste responsive del logo y del texto del encabezado.
+- `src/app/globals.css`: encuadre y overlay del banner para desktop y móvil.
+- `BITACORA_DESARROLLO.md`: registro de la implementación y sus validaciones.
+- `BITACORA_CAMBIOS.md`: incorporación de esta entrada.
+
+### Resultado
+
+- Banner restaurado.
+- Responsive validado en desktop (1440 × 900 px) y móvil (390 × 844 px) con Firefox headless, según la validación registrada en `BITACORA_DESARROLLO.md`.
+- Funcionalidad del mapa sin cambios.
+
+### Funciones no afectadas
+
+- Zoom In
+- Zoom Out
+- Set Focus
+- Routing
+- OTP
+- Base de datos
