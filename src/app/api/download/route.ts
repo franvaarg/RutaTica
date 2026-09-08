@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import fs from 'fs';
+import { readFile } from 'node:fs/promises';
 import path from 'path';
 
 const allowedFiles = Object.freeze({
@@ -30,13 +30,18 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Archivo no permitido' }, { status: 400 });
   }
 
-  if (!fs.existsSync(filePath)) {
-    return NextResponse.json({ error: 'Archivo no existe' }, { status: 404 });
+  let fileBuffer: Buffer;
+  try {
+    fileBuffer = await readFile(filePath);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return NextResponse.json({ error: 'Archivo no existe' }, { status: 404 });
+    }
+    console.error('[download] file read failed');
+    return NextResponse.json({ error: 'No se pudo descargar el archivo' }, { status: 500 });
   }
 
-  const fileBuffer = fs.readFileSync(filePath);
-
-  return new NextResponse(fileBuffer, {
+  return new NextResponse(new Uint8Array(fileBuffer), {
     headers: {
       'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       'Content-Disposition': `attachment; filename="${relativePath}"`,

@@ -1,3 +1,4 @@
+import { serviceDateTime, activeServices } from './service-date';
 import { db } from '@/lib/db';
 
 /**
@@ -6,7 +7,7 @@ import { db } from '@/lib/db';
  */
 export function timeToMinutes(timeStr: string): number {
   const parts = timeStr.split(':').map(Number);
-  if (parts.length !== 3 || parts.some(isNaN)) return 0;
+  if (!/^\d{2,3}:[0-5]\d:[0-5]\d$/.test(timeStr)) return Number.NaN;
   const hours = parts[0];
   const minutes = parts[1];
   const seconds = parts[2];
@@ -17,12 +18,12 @@ export function timeToMinutes(timeStr: string): number {
  * Convert total minutes since midnight to "HH:MM:SS" string.
  */
 export function minutesToTime(minutes: number): string {
-  const totalMinutes = Math.floor(minutes);
-  const h = Math.floor(totalMinutes / 60);
-  const m = totalMinutes % 60;
-  const s = Math.round((minutes - totalMinutes) * 60);
+  const totalSeconds = Math.round(minutes * 60);
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor(totalSeconds / 60) % 60;
+  const sec = totalSeconds % 60;
   const pad = (n: number) => n.toString().padStart(2, '0');
-  return `${pad(h)}:${pad(m)}:${pad(s)}`;
+  return `${pad(h)}:${pad(m)}:${pad(sec)}`;
 }
 
 /**
@@ -30,10 +31,9 @@ export function minutesToTime(minutes: number): string {
  * Returns "weekday", "saturday", or "sunday".
  */
 export function getCurrentServiceId(): string {
-  const now = new Date();
-  const day = now.getDay();
-  if (day === 0) return 'sunday';
-  if (day === 6) return 'saturday';
+  const day = serviceDateTime().weekday;
+  if (day === 'sunday') return 'sunday';
+  if (day === 'saturday') return 'saturday';
   return 'weekday';
 }
 
@@ -60,7 +60,7 @@ export function getNextDepartureTime(
     }
   }
 
-  return sorted.length > 0 ? sorted[0].departure_time : null;
+  return null;
 }
 
 /**
@@ -84,32 +84,19 @@ export async function getServiceException(
  * Get today's date as YYYYMMDD string.
  */
 export function getTodayDateStr(): string {
-  const now = new Date();
-  const y = now.getFullYear();
-  const m = (now.getMonth() + 1).toString().padStart(2, '0');
-  const d = now.getDate().toString().padStart(2, '0');
-  return `${y}${m}${d}`;
+  return serviceDateTime().compactDate;
 }
 
 /**
  * Get active service IDs for today considering calendar and exceptions.
  */
-export async function getActiveServiceIdsToday(): Promise<string[]> {
-  const todayStr = getTodayDateStr();
-  const day = new Date().getDay();
-  const dayField = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][day];
+export async function getActiveServiceIdsToday(date = new Date()): Promise<string[]> {
+  const todayStr = serviceDateTime(date).compactDate;
   const [calendars, exceptions] = await Promise.all([
     db.gtfsCalendar.findMany({
       where: { start_date: { lte: todayStr }, end_date: { gte: todayStr } },
     }),
     db.gtfsCalendarDate.findMany({ where: { date: todayStr } }),
   ]);
-  const active = new Set(
-    calendars.filter((calendar) => Boolean(calendar[dayField as keyof typeof calendar])).map((calendar) => calendar.service_id)
-  );
-  for (const exception of exceptions) {
-    if (exception.exception_type === 1) active.add(exception.service_id);
-    if (exception.exception_type === 2) active.delete(exception.service_id);
-  }
-  return [...active];
+  return activeServices(calendars, exceptions, date);
 }

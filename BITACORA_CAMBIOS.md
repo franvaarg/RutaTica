@@ -180,3 +180,9 @@ Se restauró la imagen original del bus usada anteriormente en el banner, reutil
 - Routing
 - OTP
 - Base de datos
+
+## 2026-09-08 — Estabilización previa a release
+
+Corregidos errores de tipos, APIs que usaban modelos retirados, exposición de errores/diagnósticos, fecha de servicio dependiente del servidor y sustitución de geometría al seleccionar rutas. Se preserva el diseño y se añaden controles de resultados móviles, foco/teclado, resize del mapa y mensajes de estimación/fallo. APIs personales no autenticadas quedan explícitamente no disponibles; la base no fue alterada.
+
+Añadidas diez pruebas críticas y comandos `typecheck`, `test` y regeneración Prisma previa al build. Detalle de verificaciones y archivos: `docs/RELEASE_READINESS.md`. El feed incluido no cubre Ciudad Quesada; OTP real y Vercel siguen pendientes de validación. No se hizo commit ni push.

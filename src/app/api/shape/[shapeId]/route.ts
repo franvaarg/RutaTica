@@ -32,8 +32,8 @@ export async function GET(
 
     return NextResponse.json({ points });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Error fetching shape';
-    console.error('Error fetching shape:', error);
+    const message = 'Error fetching shape';
+    console.error('Error fetching shape:', { type: error instanceof Error ? error.name : 'UnknownError' });
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

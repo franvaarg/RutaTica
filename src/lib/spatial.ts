@@ -209,3 +209,20 @@ export function midpoint(
 export function walkingTimeMinutes(distanceKm: number): number {
   return (distanceKm / 5) * 60;
 }
+
+/** Clip using feed distance units without assuming those units are kilometers. */
+export function slicePathByDistance(
+  points: Array<Coordinate & { distance: number | null }>, start: number | null, end: number | null
+): Coordinate[] | null {
+  if (start === null || end === null || !Number.isFinite(start) || !Number.isFinite(end) || end <= start || points.length < 2) return null;
+  if (points.some((p, i) => p.distance === null || !Number.isFinite(p.distance) || (i > 0 && p.distance < points[i - 1].distance!))) return null;
+  if (start < points[0].distance! || end > points.at(-1)!.distance!) return null;
+  const interpolate = (distance: number): Coordinate => {
+    const index = points.findIndex(p => p.distance! >= distance);
+    if (index === 0) return { lat: points[0].lat, lon: points[0].lon };
+    const a = points[index - 1], b = points[index];
+    const ratio = (distance - a.distance!) / (b.distance! - a.distance! || 1);
+    return { lat: a.lat + ratio * (b.lat - a.lat), lon: a.lon + ratio * (b.lon - a.lon) };
+  };
+  return [interpolate(start), ...points.filter(p => p.distance! > start && p.distance! < end).map(p => ({lat:p.lat,lon:p.lon})), interpolate(end)];
+}

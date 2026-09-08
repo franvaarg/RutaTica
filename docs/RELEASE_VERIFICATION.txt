@@ -1,0 +1,196 @@
+RutaTica release verification — 2026-09-08
+Installed dependencies: Next.js 16.3.4; Prisma 6.19.3. Frozen-lockfile installation not verified.
+
+TypeScript — PASS (exit 0)
+
+> nextjs_tailwind_shadcn_ts@0.2.0 typecheck
+> tsc --noEmit
+
+
+ESLint — PASS (exit 0)
+
+> nextjs_tailwind_shadcn_ts@0.2.0 lint
+> eslint .
+
+
+Regression tests — PASS (exit 0, 10 tests)
+
+> nextjs_tailwind_shadcn_ts@0.2.0 test
+> node --import tsx tests/release.test.ts
+
+[routing] OTP unavailable or invalid; using GTFS local { reason: 'upstream_failure' }
+[routing] OTP unavailable or invalid; using GTFS local { reason: 'upstream_failure' }
+[routing] OTP unavailable or invalid; using GTFS local { reason: 'upstream_failure' }
+✔ service date remains Costa Rican across UTC midnight (161.942454ms)
+✔ exceptions add and remove services including calendar-free additions (4.128516ms)
+✔ GTFS times support midnight rollover and reject malformed times (2.16411ms)
+✔ shape clipping excludes unrelated route endpoints (1.3635ms)
+✔ query validation rejects abuse and preserves valid zero coordinates (2.834443ms)
+✔ download allowlist rejects traversal, absolute paths and prototype keys (66.27217ms)
+✔ OTP unavailable, malformed and empty responses never throw (15.293535ms)
+✔ malformed OTP polylines are rejected (29.825753ms)
+✔ SQLite URLs resolve relative to the schema without a development machine path (13.383696ms)
+✔ shape distances clip loops and interpolate endpoints regardless of feed units (27.991843ms)
+ℹ tests 10
+ℹ suites 0
+ℹ pass 10
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 526.083944
+
+Prisma validation — PASS (exit 0)
+Environment variables loaded from .env
+Prisma schema loaded from prisma/schema.prisma
+The schema at prisma/schema.prisma is valid 🚀
+
+Final Webpack production build — PASS (exit 0)
+
+> nextjs_tailwind_shadcn_ts@0.2.0 prebuild
+> prisma generate
+
+Environment variables loaded from .env
+Prisma schema loaded from prisma/schema.prisma
+┌─────────────────────────────────────────────────────────┐
+│  Update available 6.19.3 -> 8.0.0-rc.13                 │
+│                                                         │
+│  This is a major update - please follow the guide at    │
+│  https://pris.ly/d/major-version-upgrade                │
+│                                                         │
+│  Run the following to update                            │
+│    npm i --save-dev prisma@latest                       │
+│    npm i @prisma/client@latest                          │
+└─────────────────────────────────────────────────────────┘
+
+✔ Generated Prisma Client (v6.19.3) to ./node_modules/@prisma/client in 3.26s
+
+Start by importing your Prisma Client (See: https://pris.ly/d/importing-client)
+
+Tip: Need your database queries to be 1000x faster? Accelerate offers you that and more: https://pris.ly/tip-2-accelerate
+
+
+> nextjs_tailwind_shadcn_ts@0.2.0 build
+> next build --webpack
+
+▲ Next.js 16.3.4 (webpack)
+- Environments: .env
+✓ Running next.config.ts took 612ms
+- Experiments (use with caution):
+  ⨯ useTypeScriptCli
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 73s
+  Running TypeScript ...
+  Finished TypeScript in 48s ...
+  Collecting page data using 1 worker ...
+  Generating static pages using 1 worker (0/19) ...
+  Generating static pages using 1 worker (4/19) 
+  Generating static pages using 1 worker (9/19) 
+  Generating static pages using 1 worker (14/19) 
+✓ Generating static pages using 1 worker (19/19) in 2.9s
+  Finalizing page optimization ...
+  Collecting build traces ...
+
+Route (app)
+┌ ○ /
+├ ○ /_not-found
+├ ƒ /api
+├ ƒ /api/best-route
+├ ƒ /api/companies
+├ ƒ /api/download
+├ ƒ /api/fare/[routeId]
+├ ƒ /api/favorites
+├ ƒ /api/favorites/[id]
+├ ƒ /api/history
+├ ƒ /api/locations/search
+├ ƒ /api/nearest-stop
+├ ƒ /api/routes
+├ ƒ /api/routes/nearby
+├ ƒ /api/routes/plan
+├ ƒ /api/routes/search
+├ ƒ /api/settings
+├ ƒ /api/shape/[shapeId]
+├ ƒ /api/stops
+├ ƒ /api/test2
+├ ƒ /api/test3
+└ ƒ /api/trip/[tripId]
+
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+
+
+Read-only API smoke — PASS
+{"endpoint":"stops","status":200,"count":2}
+{"endpoint":"nearest-stop","status":200,"count":9}
+{"endpoint":"routes","status":200,"count":2}
+{"endpoint":"routes/search","status":200,"count":15}
+{"endpoint":"routes/nearby","status":200,"count":15}
+{"endpoint":"best-route","status":200,"count":0}
+{"endpoint":"best-route","status":400,"error":"Parámetros inválidos"}
+
+Representative local route — PASS
+{"status":200,"count":5,"source":"gtfs-local","elapsedMs":1621,"finite":true,"geometryPoints":[0,0,7,0,0]}
+
+Default build: restricted font network request; elevated Turbopack retry still failed on CSS worker port binding (Operation not permitted). Webpack was approved and succeeded.
+Mobile browser: attempted Firefox 390x844; blocked by Snap namespace/framebuffer errors, no usable capture. Temporary processes stopped.
+
+git diff --check — exit 0
+
+git diff --exit-code -- db/custom.db — exit 0
+
+SQLite quick_check: ok; foreign_key_check: zero violations. 88 stops, 72 trips; calendars end 20261231. No database writes or imports performed.
+Trace stops: database included=True; DOCX included=False
+Trace best-route: database included=True; DOCX included=False
+Trace download: database included=True; DOCX included=True
+Standalone SQLite exists: True
+
+Final git status --short (all work uncommitted):
+ M .env.example
+ M BITACORA_CAMBIOS.md
+ M BITACORA_DESARROLLO.md
+ M docs/OPEN_TRIP_PLANNER.md
+ M docs/POSTGIS_MIGRATION_PROPOSAL.md
+ M eslint.config.mjs
+ M next.config.ts
+ M package.json
+ M prisma/seed.ts
+ M scripts/import-gtfs.ts
+ M src/app/api/best-route/route.ts
+ M src/app/api/companies/route.ts
+ M src/app/api/download/route.ts
+ M src/app/api/fare/[routeId]/route.ts
+ M src/app/api/favorites/[id]/route.ts
+ M src/app/api/favorites/route.ts
+ M src/app/api/history/route.ts
+ M src/app/api/locations/search/route.ts
+ M src/app/api/nearest-stop/route.ts
+ M src/app/api/routes/nearby/route.ts
+ M src/app/api/routes/plan/route.ts
+ M src/app/api/routes/route.ts
+ M src/app/api/routes/search/route.ts
+ M src/app/api/settings/route.ts
+ M src/app/api/shape/[shapeId]/route.ts
+ M src/app/api/stops/route.ts
+ M src/app/api/test2/route.ts
+ M src/app/api/test3/route.ts
+ M src/app/api/trip/[tripId]/route.ts
+ M src/app/globals.css
+ M src/app/page.tsx
+ M src/components/location-autocomplete.tsx
+ M src/components/map.tsx
+ M src/components/ui/carousel.tsx
+ M src/hooks/use-mobile.ts
+ M src/lib/db.ts
+ M src/lib/otp-client.ts
+ M src/lib/spatial.ts
+ M src/lib/time-utils.ts
+ M tsconfig.json
+?? docs/RELEASE_READINESS.md
+?? docs/RELEASE_VERIFICATION.txt
+?? src/app/error.tsx
+?? src/lib/api-validation.ts
+?? src/lib/environment.ts
+?? src/lib/service-date.ts
+?? tests/

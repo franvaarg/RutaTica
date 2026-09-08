@@ -1,3 +1,4 @@
+import { serviceDateTime } from './service-date';
 type OtpPoint = { lat: number; lon: number };
 
 export interface OtpRouteResult {
@@ -39,29 +40,24 @@ const OTP_QUERY = `query RutaTicaPlan($from: InputCoordinates!, $to: InputCoordi
   }
 }`;
 
-function decodePolyline(encoded: string): OtpPoint[] {
+export function decodePolyline(encoded: string): OtpPoint[] {
+  if (typeof encoded !== 'string' || encoded.length > 1_000_000) throw new Error('Invalid polyline');
+  let index = 0, lat = 0, lon = 0;
   const points: OtpPoint[] = [];
-  let index = 0;
-  let lat = 0;
-  let lon = 0;
+  function delta() {
+    let result = 0, shift = 0;
+    while (true) {
+      if (index >= encoded.length || shift > 30) throw new Error('Invalid polyline');
+      const byte = encoded.charCodeAt(index++) - 63;
+      if (byte < 0 || byte > 63) throw new Error('Invalid polyline');
+      result |= (byte & 31) << shift;
+      if (byte < 32) return result & 1 ? ~(result >>> 1) : result >>> 1;
+      shift += 5;
+    }
+  }
   while (index < encoded.length) {
-    let result = 0;
-    let shift = 0;
-    let byte: number;
-    do {
-      byte = encoded.charCodeAt(index++) - 63;
-      result |= (byte & 0x1f) << shift;
-      shift += 5;
-    } while (byte >= 0x20 && index < encoded.length);
-    lat += result & 1 ? ~(result >> 1) : result >> 1;
-    result = 0;
-    shift = 0;
-    do {
-      byte = encoded.charCodeAt(index++) - 63;
-      result |= (byte & 0x1f) << shift;
-      shift += 5;
-    } while (byte >= 0x20 && index < encoded.length);
-    lon += result & 1 ? ~(result >> 1) : result >> 1;
+    lat += delta(); lon += delta();
+    if (Math.abs(lat / 1e5) > 90 || Math.abs(lon / 1e5) > 180) throw new Error('Invalid polyline coordinates');
     points.push({ lat: lat / 1e5, lon: lon / 1e5 });
   }
   return points;
@@ -78,6 +74,9 @@ export async function planWithOtp(
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 8_000);
   try {
+    const url = new URL(endpoint);
+    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw new Error('Invalid OTP URL');
+    const localDeparture = serviceDateTime(departure);
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: { 'content-type': 'application/json', accept: 'application/json' },
@@ -87,8 +86,8 @@ export async function planWithOtp(
         variables: {
           from: origin,
           to: destination,
-          date: departure.toISOString().slice(0, 10),
-          time: departure.toTimeString().slice(0, 8),
+          date: localDeparture.date,
+          time: localDeparture.time,
         },
       }),
       cache: 'no-store',
@@ -99,9 +98,11 @@ export async function planWithOtp(
     if (payload.errors?.length) throw new Error(payload.errors[0]?.message || 'OTP GraphQL error');
 
     const itineraries = payload.data?.plan?.itineraries;
-    if (!Array.isArray(itineraries)) return [];
+    if (!Array.isArray(itineraries)) throw new Error('Invalid OTP contract');
     return itineraries.map((itinerary: any) => {
-      const legs = (itinerary.legs || []).map((leg: any) => ({
+      const nonnegative = (n: unknown) => typeof n === 'number' && Number.isFinite(n) && n >= 0;
+      if (!nonnegative(itinerary.duration) || !nonnegative(itinerary.walkDistance) || !nonnegative(itinerary.numberOfTransfers) || !Array.isArray(itinerary.legs) || !itinerary.legs.length || itinerary.legs.some((l: any) => !nonnegative(l.distance) || !nonnegative(l.duration) || typeof l.mode !== 'string' || [l.from, l.to].some(p => !p || typeof p.name !== 'string' || !Number.isFinite(p.lat) || !Number.isFinite(p.lon) || Math.abs(p.lat) > 90 || Math.abs(p.lon) > 180))) throw new Error('Invalid OTP itinerary');
+      const legs = itinerary.legs.map((leg: any) => ({
         mode: leg.mode,
         distanceKm: Number(leg.distance || 0) / 1000,
         durationMin: Number(leg.duration || 0) / 60,
@@ -121,7 +122,7 @@ export async function planWithOtp(
       };
     });
   } catch (error) {
-    console.warn('OpenTripPlanner no disponible; se usará GTFS local:', error instanceof Error ? error.message : error);
+    console.warn('[routing] OTP unavailable or invalid; using GTFS local', { reason: controller.signal.aborted ? 'timeout' : 'upstream_failure' });
     return null;
   } finally {
     clearTimeout(timeout);

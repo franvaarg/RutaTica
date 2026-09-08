@@ -229,3 +229,18 @@ Restaurar la imagen panorámica original del bus en el encabezado actual sin aum
 - `npm run build` (Turbopack): no concluye por la restricción conocida del entorno al enlazar un puerto interno durante el procesamiento de CSS (`Operation not permitted`).
 - `npm run lint`: mantiene 23 errores preexistentes en hooks de React, incluidos archivos de respaldo; el cambio del banner no introduce reglas de lint nuevas.
 - `git diff --check`: **PASS**.
+
+## 2026-09-08 — Revisión de preparación para producción
+
+Se inspeccionaron arquitectura, APIs, mapa, UX móvil, configuración, SQLite y GTFS antes de modificar. No se cambió la base, no se ejecutaron importaciones y no se hizo commit ni push.
+
+- Build vuelve a bloquear errores TypeScript; comprobaciones se limitan al código de aplicación/importador/pruebas, excluyendo copias históricas. Se regenerará Prisma antes del build.
+- Reparadas APIs legacy de búsqueda/cercanía que consultaban modelos retirados. Diagnóstico interno retirado (404). APIs personales no autenticadas cerradas (503), sin consumidores actuales en `src`.
+- Validación compartida de coordenadas/paginación/radio, errores públicos genéricos y descarga asíncrona conservando allowlist y protección contra traversal.
+- Fecha de servicio Costa Rica, excepciones de calendario, tiempos GTFS inválidos, secuencias y restricciones de subida/bajada; hora actual por defecto y tiempo de acceso a la parada.
+- OTP validado antes de transformar, logs de fallback acotados, geometría preservada al seleccionar tarjeta. Distancias calculadas geométricamente; shape_dist_traveled sirve para recortar sin asumir unidades.
+- Mapa carga sólo en cliente, evita zoom mínimo que cortaba rutas, observa resize y destaca paradas de la selección. Resultados móviles inferiores, cierre/reapertura, acceso por teclado y estimaciones explícitas.
+- Autocompletado descarta respuestas obsoletas y limita espera de red; tamaños/foco mejorados. No se certifica navegación peatonal con el servidor OSRM público.
+- Importador devuelve exit code no cero con errores y actualiza excepciones existentes; seed demo incompatible retirado con mensaje explícito. El importador aún requiere ensayo en copia y validación externa del feed.
+
+Ver `docs/RELEASE_READINESS.md` para evidencia, archivos modificados, verificaciones y bloqueos restantes. La falta de cobertura GTFS de San Carlos impide recomendar release para el caso de uso principal.

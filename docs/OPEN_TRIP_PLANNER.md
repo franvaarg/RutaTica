@@ -14,3 +14,12 @@ La elección de GTFS GraphQL se debe a que el proyecto usa GTFS. La API REST fue
 - Habilitar GTFS GraphQL, TLS, health checks, límites de tiempo y observabilidad.
 - Configurar CORS sólo si el endpoint se expone directamente; RutaTica lo consume desde el servidor.
 - Probar IDs/feed ID, zona `America/Costa_Rica`, calendario y resultados representativos antes de producción.
+
+## Revisión de release — 2026-09-08
+
+- Fecha y hora se envían en `America/Costa_Rica`, independientemente del host. La búsqueda local usa la hora actual si no se indica `departAfter` (hora local de hoy, 00–23).
+- Se validan coordenadas, valores numéricos no negativos, legs y polilíneas; los errores HTTP, GraphQL, de red y contrato activan el fallback local. El timeout sigue siendo 8 segundos. Los logs de fallback no incluyen URL, credenciales ni payload.
+- OTP se consulta antes de leer el calendario SQLite: un OTP operativo puede responder aunque la base local falle. Si el fallback también falla, la API devuelve error; no se afirma que no haya servicio.
+- El cliente conserva geometría de transporte al seleccionar tarjetas. Distancia y duración se presentan como estimaciones; una tarifa ausente no se muestra como gratuita.
+- La consulta `plan` existente NO fue migrada ni validada contra un servidor OTP real en esta revisión. Su compatibilidad debe probarse con la versión y esquema desplegados. Las afirmaciones históricas sobre disponibilidad/deprecación no sustituyen esa prueba.
+- Limitaciones locales: no se buscan viajes del día de servicio anterior después de medianoche; los transbordos usan geometría de paradas; con shapes sin distancias, el recorte por proximidad puede ser ambiguo en bucles. Duración local incluye caminata y espera de transbordo, pero no espera inicial. La caminata es una aproximación, no navegación peatonal validada.

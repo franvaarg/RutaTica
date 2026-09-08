@@ -59,7 +59,7 @@ const COSTA_RICA_LOCATIONS: LocationSuggestion[] = [
 async function searchNominatim(query: string): Promise<LocationSuggestion[]> {
   try {
     const response = await fetch(
-      `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query + ', Costa Rica')}&addressdetails=1&limit=5&countrycodes=CR`
+      `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query + ', Costa Rica')}&addressdetails=1&limit=5&countrycodes=CR`, { signal: AbortSignal.timeout(8000) }
     )
 
     if (!response.ok) {
@@ -72,7 +72,7 @@ async function searchNominatim(query: string): Promise<LocationSuggestion[]> {
       return []
     }
 
-    return data.map((item: any, index: number) => {
+    return data.map((item: any, index: number): LocationSuggestion | null => {
       const addr = item.address || {}
       const lat = parseFloat(item.lat)
       const lon = parseFloat(item.lon)
@@ -127,7 +127,7 @@ export default function LocationAutocomplete({
   const [showSuggestions, setShowSuggestions] = useState(false)
   const [loading, setLoading] = useState(false)
   const [useNominatim, setUseNominatim] = useState(false) // Para alternar entre memoria y API
-  const searchTimeout = useRef<NodeJS.Timeout>()
+  const searchTimeout = useRef<NodeJS.Timeout | undefined>(undefined)
   const inputRef = useRef<HTMLInputElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
@@ -150,6 +150,7 @@ export default function LocationAutocomplete({
 
   // Buscar sugerencias mientras el usuario escribe
   useEffect(() => {
+    let cancelled = false
     // If suppressSuggestions is active, skip searching entirely
     if (suppressSuggestions) {
       if (searchTimeout.current) clearTimeout(searchTimeout.current)
@@ -197,13 +198,15 @@ export default function LocationAutocomplete({
 
       // Usar setTimeout para evitar setState síncrono en effect
       setTimeout(() => {
+        if (cancelled) return
         setSuggestions(results)
-        setShowSuggestions(results.length > 0)
+        setShowSuggestions(true)
         setLoading(false)
       }, 0)
     }, 400)
 
     return () => {
+      cancelled = true
       if (searchTimeout.current) {
         clearTimeout(searchTimeout.current)
       }
@@ -262,10 +265,11 @@ export default function LocationAutocomplete({
               setShowSuggestions(true)
             }
           }}
+          aria-label={placeholder}
           placeholder={placeholder}
           disabled={disabled}
           autoComplete="off"
-          className="flex h-10 w-full min-w-0 rounded-lg border border-[#E5E7EB] bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:border-[#0052B4] disabled:cursor-not-allowed disabled:opacity-50 pl-10 pr-10"
+          className="flex h-11 w-full min-w-0 rounded-lg border border-[#E5E7EB] bg-white px-3 py-2 text-base focus-visible:outline-none focus-visible:border-[#0052B4] disabled:cursor-not-allowed disabled:opacity-50 pl-10 pr-10"
         />
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#9CA3AF] pointer-events-none" />
         {loading ? (
@@ -275,7 +279,8 @@ export default function LocationAutocomplete({
             type="button"
             variant="ghost"
             size="sm"
-            className="absolute right-2 top-1/2 -translate-y-1/2 h-6 w-6 p-0 hover:bg-muted"
+            className="absolute right-2 top-1/2 -translate-y-1/2 h-11 w-11 p-0 hover:bg-muted"
+            aria-label="Borrar ubicación"
             onClick={handleClear}
           >
             <X className="w-3 h-3 text-muted-foreground" />
@@ -308,12 +313,13 @@ export default function LocationAutocomplete({
               {suggestions.map((suggestion) => (
                 <button
                   key={suggestion.id}
+                  type="button"
                   onClick={() => handleSelect(suggestion)}
                   className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md hover:bg-blue-50 hover:text-[#0052B4] focus:bg-blue-50 focus:text-[#0052B4] cursor-pointer outline-none transition-colors"
-                  onMouseEnter={(e) => e.currentTarget.focus()}
+
                 >
                   {getIcon(suggestion.type)}
-                  <div className="flex flex-col text-left flex-1">
+                  <div className="flex flex-col text-left flex-1 min-w-0">
                     <span className="font-medium text-[#374151]">{suggestion.name}</span>
                     <span className="text-xs text-[#6B7280] truncate">
                       {suggestion.displayName}

@@ -1,3 +1,4 @@
+import { invalidQuery, badQuery } from '@/lib/api-validation';
 import { NextRequest, NextResponse } from 'next/server'
 
 // Cache simple en memoria para reducir solicitudes a Nominatim
@@ -7,6 +8,7 @@ const CACHE_DURATION = 5 * 60 * 1000 // 5 minutos en milisegundos
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams
+    if (invalidQuery(searchParams)) return badQuery();
     const query = searchParams.get('q')
 
     if (!query || query.trim().length < 2) {
@@ -33,7 +35,8 @@ export async function GET(request: NextRequest) {
       const response = await fetch(
         `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=8&countrycodes=CR&featuretype=settlement,neighbourhood&accept-language=es`,
         {
-          headers: {
+          signal: AbortSignal.timeout(8000),
+        headers: {
             'User-Agent': 'BusApp/1.0 (https://busapp.example.com)',
             'Accept-Language': 'es',
           },
@@ -53,7 +56,7 @@ export async function GET(request: NextRequest) {
 
       data = JSON.parse(text)
     } catch (error: any) {
-      console.error('Error fetching from Nominatim:', error)
+      console.error('Error fetching from Nominatim:', { type: error instanceof Error ? error.name : 'UnknownError' })
       
       // Si es error de límite, devolver datos del cache si existen
       if (error.message?.includes('rate limit') || error.message?.includes('SyntaxError')) {
@@ -125,7 +128,7 @@ export async function GET(request: NextRequest) {
         }
 
         // Construir nombre de visualización: barrio - localidad - cantón - provincia
-        const displayParts = []
+        const displayParts: string[] = []
         if (barrio) displayParts.push(barrio)
         if (localidad) displayParts.push(localidad)
         if (canton) displayParts.push(canton)
@@ -150,6 +153,7 @@ export async function GET(request: NextRequest) {
       .slice(0, 6) // Limitar a 6 resultados
 
     // Guardar en cache
+    if (searchCache.size >= 200) searchCache.delete(searchCache.keys().next().value!);
     searchCache.set(cacheKey, {
       data: locations,
       timestamp: Date.now(),
@@ -168,11 +172,11 @@ export async function GET(request: NextRequest) {
       locations,
     })
   } catch (error: any) {
-    console.error('Error al buscar ubicaciones:', error)
+    console.error('Error al buscar ubicaciones:', { type: error instanceof Error ? error.name : 'UnknownError' })
     return NextResponse.json(
       {
         success: false,
-        error: error.message || 'Error al buscar ubicaciones',
+        error: 'Error al buscar ubicaciones',
         locations: [],
       },
       { status: 500 }

@@ -44,8 +44,8 @@ export async function GET() {
 
     return NextResponse.json({ companies: companiesWithCounts });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Error fetching companies';
-    console.error('Error fetching companies:', error);
+    const message = 'Error fetching companies';
+    console.error('Error fetching companies:', { type: error instanceof Error ? error.name : 'UnknownError' });
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

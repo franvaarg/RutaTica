@@ -1,21 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { NextResponse } from 'next/server';
 
-export async function DELETE(
-  _request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  try {
-    const { id } = await params;
-
-    await db.favorite.delete({
-      where: { id },
-    });
-
-    return NextResponse.json({ success: true });
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Error deleting favorite';
-    console.error('Error deleting favorite:', error);
-    return NextResponse.json({ error: message }, { status: 500 });
-  }
+// No authenticated identity exists yet. Do not expose cross-user data.
+function unavailable() {
+  return NextResponse.json({ error: 'Esta función requiere autenticación y almacenamiento persistente; aún no está disponible.' }, { status: 503 });
 }
+
+export const DELETE = unavailable;

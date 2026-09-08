@@ -1,9 +1,11 @@
+import { invalidQuery, badQuery } from '@/lib/api-validation';
 import { NextRequest, NextResponse } from 'next/server';
 import { findNearestStops } from '@/lib/spatial';
 
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
+    if (invalidQuery(searchParams)) return badQuery();
     const latStr = searchParams.get('lat');
     const lonStr = searchParams.get('lon');
     const radius = parseFloat(searchParams.get('radius') || '2');
@@ -50,8 +52,8 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ stops });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Error finding nearest stop';
-    console.error('Error finding nearest stop:', error);
+    const message = 'Error finding nearest stop';
+    console.error('Error finding nearest stop:', { type: error instanceof Error ? error.name : 'UnknownError' });
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

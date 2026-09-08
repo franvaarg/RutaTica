@@ -2,9 +2,12 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   output: process.env.VERCEL ? undefined : "standalone",
-  /* config options here */
+  outputFileTracingIncludes: {
+    '/api/**': ['./db/custom.db'],
+    '/api/download': ['./Bitacora_RutaTica.docx'],
+  },
   typescript: {
-    ignoreBuildErrors: true,
+    ignoreBuildErrors: false,
   },
   experimental: {
     useTypeScriptCli: false,

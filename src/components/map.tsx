@@ -115,12 +115,7 @@ function RouteBoundsFitter({
         animate: true,
         duration: 0.8,
       })
-      // fitBounds puede zoom out demasiado; corregir al terminar la animación
-      map.once('zoomend moveend', () => {
-        if (map.getZoom() < 12) {
-          map.setZoom(12, { animate: true })
-        }
-      })
+
     } catch (e) {
       console.error('Error al ajustar bounds de ruta:', e)
     }
@@ -142,6 +137,11 @@ function MapControls({
   destinationCoordinates?: BusMapProps['destinationCoordinates']
 }) {
   const map = useMap()
+  useEffect(() => {
+    const observer = new ResizeObserver(() => map.invalidateSize({ pan: false }));
+    observer.observe(map.getContainer());
+    return () => observer.disconnect();
+  }, [map]);
 
   const handleZoomIn = () => {
     map.zoomIn()
@@ -252,9 +252,10 @@ interface RouteStop {
 }
 
 interface PlannedRoute {
+  _stops?: Array<{ name: string; lat: number; lon: number }>
   id: string
   boardingStop: RouteStop & { coordinates?: { latitude: number; longitude: number } }
-  destinationStop: RouteStop & { coordinates?: { latitude: number; longitude: number } | null }
+  destinationStop: (RouteStop & { coordinates?: { latitude: number; longitude: number } | null }) | null
 }
 
 interface BusStop {
@@ -413,7 +414,7 @@ const BusMap = ({
         map.off(event, onMapInteraction)
       })
     }
-  }, [mapRef.current, isTracking, onMapInteraction])
+  }, [mapReady, isTracking, onMapInteraction])
 
   // Cargar paradas de buses de la base de datos (solo cuando se planea una ruta)
   useEffect(() => {
@@ -429,8 +430,8 @@ const BusMap = ({
         )
         const data = await response.json()
 
-        if (data.success && data.stops) {
-          setDbStops(data.stops)
+        if (response.ok && data.stops) {
+          setDbStops(data.stops.map((s: any) => ({ id: s.stopId, name: s.name, latitude: s.lat, longitude: s.lon, distance: s.distanceKm })))
         }
       } catch (error) {
         console.error('Error al cargar paradas de la base de datos:', error)
@@ -835,6 +836,12 @@ const BusMap = ({
             </Popup>
           </Marker>
         )}
+
+        {selectedRoute?._stops?.map((stop, index) => (
+          <Marker key={`selected-${index}`} position={[stop.lat, stop.lon]} icon={busStationIcon} zIndexOffset={500}>
+            <Popup><strong>Parada de la ruta seleccionada</strong><p>{stop.name}</p></Popup>
+          </Marker>
+        ))}
 
         {/* Marcadores de paradas de buses de la base de datos (resaltados) */}
         {dbStops && dbStops.length > 0 && (

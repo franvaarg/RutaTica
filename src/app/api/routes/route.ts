@@ -1,15 +1,18 @@
+import { invalidQuery, badQuery } from '@/lib/api-validation';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
+    if (invalidQuery(searchParams)) return badQuery();
     const search = searchParams.get('search') || '';
     const company = searchParams.get('company') || '';
     const limit = Math.min(parseInt(searchParams.get('limit') || '20'), 100);
     const offset = parseInt(searchParams.get('offset') || '0');
 
     const where: Record<string, unknown> = {};
+    if (company) where.agency = { name: { contains: company } };
 
     if (search) {
       where.OR = [
@@ -70,8 +73,8 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ routes: formattedRoutes, total });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Error fetching routes';
-    console.error('Error fetching routes:', error);
+    const message = 'Error fetching routes';
+    console.error('Error fetching routes:', { type: error instanceof Error ? error.name : 'UnknownError' });
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

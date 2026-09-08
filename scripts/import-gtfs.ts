@@ -216,11 +216,13 @@ async function importCalendarDates(): Promise<ImportStats> {
           stats.errors.push(`Row ${stats.processed}: missing service_id or date`)
           continue
         }
-        const exception_type = safeInt(row.exception_type, 1)
+        const exception_type = Number(row.exception_type)
+        if (![1, 2].includes(exception_type)) throw new Error('Invalid exception_type')
         const dedup = await tx.gtfsCalendarDate.findFirst({
-          where: { service_id, date, exception_type },
+          where: { service_id, date },
         })
         if (dedup) {
+          await tx.gtfsCalendarDate.update({ where: { id: dedup.id }, data: { exception_type } })
           stats.updated++
         } else {
           await tx.gtfsCalendarDate.create({
@@ -723,12 +725,6 @@ async function importTarifas(): Promise<ImportStats> {
             continue
           }
 
-          // Get the first stop of this route from stop_times to create a StopRoute entry
-          const firstStopTime = await tx.gtfsStopTime.findFirst({
-            where: { trip_id: { in: route.trips ? undefined : [] } },
-            orderBy: { stop_sequence: 'asc' },
-          })
-
           // Find any trip for this route to get stops
           const anyTrip = await tx.gtfsTrip.findFirst({ where: { route_id } })
           if (!anyTrip) {
@@ -830,6 +826,7 @@ async function main() {
   if (totals.errors.length > 0) {
     console.log(`\n  WARNING: ${totals.errors.length} errors occurred during import.`)
     console.log('  Check ImportLog table for details.\n')
+    process.exitCode = 1
   }
 }
 

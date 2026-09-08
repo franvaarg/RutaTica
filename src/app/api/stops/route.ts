@@ -1,3 +1,4 @@
+import { invalidQuery, badQuery } from '@/lib/api-validation';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { haversineDistance } from '@/lib/spatial';
@@ -5,6 +6,7 @@ import { haversineDistance } from '@/lib/spatial';
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
+    if (invalidQuery(searchParams)) return badQuery();
     const search = searchParams.get('search') || '';
     const latStr = searchParams.get('lat');
     const lonStr = searchParams.get('lon');
@@ -17,6 +19,12 @@ export async function GET(request: NextRequest) {
     const lon = hasCoords ? parseFloat(lonStr!) : 0;
 
     const where: Record<string, unknown> = { location_type: 0 };
+    if (hasCoords) {
+      const latDelta = radius / 111.195;
+      const lonDelta = latDelta / Math.max(0.000001, Math.cos(lat * Math.PI / 180));
+      where.lat = { gte: lat - latDelta, lte: lat + latDelta };
+      where.lon = { gte: lon - lonDelta, lte: lon + lonDelta };
+    }
 
     if (search) {
       where.OR = [
@@ -44,12 +52,12 @@ export async function GET(request: NextRequest) {
         },
       },
       orderBy: { stop_id: 'asc' },
-      take: hasCoords ? 500 : limit,
+      take: hasCoords ? undefined : limit,
       skip: hasCoords ? 0 : offset,
     });
 
     if (hasCoords) {
-      stops = stops
+      const nearbyStops = stops
         .map((stop) => ({
           ...stop,
           distanceKm: haversineDistance(lat, lon, stop.lat, stop.lon),
@@ -59,7 +67,7 @@ export async function GET(request: NextRequest) {
         .slice(offset, offset + limit);
 
       return NextResponse.json({
-        stops: stops.map((s) => ({
+        stops: nearbyStops.map((s) => ({
           stopId: s.stop_id,
           code: s.code,
           name: s.name,
@@ -71,7 +79,7 @@ export async function GET(request: NextRequest) {
           routeCount: s._count.stopRoutes,
           distanceKm: Math.round(s.distanceKm * 1000) / 1000,
         })),
-        total: stops.length,
+        total: nearbyStops.length,
       });
     }
 
@@ -92,8 +100,8 @@ export async function GET(request: NextRequest) {
       total,
     });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Error fetching stops';
-    console.error('Error fetching stops:', error);
+    const message = 'Error fetching stops';
+    console.error('Error fetching stops:', { type: error instanceof Error ? error.name : 'UnknownError' });
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

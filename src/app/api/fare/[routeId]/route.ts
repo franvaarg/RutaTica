@@ -49,8 +49,8 @@ export async function GET(
       })),
     });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Error fetching fare';
-    console.error('Error fetching fare:', error);
+    const message = 'Error fetching fare';
+    console.error('Error fetching fare:', { type: error instanceof Error ? error.name : 'UnknownError' });
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

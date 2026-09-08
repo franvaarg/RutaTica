@@ -88,8 +88,8 @@ export async function GET(
       shape,
     });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Error fetching trip';
-    console.error('Error fetching trip:', error);
+    const message = 'Error fetching trip';
+    console.error('Error fetching trip:', { type: error instanceof Error ? error.name : 'UnknownError' });
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

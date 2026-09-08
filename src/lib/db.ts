@@ -1,3 +1,4 @@
+import { databaseUrl } from './environment'
 import { PrismaClient } from '@prisma/client'
 
 const globalForPrisma = globalThis as unknown as {
@@ -7,12 +8,11 @@ const globalForPrisma = globalThis as unknown as {
 export const db =
   globalForPrisma.prisma ??
   new PrismaClient({
+    datasourceUrl: databaseUrl(process.env.DATABASE_URL),
     log: ['error', 'warn'],
   })
 
-if (process.env.NODE_ENV !== 'production') {
-  globalForPrisma.prisma = db
-}
+globalForPrisma.prisma = db
 
 // Exportar tipos para usarlos en las rutas
 export type { PrismaClient } from '@prisma/client'
