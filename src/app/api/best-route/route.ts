@@ -1,3 +1,5 @@
+import { queryPhysicalStops } from '@/lib/physical-stops';
+import { CTP_ROUTING_NOTICE } from '@/lib/stop-display';
 import { invalidQuery, badQuery } from '@/lib/api-validation';
 import { serviceDateTime } from '@/lib/service-date';
 import { NextRequest, NextResponse } from 'next/server';
@@ -126,7 +128,7 @@ export async function GET(request: NextRequest) {
         origin: { lat: originLat, lon: originLon },
         destination: { lat: destLat, lon: destLon },
         routes: [],
-        message: 'No bus stops found near origin within 1km',
+        message: await noRouteMessage(originLat, originLon),
       });
     }
 
@@ -137,7 +139,7 @@ export async function GET(request: NextRequest) {
         origin: { lat: originLat, lon: originLon },
         destination: { lat: destLat, lon: destLon },
         routes: [],
-        message: 'No bus stops found near destination within 1km',
+        message: await noRouteMessage(destLat, destLon),
       });
     }
 
@@ -517,7 +519,7 @@ export async function GET(request: NextRequest) {
       routingSource: 'gtfs-local',
     };
 
-    return NextResponse.json(response);
+    return NextResponse.json({ ...response, ...(topRoutes.length === 0 ? { message: await noRouteMessage(originLat, originLon, destLat, destLon) } : {}) });
   } catch (error: unknown) {
     const message = 'Error finding best route';
     console.error('Error finding best route:', { type: error instanceof Error ? error.name : 'UnknownError' });
@@ -888,4 +890,17 @@ async function findTransferRoutes(
   }
 
   return options;
+}
+
+// Infrastructure presence changes only the explanation, never the route results.
+async function noRouteMessage(lat: number, lon: number, destLat?: number, destLon?: number) {
+  try {
+    const origin = await queryPhysicalStops({ source: 'CTP', lat, lon, radius: 1, limit: 1 });
+    if (origin.total > 0) return CTP_ROUTING_NOTICE;
+    if (destLat !== undefined && destLon !== undefined) {
+      const destination = await queryPhysicalStops({ source: 'CTP', lat: destLat, lon: destLon, radius: 1, limit: 1 });
+      if (destination.total > 0) return CTP_ROUTING_NOTICE;
+    }
+  } catch { /* Optional infrastructure lookup must not break GTFS/OTP routing. */ }
+  return 'No se encontraron rutas de autobús con los datos disponibles para este trayecto.';
 }

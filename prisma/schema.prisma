@@ -253,3 +253,30 @@ model ImportLog {
   startedAt        DateTime  @default(now())
   completedAt      DateTime?
 }
+// Official physical infrastructure only. Never a GTFS route/trip foreign key.
+model CtpStop {
+  id             String   @id @default(cuid())
+  identityKey    String   @unique
+  source         String   @default("CTP")
+  sourceStopId   String
+  candidateId    String
+  name           String
+  lat            Float
+  lon            Float
+  coordX         String
+  coordY         String
+  province       String
+  canton         String
+  district       String?
+  sourceMetadata String
+  contentHash    String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([lat, lon])
+  @@index([lon, lat])
+  @@index([province])
+  @@index([canton])
+  @@index([sourceStopId])
+  @@map("ctp_stops")
+}

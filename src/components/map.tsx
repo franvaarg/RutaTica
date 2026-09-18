@@ -1,5 +1,7 @@
 'use client'
 
+import { stopNotice, type PublicStop } from '@/lib/stop-display'
+
 import { useState, useEffect, useMemo, useRef } from 'react'
 import dynamic from 'next/dynamic'
 import { useMap } from 'react-leaflet'
@@ -330,7 +332,8 @@ const BusMap = ({
 }: BusMapProps) => {
   const [isMounted, setIsMounted] = useState(false)
   const [L, setL] = useState<any>(null)
-  const [dbStops, setDbStops] = useState<any[]>([])
+  const [dbStops, setDbStops] = useState<PublicStop[]>([])
+  const [stopHint, setStopHint] = useState('')
   const [loadingDbStops, setLoadingDbStops] = useState(false)
   const mapRef = useRef<any>(null)
 
@@ -416,39 +419,43 @@ const BusMap = ({
     }
   }, [mapReady, isTracking, onMapInteraction])
 
-  // Cargar paradas de buses de la base de datos (solo cuando se planea una ruta)
+  // Query only the visible viewport, independently of route availability.
   useEffect(() => {
-    const fetchDbStops = async () => {
-      // Solo cargar cuando hay una ruta planificada o cuando el usuario quiere ver paradas
-      if (!userLocation || !plannedRoutesLength || plannedRoutesLength === 0) return
-
-      try {
-        setLoadingDbStops(true)
-        // Reducir el radio de búsqueda de 25km a 10km para mejor rendimiento
-        const response = await fetch(
-          `/api/stops?lat=${userLocation[0]}&lon=${userLocation[1]}&radius=10`
-        )
-        const data = await response.json()
-
-        if (response.ok && data.stops) {
-          setDbStops(data.stops.map((s: any) => ({ id: s.stopId, name: s.name, latitude: s.lat, longitude: s.lon, distance: s.distanceKm })))
-        }
-      } catch (error) {
-        console.error('Error al cargar paradas de la base de datos:', error)
-      } finally {
-        setLoadingDbStops(false)
-      }
-    }
-
-    // Debounce para evitar múltiples llamadas
-    const timer = setTimeout(() => {
-      fetchDbStops()
-    }, 500)
-
-    return () => {
+    if (!mapReady || !mapRef.current) return
+    const map = mapRef.current
+    let controller: AbortController | undefined
+    let timer: ReturnType<typeof setTimeout>
+    const update = () => {
+      controller?.abort()
       clearTimeout(timer)
+      setDbStops([])
+      if (map.getZoom() < 12) { setStopHint('Acerca el mapa para ver paradas.'); return }
+      timer = setTimeout(async () => {
+        const requestController = new AbortController()
+        controller = requestController
+        const bounds = map.getBounds()
+        const bbox = [bounds.getSouth(), bounds.getWest(), bounds.getNorth(), bounds.getEast()].join(',')
+        try {
+          const response = await fetch(`/api/stops?bbox=${bbox}&limit=100`, { signal: requestController.signal })
+          if (!response.ok) throw new Error('Stop lookup failed')
+          const data = await response.json()
+          if (requestController.signal.aborted) return
+          setDbStops(data.stops)
+          setStopHint(data.hasMore ? 'Se muestran 100 paradas. Acerca el mapa para ver otras.' : !data.ctpAvailable ? 'Cobertura CTP pendiente de carga.' : '')
+        } catch (error) {
+          if (!requestController.signal.aborted) { setDbStops([]); setStopHint('Paradas temporalmente no disponibles.') }
+        }
+      }, 300)
     }
-  }, [userLocation, plannedRoutesLength])
+    update()
+    map.on('moveend', update)
+    return () => { controller?.abort(); clearTimeout(timer); map.off('moveend', update) }
+  }, [mapReady])
+
+  const ctpIcon = useMemo(() => L ? L.divIcon({
+    className: '', html: '<span style="display:block;width:14px;height:14px;border:2px solid #64748b;background:white;border-radius:50%"></span>',
+    iconSize: [14, 14], iconAnchor: [7, 7],
+  }) : null, [L])
 
   // Crear iconos personalizados con useMemo para evitar recreaciones
   const userIcon = useMemo(() => {
@@ -744,7 +751,8 @@ const BusMap = ({
   }
 
   return (
-    <div className="w-full h-full min-h-[300px] rounded-lg overflow-hidden">
+    <div className="relative w-full h-full min-h-[300px] rounded-lg overflow-hidden">
+      {stopHint && <p role="status" className="absolute bottom-6 left-2 z-[1000] bg-white/95 rounded px-2 py-1 text-xs text-slate-600 pointer-events-none">{stopHint}</p>}
       <MapContainer
         center={center}
         zoom={zoom}
@@ -849,8 +857,8 @@ const BusMap = ({
             {dbStops.map((stop) => (
               <Marker
                 key={`db-${stop.id}`}
-                position={[stop.latitude, stop.longitude]}
-                icon={busStationIcon}
+                position={[stop.lat, stop.lon]}
+                icon={stop.source === 'CTP' ? ctpIcon : busStationIcon}
               >
                 <Popup>
                   <div className="text-sm p-1 min-w-40">
@@ -860,13 +868,13 @@ const BusMap = ({
                           <path d="M4 16c0 .88.39 1.67 1 2.22V20c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h8v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1.78c.61-.55 1-1.34 1-2.22V6c0-3.5-3.58-4-8-4s-8 .5-8 4v10zm3.5 1c-.83 0-1.5-.67-1.5-1.5S6.67 14 7.5 14s1.5.67 1.5 1.5S8.33 17 7.5 17zm9 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm1.5-6H6V6h12v5z"/>
                         </svg>
                       </div>
-                      <strong className="text-[#E31837]">Parada de Bus</strong>
+                      <strong className="text-slate-600">{stop.source === 'CTP' ? 'Parada oficial CTP' : 'Parada GTFS'}</strong>
                     </div>
                     <p className="font-semibold text-[#374151]">{stop.name}</p>
-                    {stop.city && <p className="text-xs text-[#6B7280] mt-1">{stop.city}</p>}
-                    {stop.distance !== undefined && (
+                    <p className="text-xs text-slate-600 mt-1">{stopNotice(stop)}</p>
+                    {stop.distanceKm !== undefined && (
                       <p className="text-xs text-[#0052B4] mt-1 font-medium">
-                        {stop.distance.toFixed(1)} km de tu ubicación
+                        {stop.distanceKm.toFixed(1)} km de tu ubicación
                       </p>
                     )}
                   </div>

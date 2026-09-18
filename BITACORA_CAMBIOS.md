@@ -186,3 +186,14 @@ Se restauró la imagen original del bus usada anteriormente en el banner, reutil
 Corregidos errores de tipos, APIs que usaban modelos retirados, exposición de errores/diagnósticos, fecha de servicio dependiente del servidor y sustitución de geometría al seleccionar rutas. Se preserva el diseño y se añaden controles de resultados móviles, foco/teclado, resize del mapa y mensajes de estimación/fallo. APIs personales no autenticadas quedan explícitamente no disponibles; la base no fue alterada.
 
 Añadidas diez pruebas críticas y comandos `typecheck`, `test` y regeneración Prisma previa al build. Detalle de verificaciones y archivos: `docs/RELEASE_READINESS.md`. El feed incluido no cubre Ciudad Quesada; OTP real y Vercel siguen pendientes de validación. No se hizo commit ni push.
+
+## 2026-09-18 — Paradas CTP con procedencia explícita
+
+- Nueva tabla Prisma `CtpStop`/`ctp_stops`, migración aditiva y baseline previo.
+- Importador `npm run import-ctp -- --dry-run`; escritura exige `--apply` y autorización.
+- Reportes JSON/JSONL de validación, duplicados, conflictos, cobertura y proximidad GTFS.
+- APIs de búsqueda/cercanía con fuente, límites y bounding box; GTFS mantiene sus IDs.
+- Mapa independiente de disponibilidad de rutas, icono CTP y aviso sin ruta/horario.
+- Autocompletado incorpora paradas físicas; el planificador nunca usa CTP como servicio.
+- Pruebas con SQLite temporal, documentación y exclusión Git de exports/reportes grandes.
+- Base original intacta; validación nacional autorizada solo en copia temporal.

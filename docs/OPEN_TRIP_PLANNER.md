@@ -23,3 +23,13 @@ La elección de GTFS GraphQL se debe a que el proyecto usa GTFS. La API REST fue
 - El cliente conserva geometría de transporte al seleccionar tarjetas. Distancia y duración se presentan como estimaciones; una tarifa ausente no se muestra como gratuita.
 - La consulta `plan` existente NO fue migrada ni validada contra un servidor OTP real en esta revisión. Su compatibilidad debe probarse con la versión y esquema desplegados. Las afirmaciones históricas sobre disponibilidad/deprecación no sustituyen esa prueba.
 - Limitaciones locales: no se buscan viajes del día de servicio anterior después de medianoche; los transbordos usan geometría de paradas; con shapes sin distancias, el recorte por proximidad puede ser ambiguo en bucles. Duración local incluye caminata y espera de transbordo, pero no espera inicial. La caminata es una aproximación, no navegación peatonal validada.
+
+## CTP infrastructure boundary (2026-09-18)
+
+The CTP physical-stop import is isolated in `ctp_stops`. Do not feed these rows
+into OTP as GTFS stops without actual trip/route relationships. OTP still plans
+first; local fallback still uses GTFS-only `findNearestStops`. The physical-stop
+query helper is for map/search/nearby infrastructure, never route discovery.
+Zero-route responses may explain that CTP infrastructure exists nearby, but
+never change into a successful itinerary because of that infrastructure.
+See [CTP_DATA_INTEGRATION.md](CTP_DATA_INTEGRATION.md).

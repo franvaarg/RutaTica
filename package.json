@@ -14,8 +14,9 @@
     "db:reset": "prisma migrate reset",
     "import-gtfs": "bun run scripts/import-gtfs.ts",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx tests/release.test.ts",
-    "prebuild": "prisma generate"
+    "test": "node --import tsx --test tests/*.test.ts",
+    "prebuild": "prisma generate",
+    "import-ctp": "node --import tsx scripts/import-ctp.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

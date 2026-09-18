@@ -77,7 +77,7 @@ export function slicePathBetween(
  * Calculate the bounding box for a given center point and radius in km.
  * Returns [minLat, minLon, maxLat, maxLon].
  */
-function getBoundingBox(
+export function getBoundingBox(
   lat: number,
   lon: number,
   radiusKm: number

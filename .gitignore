@@ -59,3 +59,10 @@ node_modules/
 .env
 .env.local
 *.log
+
+# Public CTP extracts and generated audit reports are local artifacts.
+/data/ctp_exports/
+/data/ctp_reports/
+*.db-journal
+*.db-wal
+*.db-shm

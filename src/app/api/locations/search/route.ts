@@ -1,3 +1,5 @@
+import { queryPhysicalStops } from '@/lib/physical-stops';
+import { stopNotice } from '@/lib/stop-display';
 import { invalidQuery, badQuery } from '@/lib/api-validation';
 import { NextRequest, NextResponse } from 'next/server'
 
@@ -16,6 +18,15 @@ export async function GET(request: NextRequest) {
         success: true,
         locations: [],
       })
+    }
+
+    // Explicit stop autocomplete avoids conflating physical infrastructure with settlements.
+    if (searchParams.get('type') === 'stop') {
+      const result = await queryPhysicalStops({ search: query, limit: 6 });
+      return NextResponse.json({ success: true, ctpAvailable: result.ctpAvailable, locations: result.stops.map(s => ({
+        ...s, type: 'lugar', displayName: `${s.name} — ${s.source}`, fullAddress: stopNotice(s),
+        locationData: { provincia: s.province || '', canton: s.canton || '', localidad: s.district || '', barrio: '' },
+      })) });
     }
 
     // Verificar cache

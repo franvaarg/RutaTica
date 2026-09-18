@@ -148,6 +148,7 @@ export default function BusPlannerApp() {
   // Ubicación por defecto: San José, Costa Rica
   const [mapCenter, setMapCenter] = useState<[number, number]>([9.9281, -84.0907])
   const [mapZoom, setMapZoom] = useState(14)
+  const [noTransitMessage, setNoTransitMessage] = useState('')
   const [isUserInteracting, setIsUserInteracting] = useState(false)
   const [lastUserActivity, setLastUserActivity] = useState(0)
   const [manualCenter, setManualCenter] = useState<[number, number] | null>(null)
@@ -165,7 +166,7 @@ export default function BusPlannerApp() {
   // Fetch popular destinations from GTFS stops
   const fetchPopularDestinations = async () => {
     try {
-      const response = await fetch('/api/stops?limit=8')
+      const response = await fetch('/api/stops?source=GTFS&limit=8')
       const data = await response.json()
       if (data.stops && data.stops.length > 0) {
         // Pick diverse stops that serve routes as good destinations
@@ -629,6 +630,7 @@ export default function BusPlannerApp() {
         setRoutePanelDismissed(false)
       } else {
         // No hay transporte público - mostrar notificación con info de ruta directa
+        setNoTransitMessage(data.message || 'No se encontraron rutas de autobús para este trayecto.')
         setHasPlanned(true)
         setPlannedRoutes([])
         setSelectedRoute(null)
@@ -910,6 +912,7 @@ export default function BusPlannerApp() {
         }
       } else {
         // No se encontraron rutas de bus — trazar ruta directa con OSRM
+        setNoTransitMessage(data.message || 'No se encontraron rutas de autobús para este trayecto.')
         setHasPlanned(true)
 
         const directRoute: PlanatedRoute = {
@@ -1748,7 +1751,7 @@ export default function BusPlannerApp() {
                   <div>
                     <p className="text-sm font-semibold text-amber-800">Sin transporte público registrado</p>
                     <p className="text-xs text-amber-700 mt-0.5">
-                      No se encontraron rutas de autobús para este trayecto. Se muestra la ruta directa en el mapa.
+                      {noTransitMessage || 'No se encontraron rutas de autobús para este trayecto.'} Se muestra una alternativa en automóvil en el mapa.
                     </p>
                   </div>
                 </div>

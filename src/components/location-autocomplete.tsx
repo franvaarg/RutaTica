@@ -1,5 +1,7 @@
 'use client'
 
+import type { PublicStop } from '@/lib/stop-display'
+
 import { useState, useEffect, useRef } from 'react'
 import { Search, MapPin, Home, Building2, X, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -106,6 +108,20 @@ async function searchNominatim(query: string): Promise<LocationSuggestion[]> {
   }
 }
 
+async function searchOfficialStops(query: string): Promise<LocationSuggestion[]> {
+  try {
+    const response = await fetch(`/api/stops?search=${encodeURIComponent(query)}&limit=5`, { signal: AbortSignal.timeout(5000) })
+    if (!response.ok) return []
+    const data = await response.json()
+    return data.stops.map((s: PublicStop) => ({
+      id: s.id, name: s.name, lat: s.lat, lon: s.lon, type: 'lugar',
+      displayName: `${s.name} — ${s.source === 'CTP' ? 'CTP · sin ruta/horario disponible' : 'GTFS'}`,
+      fullAddress: [s.district, s.canton, s.province].filter(Boolean).join(', '),
+      locationData: { barrio: '', localidad: '', canton: s.canton || '', provincia: s.province || '' },
+    }))
+  } catch { return [] }
+}
+
 // Mapear tipos de Nominatim a nuestros tipos
 function mapNominatimType(nominatimType: string, addr: any): 'barrio' | 'localidad' | 'ciudad' | 'lugar' {
   if (nominatimType === 'neighbourhood' || nominatimType === 'suburb') return 'barrio'
@@ -196,6 +212,8 @@ export default function LocationAutocomplete({
         results = await searchNominatim(query)
       }
 
+      const officialStops = await searchOfficialStops(query)
+      results = [...results.slice(0, 5), ...officialStops]
       // Usar setTimeout para evitar setState síncrono en effect
       setTimeout(() => {
         if (cancelled) return

@@ -244,3 +244,22 @@ Se inspeccionaron arquitectura, APIs, mapa, UX móvil, configuración, SQLite y 
 - Importador devuelve exit code no cero con errores y actualiza excepciones existentes; seed demo incompatible retirado con mensaje explícito. El importador aún requiere ensayo en copia y validación externa del feed.
 
 Ver `docs/RELEASE_READINESS.md` para evidencia, archivos modificados, verificaciones y bloqueos restantes. La falta de cobertura GTFS de San Carlos impide recomendar release para el caso de uso principal.
+
+## 2026-09-18 — Integración de infraestructura oficial CTP
+
+Se inspeccionaron CSV, Prisma, importación GTFS, APIs, consultas cercanas,
+autocompletado, mapa y planificación antes de modificar. Se eligió una tabla
+`ctp_stops` separada, sin relaciones con viajes/rutas GTFS. Importador con dry-run
+por defecto, validación, auditoría de duplicados/conflictos, transacción atómica
+CTP e identidad que conserva precisión de coordenadas originales.
+
+APIs de paradas combinan fuentes con `source` y `hasRouteData`; mapa consulta
+el área visible y distingue CTP sin horarios. Se incorporan candidatos de
+reconciliación sin fusionar registros. El planificador conserva GTFS/OTP y
+explica la falta de datos de servicio aunque existan paradas oficiales.
+
+Dry-run inicial: 38.699 filas, 38.657 aceptadas y 42 sin descripción rechazadas.
+El usuario autorizó únicamente una copia temporal en `/tmp` para validar la
+importación nacional. No se autorizó modificar la base original ni producción.
+Detalles, evidencias y límites: docs/CTP_DATA_INTEGRATION.md y
+ docs/RELEASE_VERIFICATION.txt. No commit, push ni despliegue.

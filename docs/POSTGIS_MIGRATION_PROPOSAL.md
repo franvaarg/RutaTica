@@ -25,3 +25,14 @@ El snapshot SQLite actual se conserva sin modificaciones. Para Vercel se incluye
 Este modelo sólo contempla lecturas del snapshot. Favoritos, historial y ajustes del servidor responden 503 hasta disponer de identidad autenticada y persistencia adecuada; no tenían consumidores en `src`. No se ha desplegado ni comprobado el filesystem de Vercel en esta revisión. No usar `/tmp` como almacenamiento durable ni ejecutar importaciones durante requests.
 
 La migración sigue pendiente. El GTFS incluido contiene 88 paradas y 72 viajes, sin cobertura alrededor de Ciudad Quesada (consulta a 10 km: cero paradas). PostgreSQL por sí solo no corrige esa ausencia: es necesario importar y validar un feed de San Carlos/zona norte o disponer de OTP con dicha cobertura.
+
+## CTP release decision (2026-09-18)
+
+Do not introduce PostGIS for this integration. The 38,699-row input can use a
+separate indexed SQLite `ctp_stops` table, server-side bounding boxes, exact
+Haversine filtering, bounded responses and viewport-driven map loading. The
+application must not ship the national dataset to the client. Source metadata
+is not selected for display. Substring search is not indexed; measure text
+query load before choosing FTS or a database migration. Geographic proximity
+is not proof of GTFS route membership. See CTP_DATA_INTEGRATION.md for measured
+validation and migration/import controls.
