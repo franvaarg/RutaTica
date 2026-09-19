@@ -1,3 +1,4 @@
+import { invalidQuery, badQuery } from '@/lib/api-validation';
 import { NextRequest, NextResponse } from 'next/server';
 import { readFile } from 'node:fs/promises';
 import path from 'path';
@@ -11,6 +12,7 @@ function isAllowedFilename(filename: string): filename is keyof typeof allowedFi
 }
 
 export async function GET(request: NextRequest) {
+  if (invalidQuery(request.nextUrl.searchParams)) return badQuery();
   const filename = request.nextUrl.searchParams.get('file');
 
   if (typeof filename !== 'string' || !filename || !isAllowedFilename(filename)) {

@@ -1,3 +1,4 @@
+import { invalidQuery } from './api-validation';
 import type { PrismaClient, Prisma } from '@prisma/client';
 import { db } from './db';
 import { getBoundingBox, haversineDistance } from './spatial';
@@ -5,6 +6,7 @@ import type { PublicStop } from './stop-display';
 export type StopQuery = { search?: string; source?: 'CTP' | 'GTFS'; lat?: number; lon?: number; radius?: number; bbox?: [number, number, number, number]; limit?: number; offset?: number; province?: string; canton?: string };
 
 export function parseStopQuery(p: URLSearchParams): StopQuery {
+  if (invalidQuery(p)) throw new Error('Invalid stop query');
   const source = p.get('source');
   if (source && source !== 'CTP' && source !== 'GTFS') throw new Error('Invalid source');
   let bbox: StopQuery['bbox'];

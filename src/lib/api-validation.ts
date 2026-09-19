@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 
 export function invalidQuery(params: URLSearchParams): boolean {
+  if (params.toString().length > 4096 || params.size > 24) return true;
   for (const [key, value] of params) {
     if (value.length > 256 || params.getAll(key).length > 1) return true;
     if (['lat', 'originLat', 'destLat', 'lon', 'originLon', 'destLon', 'radius', 'limit', 'offset'].includes(key)) {
@@ -17,4 +18,8 @@ export function invalidQuery(params: URLSearchParams): boolean {
 }
 export function badQuery() {
   return NextResponse.json({ error: 'Parámetros inválidos' }, { status: 400 });
+}
+
+export function invalidIdentifier(value: string): boolean {
+  return !value.trim() || value.length > 256 || /[\u0000-\u001f]/.test(value);
 }

@@ -13,49 +13,8 @@ import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/compone
 import dynamic from 'next/dynamic'
 const BusMap = dynamic(() => import('@/components/map'), { ssr: false })
 import LocationAutocomplete from '@/components/location-autocomplete'
+import { mapPlannedRoutes, type PlanatedRoute } from '@/lib/planned-route'
 
-interface PlanatedRoute {
-  id: string
-  company: string
-  routeNumber: string
-  origin: string
-  destination: string
-  price: number
-  currency: string
-  distanceKm?: number | null
-  durationMin?: number | null
-  transitDistanceKm?: number | null
-  boardingStop: {
-    name: string
-    city: string | null
-    coordinates?: {
-      latitude: number
-      longitude: number
-    }
-  }
-  destinationStop: {
-    name: string
-    city: string | null
-    coordinates?: {
-      latitude: number
-      longitude: number
-    } | null
-  } | null
-  nearbyStops: Array<{
-    name: string
-    city: string | null
-    distance: number
-  }>
-  // GTFS-specific fields
-  _stops?: Array<{ name: string; lat: number; lon: number }>
-  _shapePoints?: Array<{ lat: number; lon: number }>
-  _score?: number
-  _departTime?: string
-  _arriveTime?: string
-  _transfers?: number
-  _walkingDistanceKm?: number
-  _boardingStopDistanceKm?: number
-}
 
 interface Location {
   latitude: number
@@ -101,8 +60,8 @@ interface PopularDestination {
 }
 
 export default function BusPlannerApp() {
-  const [currentLocation, setCurrentLocation] = useState<Location | null>({ latitude: 9.9281, longitude: -84.0907 })
-  const [currentAddress, setCurrentAddress] = useState<string>('San José, Costa Rica (ubicación aproximada)')
+  const [currentLocation, setCurrentLocation] = useState<Location | null>(null)
+  const [currentAddress, setCurrentAddress] = useState<string>('Ubicación pendiente')
   const [nearestStop, setNearestStop] = useState<NearestStop | null>(null)
   const [useCurrentLocation, setUseCurrentLocation] = useState(true)
   const [originText, setOriginText] = useState('')
@@ -114,6 +73,7 @@ export default function BusPlannerApp() {
   const [selectedRoute, setSelectedRoute] = useState<PlanatedRoute | null>(null)
   const [routePath, setRoutePath] = useState<RoutePath | null>(null)
   const routePathRef = useRef<RoutePath | null>(null)
+  const routeGeneration = useRef(0)
   const [busStops, setBusStops] = useState<BusStop[] | null>(null)
   const [hasPlanned, setHasPlanned] = useState(false)
   const [loadingLocation, setLoadingLocation] = useState(false)
@@ -205,14 +165,14 @@ export default function BusPlannerApp() {
   const getAddressFromCoordinates = async (lat: number, lon: number): Promise<string> => {
     try {
       const response = await fetch(
-        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&accept-language=es`
+        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&accept-language=es`, { signal: AbortSignal.timeout(8000) }
       )
       const data = await response.json()
       setAddressData(data)
       return formatAddress(data, showFullAddress)
     } catch (error) {
       console.error('Error al obtener dirección:', error)
-      return ''
+      return 'Ubicación actual'
     }
   }
 
@@ -306,8 +266,9 @@ export default function BusPlannerApp() {
     try {
       if (!navigator.geolocation) {
         // Usar San José como ubicación por defecto
-        setCurrentLocation({ latitude: 9.9281, longitude: -84.0907 })
-        setCurrentAddress('San José, Costa Rica (ubicación aproximada)')
+        setCurrentLocation(null)
+        setCurrentAddress('Selecciona un origen')
+        setError('Este navegador no ofrece ubicación. Selecciona el origen manualmente.')
         return
       }
 
@@ -330,7 +291,7 @@ export default function BusPlannerApp() {
       setLoadingAddress(true)
       getAddressFromCoordinates(latitude, longitude)
         .then((address) => {
-          setCurrentAddress(address)
+          setCurrentAddress(address || 'Ubicación actual')
         })
         .catch((error) => {
           console.error('Error al obtener dirección:', error)
@@ -341,8 +302,8 @@ export default function BusPlannerApp() {
         })
     } catch (geolocationError) {
       // GPS no disponible o denegado — usar San José como ubicación por defecto
-      setCurrentLocation({ latitude: 9.9281, longitude: -84.0907 })
-      setCurrentAddress('San José, Costa Rica (ubicación aproximada)')
+      setCurrentLocation(null)
+      setCurrentAddress('Selecciona un origen')
       const code = (geolocationError as GeolocationPositionError)?.code
       if (code === 1) setError('Permiso de ubicación rechazado. Puedes elegir el origen manualmente.')
       else if (code === 3) setError('La ubicación tardó demasiado. Puedes intentar de nuevo o elegir el origen.')
@@ -377,6 +338,8 @@ export default function BusPlannerApp() {
   // Función para obtener ruta de OSRM (Open Source Routing Machine)
   // OSRM profiles: 'foot' (walking), 'driving' (car)
   const getOSRMRoute = async (start: [number, number], end: [number, number], profile: 'foot' | 'driving' = 'driving') => {
+    // The public OSRM demo is a driving service; walking remains explicitly approximate.
+    if (profile === 'foot') return [start, end]
     try {
       const url = `https://router.project-osrm.org/route/v1/${profile}/${start[1]},${start[0]};${end[1]},${end[0]}?overview=full&geometries=geojson`
       const response = await fetch(url, { signal: AbortSignal.timeout(8000) })
@@ -483,7 +446,7 @@ export default function BusPlannerApp() {
 
   const handleOriginSelect = (location: any) => {
     try {
-      if (!location || !location.lat || !location.lon) {
+      if (!location || location.lat == null || location.lon == null) {
         console.error('Ubicación inválida:', location)
         setError('La ubicación de origen no tiene coordenadas válidas')
         return
@@ -519,8 +482,9 @@ export default function BusPlannerApp() {
 
   // Función que busca transporte público y dibuja la ruta
   const searchTransportAndDrawRoute = async (origin: [number, number], dest: [number, number]) => {
-    // Primero dibujar ruta directa mientras busca transporte
-    getDirectRouteToDestination(origin, dest)
+    const generation = ++routeGeneration.current
+    setRoutePath(null)
+    routePathRef.current = null
 
     // Ajustar mapa para mostrar ambas ubicaciones
     setMapCenter([
@@ -544,44 +508,15 @@ export default function BusPlannerApp() {
         destLon: dest[1].toString(),
       })
 
-      const response = await fetch(`/api/best-route?${params}`)
+      const response = await fetch(`/api/best-route?${params}`, { signal: AbortSignal.timeout(20000) })
       if (!response.ok) throw new Error('Error al buscar rutas')
 
       const data = await response.json()
 
+      if (generation !== routeGeneration.current) return
       if (data.routes && data.routes.length > 0) {
         // Hay transporte público disponible
-        const mappedRoutes: PlanatedRoute[] = data.routes.map((r: any) => ({
-          id: `${r.route?.routeId || 'R'}-${r.boardingStop?.name || 'A'}-${r.alightingStop?.name || 'B'}-${Math.random().toString(36).slice(2, 6)}`,
-          company: r.route?.company || 'N/A',
-          routeNumber: r.route?.shortName || 'N/A',
-          origin: r.boardingStop?.name || 'Origen',
-          destination: r.alightingStop?.name || 'Destino',
-          price: r.costCRC || 0,
-          currency: 'CRC',
-          distanceKm: r.distanceKm ?? null,
-          transitDistanceKm: r.transitDistanceKm ?? null,
-          durationMin: r.totalTimeMinutes || null,
-          boardingStop: {
-            name: r.boardingStop?.name || '',
-            city: null,
-            coordinates: r.boardingStop ? { latitude: r.boardingStop.lat, longitude: r.boardingStop.lon } : undefined,
-          },
-          destinationStop: {
-            name: r.alightingStop?.name || '',
-            city: null,
-            coordinates: r.alightingStop ? { latitude: r.alightingStop.lat, longitude: r.alightingStop.lon } : undefined,
-          },
-          nearbyStops: [],
-          _stops: r.stops || [],
-          _shapePoints: r.shapePoints?.length > 1 ? r.shapePoints : (r.stops || []),
-          _score: r.score || 0,
-          _departTime: r.departTime || '',
-          _arriveTime: r.arriveTime || '',
-          _transfers: r.transfers || 0,
-          _walkingDistanceKm: r.walkingDistanceKm || 0,
-          _boardingStopDistanceKm: r.boardingStop?.distanceKm || 0,
-        }))
+        const mappedRoutes: PlanatedRoute[] = mapPlannedRoutes(data.routes, data.routingSource)
 
         setPlannedRoutes(mappedRoutes)
         setHasPlanned(true)
@@ -612,19 +547,12 @@ export default function BusPlannerApp() {
           )
         }
 
-        if (!bestRoute.shapePoints?.length && bestRoute.stops?.length > 1) bestRoute.shapePoints = bestRoute.stops
         if (bestRoute.shapePoints?.length > 1) {
           newRoutePath.bus = bestRoute.shapePoints.map((point: { lat: number; lon: number }) => [point.lat, point.lon])
-        } else if (bestRoute.boardingStop && bestRoute.alightingStop) {
-          routePromises.push(
-            getOSRMRoute([bestRoute.boardingStop.lat, bestRoute.boardingStop.lon], [bestRoute.alightingStop.lat, bestRoute.alightingStop.lon], 'driving')
-              .then((coords) => {
-                if (coords) newRoutePath.bus = coords
-              })
-          )
         }
 
         await Promise.all(routePromises)
+        if (generation !== routeGeneration.current) return
         setRoutePath(newRoutePath)
         routePathRef.current = newRoutePath
         setRoutePanelDismissed(false)
@@ -638,7 +566,8 @@ export default function BusPlannerApp() {
         setError(null)
       }
     } catch (err) {
-      console.error('Error al buscar transporte:', err)
+      if (generation !== routeGeneration.current) return
+      console.error('Error al buscar transporte:', { type: err instanceof Error ? err.name : 'UnknownError' })
       setError('No se pudo consultar el transporte público. Intenta de nuevo.')
       // Si falla la búsqueda, aún mostrar la ruta directa
       setHasPlanned(true)
@@ -646,14 +575,14 @@ export default function BusPlannerApp() {
       setSelectedRoute(null)
       setRoutePanelDismissed(false)
     } finally {
-      setPlanning(false)
+      if (generation === routeGeneration.current) setPlanning(false)
     }
   }
 
   const handleDestinationSelect = (location: any) => {
     try {
       // Validar que la ubicación tenga los datos necesarios
-      if (!location || !location.lat || !location.lon) {
+      if (!location || location.lat == null || location.lon == null) {
         console.error('Ubicación inválida:', location)
         setError('La ubicación seleccionada no tiene coordenadas válidas')
         return
@@ -727,6 +656,8 @@ export default function BusPlannerApp() {
       return;
     }
 
+    const generation = ++routeGeneration.current
+
     // Asegurar que el panel de rutas será visible
     setRoutePanelDismissed(false)
 
@@ -737,6 +668,7 @@ export default function BusPlannerApp() {
     // Esto evita que los cambios de estado re-rendericen los hijos del Sheet
     // durante la animación de salida, lo cual causa crash en SheetPrimitive.Content
     await new Promise(resolve => setTimeout(resolve, 400))
+    if (generation !== routeGeneration.current) return
 
     // Usar ubicación actual o San José como origen por defecto
     const originLat = useCurrentLocation
@@ -766,44 +698,14 @@ export default function BusPlannerApp() {
         destLon: selectedDestination.lon.toString(),
       })
 
-      const response = await fetch(`/api/best-route?${params}`)
+      const response = await fetch(`/api/best-route?${params}`, { signal: AbortSignal.timeout(20000) })
       if (!response.ok) throw new Error('Error al buscar rutas')
 
       const data = await response.json()
 
+      if (generation !== routeGeneration.current) return
       if (data.routes && data.routes.length > 0) {
-        const mappedRoutes: PlanatedRoute[] = data.routes.map((r: any) => ({
-          id: `${r.route?.routeId || 'R'}-${r.boardingStop?.name || 'A'}-${r.alightingStop?.name || 'B'}-${Math.random().toString(36).slice(2, 6)}`,
-          company: r.route?.company || 'N/A',
-          routeNumber: r.route?.shortName || 'N/A',
-          origin: r.boardingStop?.name || 'Origen',
-          destination: r.alightingStop?.name || 'Destino',
-          price: r.costCRC || 0,
-          currency: 'CRC',
-          distanceKm: r.distanceKm ?? null,
-          transitDistanceKm: r.transitDistanceKm ?? null,
-          durationMin: r.totalTimeMinutes || null,
-          boardingStop: {
-            name: r.boardingStop?.name || '',
-            city: null,
-            coordinates: r.boardingStop ? { latitude: r.boardingStop.lat, longitude: r.boardingStop.lon } : undefined,
-          },
-          destinationStop: {
-            name: r.alightingStop?.name || '',
-            city: null,
-            coordinates: r.alightingStop ? { latitude: r.alightingStop.lat, longitude: r.alightingStop.lon } : undefined,
-          },
-          nearbyStops: [],
-          // GTFS-specific fields for map rendering and enhanced cards
-          _stops: r.stops || [],
-          _shapePoints: r.shapePoints?.length > 1 ? r.shapePoints : (r.stops || []),
-          _score: r.score || 0,
-          _departTime: r.departTime || '',
-          _arriveTime: r.arriveTime || '',
-          _transfers: r.transfers || 0,
-          _walkingDistanceKm: r.walkingDistanceKm || 0,
-          _boardingStopDistanceKm: r.boardingStop?.distanceKm || 0,
-        }))
+        const mappedRoutes: PlanatedRoute[] = mapPlannedRoutes(data.routes, data.routingSource)
 
         setPlannedRoutes(mappedRoutes)
         setHasPlanned(true)
@@ -866,50 +768,19 @@ export default function BusPlannerApp() {
         }
 
         // OTP geometry or the selected segment of the GTFS shape is authoritative.
-        if (!bestRoute.shapePoints?.length && bestRoute.stops?.length > 1) bestRoute.shapePoints = bestRoute.stops
         if (bestRoute.shapePoints?.length > 1) {
           newRoutePath.bus = bestRoute.shapePoints.map((point: { lat: number; lon: number }) => [point.lat, point.lon])
-        } else if (bestRoute.boardingStop && bestRoute.alightingStop) {
-          routePromises.push(
-            getOSRMRoute(
-              [bestRoute.boardingStop.lat, bestRoute.boardingStop.lon],
-              [bestRoute.alightingStop.lat, bestRoute.alightingStop.lon],
-              'driving'
-            ).then((coords) => {
-              if (coords) {
-                newRoutePath.bus = coords
-              }
-            })
-          )
         }
 
         await Promise.all(routePromises)
+        if (generation !== routeGeneration.current) return
         setRoutePath(newRoutePath)
         routePathRef.current = newRoutePath
 
         // Fit map to show the full route
         fitRouteToBounds(newRoutePath)
 
-        // Load nearby GTFS stops for the map
-        const bounds = getRouteBounds(newRoutePath)
-        if (bounds) {
-          try {
-            const response2 = await fetch(
-              `/api/stops?lat=${(bounds.north + bounds.south) / 2}&lon=${(bounds.east + bounds.west) / 2}&radius=10`
-            )
-            const stopsData = await response2.json()
-            if (response2.ok && stopsData.stops) {
-              setBusStops(stopsData.stops.map((s: any) => ({
-                id: s.stopId,
-                name: s.name,
-                lat: s.lat,
-                lon: s.lon,
-              })))
-            }
-          } catch {
-            // Error loading map stops - non-critical
-          }
-        }
+
       } else {
         // No se encontraron rutas de bus — trazar ruta directa con OSRM
         setNoTransitMessage(data.message || 'No se encontraron rutas de autobús para este trayecto.')
@@ -946,19 +817,21 @@ export default function BusPlannerApp() {
             [selectedDestination.lat, selectedDestination.lon],
             'driving'
           )
+          if (generation !== routeGeneration.current) return
           if (osrmRoute) {
             const newRoutePath: RoutePath = { direct: osrmRoute }
             setRoutePath(newRoutePath)
             routePathRef.current = newRoutePath
             fitRouteToBounds(newRoutePath)
           } else {
-            setError('No se pudo trazar la ruta. Intenta con otro destino.')
+            setRoutePath(null)
           }
         } catch {
-          setError('Error al trazar la ruta directa. Intenta de nuevo.')
+          setRoutePath(null)
         }
       }
     } catch {
+      if (generation !== routeGeneration.current) return
       // En caso de error, restaurar la ruta previa si existe
       if (previousRoutePath) {
         setRoutePath(previousRoutePath)
@@ -969,12 +842,16 @@ export default function BusPlannerApp() {
       }
       setError('Error al buscar rutas. Por favor intenta de nuevo.')
     } finally {
-      setPlanning(false)
+      if (generation === routeGeneration.current) setPlanning(false)
       setLoadingRoute(false)
     }
   }
 
   const handleResetSearch = () => {
+    routeGeneration.current++
+    setPlanning(false)
+    setLoadingRoute(false)
+    setNoTransitMessage('')
     // Limpiar timer de auto-ocultar panel
     if (routePanelTimerRef.current) {
       clearTimeout(routePanelTimerRef.current)
@@ -982,7 +859,7 @@ export default function BusPlannerApp() {
     }
 
     // Detener seguimiento si está activo
-    if (trackingId) {
+    if (trackingId !== null) {
       navigator.geolocation.clearWatch(trackingId)
       setTrackingId(null)
     }
@@ -1191,7 +1068,7 @@ export default function BusPlannerApp() {
   }
 
   function handlePauseTrip() {
-    if (trackingId) {
+    if (trackingId !== null) {
       navigator.geolocation.clearWatch(trackingId)
       setTrackingId(null)
     }
@@ -1368,7 +1245,10 @@ export default function BusPlannerApp() {
                   <Menu className="w-6 h-6" />
                 </Button>
               </SheetTrigger>
-              <SheetContent side="left" className="w-full sm:w-96 overflow-y-auto overscroll-contain safe-area-bottom">
+              <SheetContent side="left" onEscapeKeyDown={(event) => {
+                // Radix listens in capture phase, before the combobox can consume Escape.
+                if (event.target instanceof HTMLElement && event.target.matches('[role="combobox"][aria-expanded="true"]')) event.preventDefault()
+              }} className="w-full sm:w-96 overflow-y-auto overscroll-contain safe-area-bottom">
                 <SheetTitle className="sr-only">Menú de RutaTica</SheetTitle>
                 <SheetDescription className="sr-only">Planifica tu viaje en autobús por Costa Rica</SheetDescription>
                 <div className="mt-8 space-y-4">
@@ -1526,7 +1406,7 @@ export default function BusPlannerApp() {
                           <div className="space-y-2">
                             <LocationAutocomplete
                               value={originText}
-                              onChange={setOriginText}
+                              onChange={(value) => { setOriginText(value); setSelectedOrigin(null) }}
                               onSelect={handleOriginSelect}
                               placeholder="Escribe el lugar de origen..."
                               disabled={planning}
@@ -1555,7 +1435,7 @@ export default function BusPlannerApp() {
                         </div>
                         <LocationAutocomplete
                           value={destination}
-                          onChange={(val) => { setDestination(val); setSuppressDestSuggestions(false) }}
+                          onChange={(val) => { setDestination(val); setSelectedDestination(null); setSuppressDestSuggestions(false) }}
                           onSelect={handleDestinationSelect}
                           placeholder="Escribe el destino..."
                           disabled={planning}
@@ -1585,42 +1465,7 @@ export default function BusPlannerApp() {
                     </CardContent>
                   </Card>
 
-                  {/* Quick Access Buttons - Solo si no hay destino seleccionado */}
-                  {!hasPlanned && !selectedDestination && (
-                    <div className="grid grid-cols-2 gap-3">
-                      <Card className="shadow-sm hover:shadow-md transition-shadow cursor-pointer border border-[#E5E7EB]">
-                        <CardContent className="p-4 flex flex-col items-center justify-center text-center">
-                          <img src="/Bus.jpg" alt="Rutas" className="w-12 h-12 rounded-xl object-cover object-top mb-2" />
-                          <span className="font-semibold text-sm text-[#374151]">Rutas</span>
-                        </CardContent>
-                      </Card>
 
-                      <Card className="shadow-sm hover:shadow-md transition-shadow cursor-pointer border border-[#E5E7EB]">
-                        <CardContent className="p-4 flex flex-col items-center justify-center text-center">
-                          <img src="/Horario.jpg" alt="Horarios" className="w-12 h-12 rounded-xl object-cover mb-2" />
-                          <span className="font-semibold text-sm text-[#374151]">Horarios</span>
-                        </CardContent>
-                      </Card>
-
-                      <Card className="shadow-sm hover:shadow-md transition-shadow cursor-pointer border border-[#E5E7EB]">
-                        <CardContent className="p-4 flex flex-col items-center justify-center text-center">
-                          <div className="w-12 h-12 bg-blue-50 rounded-full flex items-center justify-center mb-2">
-                            <MapPin className="w-6 h-6 text-[#0052B4]" />
-                          </div>
-                          <span className="font-semibold text-sm text-[#374151]">Cercanos</span>
-                        </CardContent>
-                      </Card>
-
-                      <Card className="shadow-sm hover:shadow-md transition-shadow cursor-pointer border border-[#E5E7EB]">
-                        <CardContent className="p-4 flex flex-col items-center justify-center text-center">
-                          <div className="w-12 h-12 bg-green-50 rounded-full flex items-center justify-center mb-2">
-                            <Heart className="w-6 h-6 text-[#10B981]" />
-                          </div>
-                          <span className="font-semibold text-sm text-[#374151]">Favoritos</span>
-                        </CardContent>
-                      </Card>
-                    </div>
-                  )}
 
                   {/* Error Message */}
                   {error && !hasPlanned && (
@@ -1705,7 +1550,7 @@ export default function BusPlannerApp() {
                   Reiniciar
                 </Button>
               )}
-              <Button variant="ghost" size="icon" className="text-white hover:bg-white/20 drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]">
+              <Button aria-label="Notificaciones no disponibles" title="Notificaciones no disponibles" disabled variant="ghost" size="icon" className="text-white hover:bg-white/20 drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]">
                 <Bell className="w-5 h-5" />
               </Button>
             </div>
@@ -1735,14 +1580,14 @@ export default function BusPlannerApp() {
             <div className="px-4 pb-4">
               <Card className="p-4 text-center border border-[#FECACA] bg-red-50">
                 <Bus className="w-12 h-12 mx-auto text-[#9CA3AF] mb-3" />
-                <p className="text-[#DC2626] text-sm">{error}</p>
+                <p role="alert" className="text-[#DC2626] text-sm">{error}</p>
               </Card>
             </div>
           )}
 
           {/* No public transport available - show direct route info */}
           {!error && plannedRoutes.length === 0 && selectedDestination && (
-            <div className="px-4 pb-4 space-y-3">
+            <div className="min-h-0 overflow-y-auto overscroll-contain px-4 pb-4 space-y-3 safe-area-bottom">
               <Card className="p-3 border border-amber-200 bg-amber-50">
                 <div className="flex items-start gap-2">
                   <div className="w-8 h-8 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
@@ -1751,7 +1596,7 @@ export default function BusPlannerApp() {
                   <div>
                     <p className="text-sm font-semibold text-amber-800">Sin transporte público registrado</p>
                     <p className="text-xs text-amber-700 mt-0.5">
-                      {noTransitMessage || 'No se encontraron rutas de autobús para este trayecto.'} Se muestra una alternativa en automóvil en el mapa.
+                      {noTransitMessage || 'No se encontraron rutas de autobús para este trayecto.'}{routePath?.direct ? ' Se muestra una alternativa en automóvil en el mapa.' : ''}
                     </p>
                   </div>
                 </div>
@@ -1814,6 +1659,7 @@ export default function BusPlannerApp() {
                       : 'border border-[#E5E7EB] hover:border-[#FECACA] hover:shadow-sm'
                   }`}
                   onClick={async () => {
+                    const generation = ++routeGeneration.current
                     setSelectedRoute(route)
                     const rp: RoutePath = {}
                     const promises: Promise<void>[] = []
@@ -1842,16 +1688,6 @@ export default function BusPlannerApp() {
                     // Preserve the selected GTFS/OTP geometry.
                     if (route._shapePoints && route._shapePoints.length > 1) {
                       rp.bus = route._shapePoints.map(p => [p.lat, p.lon])
-                    } else if (route.boardingStop?.coordinates && route.destinationStop?.coordinates) {
-                      promises.push(
-                        getOSRMRoute(
-                          [route.boardingStop.coordinates.latitude, route.boardingStop.coordinates.longitude],
-                          [route.destinationStop.coordinates.latitude, route.destinationStop.coordinates.longitude],
-                          'driving'
-                        ).then((coords) => {
-                          if (coords) rp.bus = coords
-                        })
-                      )
                     }
 
                     // Walking from alighting stop to destination
@@ -1868,6 +1704,7 @@ export default function BusPlannerApp() {
                     }
 
                     await Promise.all(promises)
+                    if (generation !== routeGeneration.current) return
                     setRoutePath(rp)
                     routePathRef.current = rp
                     fitRouteToBounds(rp)
@@ -1876,14 +1713,14 @@ export default function BusPlannerApp() {
                   <CardContent className="p-2">
                     <div className="space-y-1.5">
                       {/* Route Header */}
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-1.5">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex min-w-0 items-center gap-1.5">
                           <div className="w-6 h-6 bg-red-50 rounded-full flex items-center justify-center">
                             <Bus className="w-3 h-3 text-[#E31837]" />
                           </div>
                           <div>
                             <span className="font-bold text-xs text-[#374151]">{route.routeNumber}</span>
-                            <Badge variant="outline" className="ml-1 text-[9px] px-1 py-0 border-[#BFDBFE] text-[#0052B4]">
+                            <Badge variant="outline" className="ml-1 whitespace-normal break-words text-[9px] px-1 py-0 border-[#BFDBFE] text-[#0052B4]">
                               {route.company}
                             </Badge>
                           </div>
@@ -1903,6 +1740,11 @@ export default function BusPlannerApp() {
                         </div>
                       </div>
 
+                      <p className="text-xs text-gray-700 break-words">
+                        {route.routingSource === 'otp' ? 'Ruta OTP' : 'Horario GTFS · alternativa local'}
+                        {route.routingSource !== 'otp' && ' · caminata y distancia aproximadas'}
+                        {!route.geometryAvailable && ' · trazado no disponible'}
+                      </p>
                       {/* Key Metrics - Compact */}
                       <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-md p-2 shadow-sm">
                         <div className="flex items-center justify-between text-white">
@@ -1926,7 +1768,7 @@ export default function BusPlannerApp() {
                         <div className="mt-1 pt-1 border-t border-white/20 flex items-center justify-between text-white/90">
                           <div className="flex items-center gap-0.5">
                             <DollarSign className="w-3 h-3" />
-                            <span className="text-[10px]">{route.price > 0 ? formatPrice(route.price) : 'Tarifa no disponible'}</span>
+                            <span className="text-[10px]">{route.price !== null ? formatPrice(route.price) : 'Tarifa no disponible'}</span>
                           </div>
                           {route._walkingDistanceKm !== undefined && route._walkingDistanceKm > 0 && (
                             <span className="text-[10px]">{route._walkingDistanceKm.toFixed(1)} km a pie</span>

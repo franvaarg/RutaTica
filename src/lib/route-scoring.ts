@@ -18,7 +18,7 @@ export interface RouteOption {
   totalTimeMinutes: number;
   walkingDistanceKm: number;
   transfers: number;
-  costCRC: number;
+  costCRC: number | null;
 }
 
 /**
@@ -42,7 +42,7 @@ export async function loadScoringConfig(): Promise<RouteScoreConfig> {
     const configMap: Record<string, number> = {};
     for (const c of configs) {
       const val = parseFloat(c.value);
-      if (!isNaN(val)) {
+      if (Number.isFinite(val) && val >= 0 && val <= 1) {
         configMap[c.key] = val;
       }
     }
@@ -79,7 +79,7 @@ export function calculateRouteScore(
   const times = allRoutes.map((r) => r.totalTimeMinutes);
   const walks = allRoutes.map((r) => r.walkingDistanceKm);
   const transfers = allRoutes.map((r) => r.transfers);
-  const costs = allRoutes.map((r) => r.costCRC);
+  const costs = allRoutes.flatMap((r) => r.costCRC === null ? [] : [r.costCRC]);
 
   const normalizedTime = normalize(
     route.totalTimeMinutes,
@@ -96,7 +96,7 @@ export function calculateRouteScore(
     Math.min(...transfers),
     Math.max(...transfers)
   );
-  const normalizedCost = normalize(
+  const normalizedCost = route.costCRC === null || costs.length === 0 ? 1 : normalize(
     route.costCRC,
     Math.min(...costs),
     Math.max(...costs)

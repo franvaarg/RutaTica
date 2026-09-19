@@ -3,6 +3,7 @@
 // Reads GTFS CSV files and custom files, validates data, and imports into the database.
 // Usage: bun run scripts/import-gtfs.ts [--gtfs-dir /path/to/gtfs-data]
 
+import { auditGtfs } from '../src/lib/gtfs-audit'
 import { PrismaClient } from '@prisma/client'
 import * as fs from 'fs'
 import * as path from 'path'
@@ -85,8 +86,8 @@ function readCsvFile(filename: string): Record<string, string>[] {
     columns: true,
     skip_empty_lines: true,
     trim: true,
-    relax_quotes: true,
-    relax_column_count: true,
+    bom: true,
+    relax_column_count: false,
   })
   return records as Record<string, string>[]
 }
@@ -422,8 +423,8 @@ async function importStopTimes(): Promise<ImportStats> {
               data: {
                 trip_id,
                 stop_id,
-                arrival_time: row.arrival_time || '00:00:00',
-                departure_time: row.departure_time || '00:00:00',
+                arrival_time: row.arrival_time,
+                departure_time: row.departure_time,
                 stop_sequence: safeInt(row.stop_sequence, 0),
                 stop_headsign: row.stop_headsign || null,
                 pickup_type: safeInt(row.pickup_type, 0),
@@ -766,6 +767,10 @@ async function importTarifas(): Promise<ImportStats> {
 // ============================================
 
 async function main() {
+  if (!process.env.DATABASE_URL) throw new Error('Explicit DATABASE_URL required')
+  const audit = auditGtfs(GTFS_DIR)
+  console.log(JSON.stringify(audit, null, 2))
+  if (audit.errors.length) throw new Error('GTFS preflight failed; no records written')
   const startTime = Date.now()
 
   console.log('============================================')

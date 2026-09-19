@@ -20,7 +20,7 @@ interface RouteResult {
   distanceSource: 'otp' | 'gtfs_shape_dist_traveled' | 'gtfs_shape_geometry' | 'stop_geometry';
   durationSource: 'otp' | 'gtfs_schedule';
   transfers: number;
-  costCRC: number;
+  costCRC: number | null;
   boardingStop: { name: string; lat: number; lon: number; distanceKm: number };
   alightingStop: { name: string; lat: number; lon: number; distanceKm: number };
   route: { routeId: string; shortName: string; longName: string; color: string; company: string };
@@ -79,7 +79,7 @@ export async function GET(request: NextRequest) {
     );
     if (otpRoutes?.length) {
       const routes: RouteResult[] = otpRoutes.map((itinerary) => {
-        const transitLegs = itinerary.legs.filter((leg) => leg.mode !== 'WALK');
+        const transitLegs = itinerary.legs.filter((leg) => leg.transitLeg);
         const firstTransit = transitLegs[0] || itinerary.legs[0];
         const lastTransit = transitLegs.at(-1) || itinerary.legs.at(-1)!;
         const transitDistanceKm = transitLegs.reduce((sum, leg) => sum + leg.distanceKm, 0);
@@ -92,7 +92,7 @@ export async function GET(request: NextRequest) {
           distanceSource: 'otp',
           durationSource: 'otp',
           transfers: itinerary.transfers,
-          costCRC: 0,
+          costCRC: null,
           boardingStop: { ...firstTransit.from, distanceKm: itinerary.legs[0]?.mode === 'WALK' ? itinerary.legs[0].distanceKm : 0 },
           alightingStop: { ...lastTransit.to, distanceKm: itinerary.legs.at(-1)?.mode === 'WALK' ? itinerary.legs.at(-1)!.distanceKm : 0 },
           route: {
@@ -108,7 +108,8 @@ export async function GET(request: NextRequest) {
             { name: leg.from.name, lat: leg.from.lat, lon: leg.from.lon, time: '' },
             { name: leg.to.name, lat: leg.to.lat, lon: leg.to.lon, time: '' },
           ]),
-          shapePoints: transitLegs.flatMap(leg => leg.geometry),
+          // Do not connect disconnected transit legs with an invented bus segment.
+          shapePoints: transitLegs.length === 1 ? transitLegs[0].geometry : [],
         };
       });
       return NextResponse.json({
@@ -119,6 +120,7 @@ export async function GET(request: NextRequest) {
       });
     }
 
+    console.info('[routing] GTFS fallback activated', { reason: otpRoutes === null ? 'otp_unavailable_or_unconfigured' : 'otp_no_transit' });
     const serviceIds = await getActiveServiceIdsToday(departure);
 
     // Step 1: Find nearest origin stops (within 1km)
@@ -251,34 +253,19 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Fetch each active schedule once, rather than once per origin/destination pair.
+    const directTrips = await db.gtfsTrip.findMany({
+      where: { route_id: { in: candidateRouteIds }, service_id: { in: serviceIds } },
+      orderBy: { trip_id: 'asc' },
+      include: { stopTimes: { orderBy: { stop_sequence: 'asc' }, include: { stop: { select: { name: true, lat: true, lon: true } } } } },
+    });
     // For each direct route candidate, find the next trip and calculate details
     for (const candidate of directRouteCandidates) {
       const { routeId, originStopId, destStopId } = candidate;
 
-      // Get all StopRoute entries for this route to determine stop order
-      const routeStops = await db.stopRoute.findMany({
-        where: { routeId },
-        orderBy: { sequence: 'asc' },
-        select: { stopId: true, sequence: true },
-      });
-
-      const originIdx = routeStops.findIndex((s) => s.stopId === originStopId);
-      const destIdx = routeStops.findIndex((s) => s.stopId === destStopId);
-
-      // Origin must come before destination on the route
-      if (originIdx === -1 || destIdx === -1 || originIdx >= destIdx) {
-        continue;
-      }
-
+      // Direction and stop order belong to each trip, never the route-level index.
       // Get active trip for today's service
-      const trips = await db.gtfsTrip.findMany({
-        where: {
-          route_id: routeId,
-          service_id: { in: serviceIds },
-        },
-        orderBy: { trip_id: 'asc' },
-      select: { trip_id: true, shape_id: true },
-      });
+      const trips = directTrips.filter(trip => trip.route_id === routeId);
 
       if (trips.length === 0) continue;
 
@@ -295,29 +282,14 @@ export async function GET(request: NextRequest) {
 
       for (const trip of trips) {
         // Get stop times for this trip
-        const stopTimes = await db.gtfsStopTime.findMany({
-          where: {
-            trip_id: trip.trip_id,
-            stop_id: { in: [originStopId, destStopId] },
-          },
-          orderBy: { stop_sequence: 'asc' },
-          select: {
-            stop_id: true,
-            stop_sequence: true,
-            arrival_time: true,
-            departure_time: true,
-            shape_dist_traveled: true,
-            pickup_type: true,
-            drop_off_type: true,
-          },
-        });
+        const stopTimes = trip.stopTimes.filter(st => st.stop_id === originStopId || st.stop_id === destStopId);
 
         if (stopTimes.length < 2) continue;
 
         const boardSt = stopTimes.find((st) => st.stop_id === originStopId);
         const alightSt = stopTimes.find((st) => st.stop_id === destStopId);
 
-        if (!boardSt || !alightSt || boardSt.stop_sequence >= alightSt.stop_sequence || boardSt.pickup_type === 1 || alightSt.drop_off_type === 1) continue;
+        if (!boardSt || !alightSt || boardSt.stop_sequence >= alightSt.stop_sequence || boardSt.pickup_type !== 0 || alightSt.drop_off_type !== 0) continue;
 
         const boardMinutes = timeToMinutes(boardSt.departure_time);
         const alightMinutes = timeToMinutes(alightSt.arrival_time);
@@ -330,19 +302,7 @@ export async function GET(request: NextRequest) {
           boardMinutes < timeToMinutes(bestOption.boardTime)
         ) {
           // Get intermediate stops for this trip
-          const allTripStopTimes = await db.gtfsStopTime.findMany({
-            where: {
-              trip_id: trip.trip_id,
-              stop_sequence: {
-                gte: boardSt.stop_sequence,
-                lte: alightSt.stop_sequence,
-              },
-            },
-            orderBy: { stop_sequence: 'asc' },
-            include: {
-              stop: { select: { name: true, lat: true, lon: true } },
-            },
-          });
+          const allTripStopTimes = trip.stopTimes.filter(st => st.stop_sequence >= boardSt.stop_sequence && st.stop_sequence <= alightSt.stop_sequence);
 
           const intermediateStops = allTripStopTimes.map((st) => ({
             name: st.stop.name,
@@ -392,7 +352,7 @@ export async function GET(request: NextRequest) {
       );
       const transitDistanceKm = stopGeometryDistance;
 
-      const cost = fareMap.get(routeId) ?? 0;
+      const cost = fareMap.get(routeId) ?? null;
       const rd = routeDetails.get(routeId);
 
       routeOptions.push({
@@ -711,7 +671,7 @@ async function findTransferRoutes(
 
       const boardSt = stForLeg.find((st) => st.stop_id === originStopId);
       const alightSt = stForLeg.find((st) => st.stop_id === transferStopId);
-      if (!boardSt || !alightSt || boardSt.stop_sequence >= alightSt.stop_sequence || boardSt.pickup_type === 1 || alightSt.drop_off_type === 1) continue;
+      if (!boardSt || !alightSt || boardSt.stop_sequence >= alightSt.stop_sequence || boardSt.pickup_type !== 0 || alightSt.drop_off_type !== 0) continue;
 
       const boardMin = timeToMinutes(boardSt.departure_time);
       const alightMin = timeToMinutes(alightSt.arrival_time);
@@ -778,7 +738,7 @@ async function findTransferRoutes(
 
       const boardSt = stForLeg.find((st) => st.stop_id === transferStopId);
       const alightSt = stForLeg.find((st) => st.stop_id === destStopId);
-      if (!boardSt || !alightSt || boardSt.stop_sequence >= alightSt.stop_sequence || boardSt.pickup_type === 1 || alightSt.drop_off_type === 1) continue;
+      if (!boardSt || !alightSt || boardSt.stop_sequence >= alightSt.stop_sequence || boardSt.pickup_type !== 0 || alightSt.drop_off_type !== 0) continue;
 
       const boardMin = timeToMinutes(boardSt.departure_time);
       const alightMin = timeToMinutes(alightSt.arrival_time);
@@ -836,7 +796,7 @@ async function findTransferRoutes(
       secondTravelTime +
       walkingTimeMinutes(walkDistDest);
 
-    const cost = (fareMap.get(firstRouteId) ?? 0) + (fareMap.get(secondRouteId) ?? 0);
+    const cost = fareMap.has(firstRouteId) && fareMap.has(secondRouteId) ? fareMap.get(firstRouteId)! + fareMap.get(secondRouteId)! : null;
 
     const firstRd = routeDetails.get(firstRouteId);
 
@@ -901,6 +861,6 @@ async function noRouteMessage(lat: number, lon: number, destLat?: number, destLo
       const destination = await queryPhysicalStops({ source: 'CTP', lat: destLat, lon: destLon, radius: 1, limit: 1 });
       if (destination.total > 0) return CTP_ROUTING_NOTICE;
     }
-  } catch { /* Optional infrastructure lookup must not break GTFS/OTP routing. */ }
+  } catch { console.warn('[ctp] optional coverage query failed'); }
   return 'No se encontraron rutas de autobús con los datos disponibles para este trayecto.';
 }

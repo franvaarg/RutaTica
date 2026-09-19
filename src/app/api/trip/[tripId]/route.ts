@@ -1,3 +1,4 @@
+import { invalidIdentifier, badQuery } from '@/lib/api-validation';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 
@@ -7,6 +8,7 @@ export async function GET(
 ) {
   try {
     const { tripId } = await params;
+    if (invalidIdentifier(tripId)) return badQuery();
 
     const trip = await db.gtfsTrip.findUnique({
       where: { trip_id: tripId },

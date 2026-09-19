@@ -43,6 +43,8 @@ model GtfsCalendarDate {
   service_id    String
   date          String
   exception_type Int
+
+  @@index([date, service_id])
 }
 
 model GtfsRoute {
@@ -123,6 +125,7 @@ model GtfsStopTime {
   @@index([trip_id])
   @@index([stop_id])
   @@index([arrival_time])
+  @@index([trip_id, stop_sequence])
 }
 
 model GtfsShape {
@@ -133,7 +136,7 @@ model GtfsShape {
   shape_pt_sequence   Int
   shape_dist_traveled Float?
 
-  @@index([shape_id])
+  @@index([shape_id, shape_pt_sequence])
 }
 
 model GtfsFareAttribute {
@@ -187,6 +190,7 @@ model StopRoute {
   route GtfsRoute @relation(fields: [routeId], references: [route_id])
 
   @@index([stopId, routeId])
+  @@index([routeId, sequence])
 }
 
 model Favorite {

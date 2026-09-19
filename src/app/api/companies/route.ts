@@ -5,6 +5,7 @@ export async function GET() {
   try {
     const companies = await db.company.findMany({
       where: { isActive: true },
+      take: 100,
       select: {
         id: true,
         name: true,

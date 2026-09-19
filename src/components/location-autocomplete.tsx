@@ -2,7 +2,7 @@
 
 import type { PublicStop } from '@/lib/stop-display'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useId } from 'react'
 import { Search, MapPin, Home, Building2, X, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
@@ -57,62 +57,11 @@ const COSTA_RICA_LOCATIONS: LocationSuggestion[] = [
   { id: '20', name: 'Alajuelita', displayName: 'Alajuelita - San José', type: 'ciudad', lat: 9.9017, lon: -84.1028, fullAddress: 'Alajuelita, Alajuelita, San José, Costa Rica', locationData: { provincia: 'San José', canton: 'Alajuelita', localidad: 'Alajuelita', barrio: '' } },
 ]
 
-// Función para buscar ubicaciones usando la API de Nominatim (OpenStreetMap)
-async function searchNominatim(query: string): Promise<LocationSuggestion[]> {
+async function searchOfficialStops(query: string, signal: AbortSignal): Promise<LocationSuggestion[]> {
   try {
-    const response = await fetch(
-      `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query + ', Costa Rica')}&addressdetails=1&limit=5&countrycodes=CR`, { signal: AbortSignal.timeout(8000) }
-    )
-
-    if (!response.ok) {
-      throw new Error('Error en la búsqueda')
-    }
-
-    const data = await response.json()
-
-    if (!Array.isArray(data) || data.length === 0) {
-      return []
-    }
-
-    return data.map((item: any, index: number): LocationSuggestion | null => {
-      const addr = item.address || {}
-      const lat = parseFloat(item.lat)
-      const lon = parseFloat(item.lon)
-
-      // Validar que las coordenadas sean válidas
-      if (isNaN(lat) || isNaN(lon)) {
-        console.error('Coordenadas inválidas:', item)
-        return null
-      }
-
-      return {
-        id: item.place_id || `nominatim-${index}`,
-        name: item.name || addr.village || addr.town || addr.city || addr.county || addr.suburb || 'Ubicación',
-        displayName: item.display_name ? item.display_name.split(',').slice(0, 3).join(',') : 'Ubicación',
-        type: mapNominatimType(item.type, addr),
-        lat: lat,
-        lon: lon,
-        fullAddress: item.display_name || '',
-        locationData: {
-          barrio: addr.neighbourhood || addr.suburb || '',
-          localidad: addr.village || addr.town || addr.hamlet || '',
-          canton: addr.city_district || addr.county || addr.city || '',
-          provincia: addr.state || addr.province || '',
-          postcode: addr.postcode || '',
-        }
-      }
-    }).filter((loc): loc is LocationSuggestion => loc !== null)
-  } catch (error) {
-    console.error('Error al buscar en Nominatim:', error)
-    return []
-  }
-}
-
-async function searchOfficialStops(query: string): Promise<LocationSuggestion[]> {
-  try {
-    const response = await fetch(`/api/stops?search=${encodeURIComponent(query)}&limit=5`, { signal: AbortSignal.timeout(5000) })
-    if (!response.ok) return []
-    const data = await response.json()
+    const responses = await Promise.all(['GTFS','CTP'].map(source => fetch(`/api/stops?search=${encodeURIComponent(query)}&source=${source}&limit=3`, { signal: AbortSignal.any([signal, AbortSignal.timeout(5000)]) })))
+    const payloads = await Promise.all(responses.map(async response => response.ok ? response.json() : { stops: [] }))
+    const data = { stops: payloads.flatMap(payload => payload.stops) }
     return data.stops.map((s: PublicStop) => ({
       id: s.id, name: s.name, lat: s.lat, lon: s.lon, type: 'lugar',
       displayName: `${s.name} — ${s.source === 'CTP' ? 'CTP · sin ruta/horario disponible' : 'GTFS'}`,
@@ -142,7 +91,10 @@ export default function LocationAutocomplete({
   const [selectedLocation, setSelectedLocation] = useState<LocationSuggestion | null>(null)
   const [showSuggestions, setShowSuggestions] = useState(false)
   const [loading, setLoading] = useState(false)
-  const [useNominatim, setUseNominatim] = useState(false) // Para alternar entre memoria y API
+  const [activeIndex, setActiveIndex] = useState(-1)
+  const [searchError, setSearchError] = useState('')
+  const listId = useId()
+  const requestRef = useRef<AbortController | null>(null)
   const searchTimeout = useRef<NodeJS.Timeout | undefined>(undefined)
   const inputRef = useRef<HTMLInputElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -167,6 +119,9 @@ export default function LocationAutocomplete({
   // Buscar sugerencias mientras el usuario escribe
   useEffect(() => {
     let cancelled = false
+    const controller = new AbortController()
+    requestRef.current?.abort()
+    requestRef.current = controller
     // If suppressSuggestions is active, skip searching entirely
     if (suppressSuggestions) {
       if (searchTimeout.current) clearTimeout(searchTimeout.current)
@@ -185,7 +140,7 @@ export default function LocationAutocomplete({
       searchTimeout.current = setTimeout(() => {
         setSuggestions([])
         setShowSuggestions(false)
-        setUseNominatim(false)
+        setLoading(false)
       }, 0)
       return
     }
@@ -203,20 +158,14 @@ export default function LocationAutocomplete({
         loc.locationData?.canton?.toLowerCase().includes(query.toLowerCase())
       )
 
-      if (memoryResults.length > 0 && !useNominatim) {
-        // Si encontramos resultados en memoria y no se ha usado Nominatim todavía
-        results = memoryResults
-      } else {
-        // Usar Nominatim si no hay resultados en memoria o si el usuario ya usó Nominatim
-        setUseNominatim(true)
-        results = await searchNominatim(query)
-      }
-
-      const officialStops = await searchOfficialStops(query)
+      results = memoryResults
+      const officialStops = await searchOfficialStops(query, controller.signal)
       results = [...results.slice(0, 5), ...officialStops]
       // Usar setTimeout para evitar setState síncrono en effect
       setTimeout(() => {
-        if (cancelled) return
+        if (cancelled || controller.signal.aborted) return
+        setActiveIndex(-1)
+        setSearchError('')
         setSuggestions(results)
         setShowSuggestions(true)
         setLoading(false)
@@ -225,13 +174,15 @@ export default function LocationAutocomplete({
 
     return () => {
       cancelled = true
+      controller.abort()
       if (searchTimeout.current) {
         clearTimeout(searchTimeout.current)
       }
     }
-  }, [displayValue, useNominatim, suppressSuggestions])
+  }, [displayValue, suppressSuggestions])
 
   const handleSelect = (location: LocationSuggestion) => {
+    requestRef.current?.abort()
     setSelectedLocation(location)
     onChange(location.name)
     onSelect(location)
@@ -259,9 +210,44 @@ export default function LocationAutocomplete({
     }
   }
 
+  // Public Nominatim is queried only after an explicit action, never on each keystroke.
+  const searchPlaces = async () => {
+    requestRef.current?.abort()
+    const controller = new AbortController()
+    requestRef.current = controller
+    setLoading(true)
+    setSearchError('')
+    try {
+      const response = await fetch(`/api/locations/search?q=${encodeURIComponent(displayValue)}`, {
+        signal: AbortSignal.any([controller.signal, AbortSignal.timeout(10000)]),
+      })
+      if (!response.ok) throw new Error('Search unavailable')
+      const data = await response.json()
+      if (controller.signal.aborted) return
+      setSuggestions(current => [...data.locations, ...current.filter(s => String(s.id).startsWith('CTP:') || String(s.id).startsWith('GTFS:'))])
+      setShowSuggestions(true)
+      setActiveIndex(-1)
+    } catch {
+      if (!controller.signal.aborted) setSearchError('No se pudieron buscar lugares. Puedes elegir una parada o reintentar.')
+    } finally {
+      if (!controller.signal.aborted) setLoading(false)
+    }
+  }
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Escape') {
+    if (e.key === 'Escape' && showSuggestions) {
+      e.preventDefault()
+      e.stopPropagation()
       setShowSuggestions(false)
+      setActiveIndex(-1)
+    }
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault()
+      setShowSuggestions(true)
+      setActiveIndex(i => Math.max(0, Math.min(suggestions.length - 1, i + (e.key === 'ArrowDown' ? 1 : -1))))
+    }
+    if (e.key === 'Enter' && showSuggestions && suggestions[activeIndex]) {
+      e.preventDefault()
+      handleSelect(suggestions[activeIndex])
     }
   }
 
@@ -275,7 +261,7 @@ export default function LocationAutocomplete({
           onChange={(e) => {
             const newValue = e.target.value
             onChange(newValue)
-            setUseNominatim(false) // Reiniciar para buscar primero en memoria
+            setLoading(false) // Reiniciar para buscar primero en memoria
           }}
           onKeyDown={handleKeyDown}
           onFocus={() => {
@@ -283,6 +269,11 @@ export default function LocationAutocomplete({
               setShowSuggestions(true)
             }
           }}
+          role="combobox"
+          aria-autocomplete="list"
+          aria-expanded={showSuggestions && !suppressSuggestions}
+          aria-controls={listId}
+          aria-activedescendant={showSuggestions && activeIndex >= 0 ? `${listId}-${activeIndex}` : undefined}
           aria-label={placeholder}
           placeholder={placeholder}
           disabled={disabled}
@@ -327,21 +318,25 @@ export default function LocationAutocomplete({
               </div>
             </div>
           ) : (
-            <div className="p-1">
-              {suggestions.map((suggestion) => (
+            <div className="p-1" role="listbox" id={listId}>
+              {suggestions.map((suggestion, index) => (
                 <button
                   key={suggestion.id}
+                  id={`${listId}-${index}`}
+                  role="option"
+                  aria-selected={index === activeIndex}
                   type="button"
                   onClick={() => handleSelect(suggestion)}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md hover:bg-blue-50 hover:text-[#0052B4] focus:bg-blue-50 focus:text-[#0052B4] cursor-pointer outline-none transition-colors"
+                  className="min-h-11 w-full flex items-center gap-2 px-3 py-2 aria-selected:bg-blue-50 text-sm rounded-md hover:bg-blue-50 hover:text-[#0052B4] focus:bg-blue-50 focus:text-[#0052B4] cursor-pointer outline-none transition-colors"
 
                 >
                   {getIcon(suggestion.type)}
                   <div className="flex flex-col text-left flex-1 min-w-0">
                     <span className="font-medium text-[#374151]">{suggestion.name}</span>
-                    <span className="text-xs text-[#6B7280] truncate">
+                    <span className="text-xs text-[#6B7280] break-words">
                       {suggestion.displayName}
                     </span>
+                    {suggestion.fullAddress && <span className="text-xs text-gray-600 break-words">{suggestion.fullAddress}</span>}
                   </div>
                   <span className="text-xs text-[#9CA3AF] capitalize whitespace-nowrap">
                     {suggestion.type}
@@ -350,6 +345,8 @@ export default function LocationAutocomplete({
               ))}
             </div>
           )}
+          <button type="button" className="min-h-11 w-full px-3 text-sm text-blue-800" disabled={loading} onClick={searchPlaces}>Buscar más lugares</button>
+          {searchError && <p role="status" className="p-3 text-sm text-red-700">{searchError}</p>}
         </div>
       )}
     </div>

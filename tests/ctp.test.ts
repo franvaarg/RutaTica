@@ -140,3 +140,25 @@ test('SQLite migration, dry-run, atomic idempotent import, GTFS coexistence, API
     assert.equal(fallback.ctpAvailable,false); assert.equal(fallback.stops[0].source,'GTFS');
   } finally { await client.$disconnect(); }
 }));
+
+test('CTP writes 101 accepted stops in three SQL batches and zero batches on repeat', async () => fixtures(async dir => {
+  const writes: string[] = [];
+  const client = new PrismaClient({datasourceUrl:`file:${path.join(dir,'batch.db')}`,log:[{emit:'event',level:'query'}]});
+  client.$on('query',event=>{ if (event.query.startsWith('INSERT INTO "ctp_stops"')) writes.push(event.query); });
+  try {
+    const migration=await readFile('prisma/migrations/20260918000000_ctp_stops/migration.sql','utf8');
+    for(const sql of migration.split(';').filter(s=>s.trim())) await client.$executeRawUnsafe(sql);
+    const rows=Array.from({length:101},(_,i)=>({...sample,source_stop_identifier:`fixture-${i}`,identificador_parada:`fixture-${i}`}));
+    const prepared=await prepare(dir,rows);
+    assert.equal((await importPrepared(client,prepared,true)).imported,101);
+    assert.equal(writes.length,3);
+    const before=await client.ctpStop.findMany({orderBy:{identityKey:'asc'}});
+    assert.equal((await importPrepared(client,prepared,true)).unchanged,101);
+    assert.equal(writes.length,3);
+    assert.deepEqual(await client.ctpStop.findMany({orderBy:{identityKey:'asc'}}),before);
+    // Failure after a successful first batch must roll back the whole import.
+    const broken={...prepared,accepted:prepared.accepted.slice(0,51).map((row,index)=>({...row,identityKey:`rollback-${index}`,lat:index===50?999:row.lat}))};
+    await assert.rejects(importPrepared(client,broken,true));
+    assert.deepEqual(await client.ctpStop.findMany({orderBy:{identityKey:'asc'}}),before);
+  } finally {await client.$disconnect();}
+}));

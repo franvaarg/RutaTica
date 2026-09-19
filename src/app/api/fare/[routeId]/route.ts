@@ -1,3 +1,4 @@
+import { invalidIdentifier, badQuery } from '@/lib/api-validation';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 
@@ -7,6 +8,7 @@ export async function GET(
 ) {
   try {
     const { routeId } = await params;
+    if (invalidIdentifier(routeId)) return badQuery();
 
     const fareRules = await db.gtfsFareRule.findMany({
       where: { route_id: routeId },
@@ -18,7 +20,7 @@ export async function GET(
     if (fareRules.length === 0) {
       return NextResponse.json({
         fare: null,
-        price: 0,
+        price: null,
         currency: 'CRC',
         message: 'No fare information found for this route',
       });

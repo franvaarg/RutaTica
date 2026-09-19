@@ -1,3 +1,4 @@
+import { invalidIdentifier, badQuery } from '@/lib/api-validation';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 
@@ -7,6 +8,7 @@ export async function GET(
 ) {
   try {
     const { shapeId } = await params;
+    if (invalidIdentifier(shapeId)) return badQuery();
 
     const shapePoints = await db.gtfsShape.findMany({
       where: { shape_id: shapeId },

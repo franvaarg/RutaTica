@@ -436,7 +436,7 @@ const BusMap = ({
         const bounds = map.getBounds()
         const bbox = [bounds.getSouth(), bounds.getWest(), bounds.getNorth(), bounds.getEast()].join(',')
         try {
-          const response = await fetch(`/api/stops?bbox=${bbox}&limit=100`, { signal: requestController.signal })
+          const response = await fetch(`/api/stops?bbox=${bbox}&limit=100`, { signal: AbortSignal.any([requestController.signal, AbortSignal.timeout(10000)]) })
           if (!response.ok) throw new Error('Stop lookup failed')
           const data = await response.json()
           if (requestController.signal.aborted) return
@@ -752,7 +752,7 @@ const BusMap = ({
 
   return (
     <div className="relative w-full h-full min-h-[300px] rounded-lg overflow-hidden">
-      {stopHint && <p role="status" className="absolute bottom-6 left-2 z-[1000] bg-white/95 rounded px-2 py-1 text-xs text-slate-600 pointer-events-none">{stopHint}</p>}
+      {stopHint && <p role="status" className="absolute bottom-6 left-2 right-2 z-[1000] bg-white/95 rounded px-2 py-1 text-xs text-slate-600 pointer-events-none">{stopHint}</p>}
       <MapContainer
         center={center}
         zoom={zoom}
@@ -857,6 +857,8 @@ const BusMap = ({
             {dbStops.map((stop) => (
               <Marker
                 key={`db-${stop.id}`}
+                title={`${stop.source}: ${stop.name}`}
+                alt={`${stop.source}: ${stop.name}`}
                 position={[stop.lat, stop.lon]}
                 icon={stop.source === 'CTP' ? ctpIcon : busStationIcon}
               >

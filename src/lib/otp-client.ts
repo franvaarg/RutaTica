@@ -9,6 +9,7 @@ export interface OtpRouteResult {
   geometry: OtpPoint[];
   legs: Array<{
     mode: string;
+    transitLeg: boolean;
     distanceKm: number;
     durationMin: number;
     geometry: OtpPoint[];
@@ -20,7 +21,7 @@ export interface OtpRouteResult {
 }
 
 const OTP_QUERY = `query RutaTicaPlan($from: InputCoordinates!, $to: InputCoordinates!, $date: String!, $time: String!) {
-  plan(from: $from, to: $to, date: $date, time: $time, numItineraries: 5, transportModes: [WALK, TRANSIT]) {
+  plan(from: $from, to: $to, date: $date, time: $time, numItineraries: 5, transportModes: [{mode: WALK}, {mode: TRANSIT}]) {
     itineraries {
       duration
       walkDistance
@@ -94,16 +95,30 @@ export async function planWithOtp(
       signal: controller.signal,
     });
     if (!response.ok) throw new Error(`OTP HTTP ${response.status}`);
-    const payload = await response.json();
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error('Empty OTP response');
+    const chunks: Uint8Array[] = [];
+    let bytes = 0;
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        bytes += value.byteLength;
+        if (bytes > 2 * 1024 * 1024) throw new Error('Oversized OTP response');
+        chunks.push(value);
+      }
+    } finally { await reader.cancel(); }
+    const payload = JSON.parse(Buffer.concat(chunks).toString('utf8'));
     if (payload.errors?.length) throw new Error(payload.errors[0]?.message || 'OTP GraphQL error');
 
     const itineraries = payload.data?.plan?.itineraries;
     if (!Array.isArray(itineraries)) throw new Error('Invalid OTP contract');
-    return itineraries.map((itinerary: any) => {
+    return itineraries.slice(0, 5).map((itinerary: any) => {
       const nonnegative = (n: unknown) => typeof n === 'number' && Number.isFinite(n) && n >= 0;
-      if (!nonnegative(itinerary.duration) || !nonnegative(itinerary.walkDistance) || !nonnegative(itinerary.numberOfTransfers) || !Array.isArray(itinerary.legs) || !itinerary.legs.length || itinerary.legs.some((l: any) => !nonnegative(l.distance) || !nonnegative(l.duration) || typeof l.mode !== 'string' || [l.from, l.to].some(p => !p || typeof p.name !== 'string' || !Number.isFinite(p.lat) || !Number.isFinite(p.lon) || Math.abs(p.lat) > 90 || Math.abs(p.lon) > 180))) throw new Error('Invalid OTP itinerary');
+      if (!nonnegative(itinerary.duration) || !nonnegative(itinerary.walkDistance) || !nonnegative(itinerary.numberOfTransfers) || !Number.isInteger(itinerary.numberOfTransfers) || !Array.isArray(itinerary.legs) || !itinerary.legs.length || itinerary.legs.some((l: any) => !nonnegative(l.distance) || !nonnegative(l.duration) || typeof l.mode !== 'string' || typeof l.transitLeg !== 'boolean' || (l.transitLeg && typeof l.route?.gtfsId !== 'string') || ['shortName','longName'].some(k => l.route?.[k] != null && typeof l.route[k] !== 'string') || (l.agency?.name != null && typeof l.agency.name !== 'string') || [l.from, l.to].some(p => !p || typeof p.name !== 'string' || !Number.isFinite(p.lat) || !Number.isFinite(p.lon) || Math.abs(p.lat) > 90 || Math.abs(p.lon) > 180))) throw new Error('Invalid OTP itinerary');
       const legs = itinerary.legs.map((leg: any) => ({
         mode: leg.mode,
+        transitLeg: leg.transitLeg,
         distanceKm: Number(leg.distance || 0) / 1000,
         durationMin: Number(leg.duration || 0) / 60,
         geometry: leg.legGeometry?.points ? decodePolyline(leg.legGeometry.points) : [],
@@ -120,7 +135,7 @@ export async function planWithOtp(
         geometry: legs.flatMap((leg: any) => leg.geometry),
         legs,
       };
-    });
+    }).filter(itinerary => itinerary.legs.some((leg: OtpRouteResult['legs'][number]) => leg.transitLeg));
   } catch (error) {
     console.warn('[routing] OTP unavailable or invalid; using GTFS local', { reason: controller.signal.aborted ? 'timeout' : 'upstream_failure' });
     return null;

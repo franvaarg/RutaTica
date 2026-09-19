@@ -1,0 +1,83 @@
+code,province,canton,ctp,gtfsInferred,sourceStatus,status
+201,Alajuela,Alajuela,2668,1,,both (GTFS inferred)
+205,Alajuela,Atenas,406,0,,CTP; no classified GTFS
+203,Alajuela,Grecia,1137,0,,CTP; no classified GTFS
+215,Alajuela,Guatuso,174,0,,CTP; no classified GTFS
+214,Alajuela,Los Chiles,359,0,,CTP; no classified GTFS
+206,Alajuela,Naranjo,848,0,,CTP; no classified GTFS
+209,Alajuela,Orotina,309,0,,CTP; no classified GTFS
+207,Alajuela,Palmares,153,0,,CTP; no classified GTFS
+208,Alajuela,Poás,530,0,,CTP; no classified GTFS
+216,Alajuela,Río Cuarto,100,0,,CTP; no classified GTFS
+210,Alajuela,San Carlos,1805,0,,CTP; no classified GTFS
+204,Alajuela,San Mateo,102,0,,CTP; no classified GTFS
+202,Alajuela,San Ramón,1159,0,,CTP; no classified GTFS
+212,Alajuela,Sarchí,275,0,,CTP; no classified GTFS
+213,Alajuela,Upala,448,0,,CTP; no classified GTFS
+211,Alajuela,Zarcero,136,0,,CTP; no classified GTFS
+306,Cartago,Alvarado,146,0,,CTP; no classified GTFS
+301,Cartago,Cartago,1088,1,,both (GTFS inferred)
+308,Cartago,El Guarco,321,0,,CTP; no classified GTFS
+304,Cartago,Jiménez,185,0,,CTP; no classified GTFS
+303,Cartago,La Unión,466,0,,CTP; no classified GTFS
+307,Cartago,Oreamuno,364,0,,CTP; no classified GTFS
+302,Cartago,Paraíso,554,0,,CTP; no classified GTFS
+305,Cartago,Turrialba,1192,0,,CTP; no classified GTFS
+507,Guanacaste,Abangares,86,0,,CTP; no classified GTFS
+504,Guanacaste,Bagaces,76,0,,CTP; no classified GTFS
+506,Guanacaste,Cañas,38,0,,CTP; no classified GTFS
+505,Guanacaste,Carrillo,345,0,,CTP; no classified GTFS
+511,Guanacaste,Hojancha,63,0,,CTP; no classified GTFS
+510,Guanacaste,La Cruz,301,0,,CTP; no classified GTFS
+501,Guanacaste,Liberia,425,0,,CTP; no classified GTFS
+509,Guanacaste,Nandayure,100,0,,CTP; no classified GTFS
+502,Guanacaste,Nicoya,898,0,,CTP; no classified GTFS
+503,Guanacaste,Santa Cruz,1172,0,,CTP; no classified GTFS
+508,Guanacaste,Tilarán,128,0,,CTP; no classified GTFS
+402,Heredia,Barva,358,0,,CTP; no classified GTFS
+407,Heredia,Belén,144,0,,CTP; no classified GTFS
+408,Heredia,Flores,109,0,,CTP; no classified GTFS
+401,Heredia,Heredia,671,1,,both (GTFS inferred)
+406,Heredia,San Isidro,197,0,,CTP; no classified GTFS
+409,Heredia,San Pablo,155,0,,CTP; no classified GTFS
+405,Heredia,San Rafael,314,0,,CTP; no classified GTFS
+404,Heredia,Santa Bárbara,301,0,,CTP; no classified GTFS
+403,Heredia,Santo Domingo,385,0,,CTP; no classified GTFS
+410,Heredia,Sarapiquí,517,0,,CTP; no classified GTFS
+706,Limón,Guácimo,374,0,,CTP; no classified GTFS
+701,Limón,Limón,907,0,,CTP; no classified GTFS
+705,Limón,Matina,329,0,,CTP; no classified GTFS
+702,Limón,Pococí,995,0,,CTP; no classified GTFS
+703,Limón,Siquirres,877,0,,CTP; no classified GTFS
+704,Limón,Talamanca,322,0,,CTP; no classified GTFS
+603,Puntarenas,Buenos Aires,653,0,,CTP; no classified GTFS
+610,Puntarenas,Corredores,255,0,,CTP; no classified GTFS
+608,Puntarenas,Coto Brus,470,0,,CTP; no classified GTFS
+602,Puntarenas,Esparza,247,0,,CTP; no classified GTFS
+611,Puntarenas,Garabito,176,0,,CTP; no classified GTFS
+607,Puntarenas,Golfito,433,0,,CTP; no classified GTFS
+604,Puntarenas,Montes de Oro,83,0,,CTP; no classified GTFS
+605,Puntarenas,Osa,524,0,,CTP; no classified GTFS
+609,Puntarenas,Parrita,250,0,,CTP; no classified GTFS
+601,Puntarenas,Puntarenas,845,0,,CTP; no classified GTFS
+606,Puntarenas,Quepos,377,0,,CTP; no classified GTFS
+112,San José,Acosta,314,0,,CTP; no classified GTFS
+110,San José,Alajuelita,210,0,,CTP; no classified GTFS
+106,San José,Aserrí,375,0,,CTP; no classified GTFS
+118,San José,Curridabat,209,0,,CTP; no classified GTFS
+103,San José,Desamparados,882,1,,both (GTFS inferred)
+117,San José,Dota,75,0,,CTP; no classified GTFS
+102,San José,Escazú,351,1,,both (GTFS inferred)
+108,San José,Goicoechea,456,1,,both (GTFS inferred)
+120,San José,León Cortés Castro,118,0,,CTP; no classified GTFS
+115,San José,Montes de Oca,204,1,,both (GTFS inferred)
+107,San José,Mora,359,0,,CTP; no classified GTFS
+114,San José,Moravia,275,2,,both (GTFS inferred)
+119,San José,Pérez Zeledón,2531,0,,CTP; no classified GTFS
+104,San José,Puriscal,370,1,,both (GTFS inferred)
+101,San José,San José,1140,3,,both (GTFS inferred)
+109,San José,Santa Ana,330,1,,both (GTFS inferred)
+105,San José,Tarrazú,112,0,,CTP; no classified GTFS
+113,San José,Tibás,170,0,,CTP; no classified GTFS
+116,San José,Turrubares,26,0,,CTP; no classified GTFS
+111,San José,Vázquez de Coronado,325,0,,CTP; no classified GTFS

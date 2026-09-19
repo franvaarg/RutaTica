@@ -44,11 +44,11 @@ export async function GET(request: NextRequest) {
     let data
     try {
       const response = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=8&countrycodes=CR&featuretype=settlement,neighbourhood&accept-language=es`,
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=8&addressdetails=1&countrycodes=CR&accept-language=es`,
         {
           signal: AbortSignal.timeout(8000),
         headers: {
-            'User-Agent': 'BusApp/1.0 (https://busapp.example.com)',
+            'User-Agent': 'RutaTica/2.0 (https://rutatica.app)',
             'Accept-Language': 'es',
           },
         }
@@ -66,6 +66,7 @@ export async function GET(request: NextRequest) {
       }
 
       data = JSON.parse(text)
+      if (!Array.isArray(data)) throw new Error('Invalid geocoder response')
     } catch (error: any) {
       console.error('Error fetching from Nominatim:', { type: error instanceof Error ? error.name : 'UnknownError' })
       
@@ -95,7 +96,7 @@ export async function GET(request: NextRequest) {
       .filter((item: any) => {
         // Solo incluir barrios, localidades, ciudades
         const validTypes = ['neighbourhood', 'suburb', 'village', 'town', 'city', 'hamlet']
-        return validTypes.includes(item.type) || item.class === 'place'
+        return item && (validTypes.includes(item.type) || item.class === 'place') && Number.isFinite(Number(item.lat)) && Number.isFinite(Number(item.lon)) && Math.abs(Number(item.lat)) <= 90 && Math.abs(Number(item.lon)) <= 180
       })
       .map((item: any) => {
         // Determinar el tipo para mostrar icono
@@ -147,8 +148,8 @@ export async function GET(request: NextRequest) {
 
         return {
           id: item.place_id || item.osm_id,
-          name: item.name,
-          displayName: displayParts.join(' - '),
+          name: item.name || item.display_name?.split(',')[0] || 'Lugar',
+          displayName: displayParts.join(' - ') || item.display_name,
           type: type,
           lat: parseFloat(item.lat),
           lon: parseFloat(item.lon),

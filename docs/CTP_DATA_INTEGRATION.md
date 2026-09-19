@@ -4,7 +4,7 @@
 
 CTP records official mapped physical stops. It does **not** supply verified GTFS routes, trips, schedules, transfers, travel times, or proof of current service. `GtfsStop`, `StopRoute`, GTFS trips and OTP remain the only routing inputs. No CTP-to-GTFS association is written. A close spatial candidate is not a route relationship.
 
-The national importer has only been run in dry-run mode against the existing application database. Loading production requires explicit approval. A projected coverage count is not deployed coverage.
+The national importer was applied on 2026-09-19 to a disposable SQLite backup: 38,657 stops inserted and 42 records quarantined. The original application database was not modified. See `NATIONWIDE_VALIDATION.md` for reproduction and `RELEASE_READINESS.md` for the final evidence. Local imported coverage is not deployed coverage.
 
 ## Inspection and architecture
 

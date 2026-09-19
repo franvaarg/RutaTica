@@ -33,3 +33,7 @@ query helper is for map/search/nearby infrastructure, never route discovery.
 Zero-route responses may explain that CTP infrastructure exists nearby, but
 never change into a successful itinerary because of that infrastructure.
 See [CTP_DATA_INTEGRATION.md](CTP_DATA_INTEGRATION.md).
+
+## Local hardening — 2026-09-19
+
+OTP responses are streamed with a 2 MiB byte limit and the existing eight-second timeout. Oversized, malformed, unavailable and walking-only results fall back to GTFS; only validated transit itineraries receive the OTP label. Local tests use explicit fixtures and do not certify a deployed OTP graph or schema.

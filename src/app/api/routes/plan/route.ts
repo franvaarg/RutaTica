@@ -9,6 +9,7 @@ export async function GET(request: NextRequest) {
     const lat = searchParams.get('lat');
     const lon = searchParams.get('lon');
     const destination = searchParams.get('destination');
+    if (!lat || !lon || !destination?.trim()) return badQuery();
 
     if (lat && lon && destination) {
       // Try Nominatim lookup for the destination to get coordinates
@@ -25,6 +26,7 @@ export async function GET(request: NextRequest) {
             },
           }
         );
+        if (!response.ok) throw new Error('Geocoder unavailable');
         if (response.ok) {
           const data = await response.json();
           if (data.length > 0) {

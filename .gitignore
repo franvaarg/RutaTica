@@ -66,3 +66,10 @@ node_modules/
 *.db-journal
 *.db-wal
 *.db-shm
+
+# Validation and database artifacts (already tracked DB is unchanged).
+*.db
+*.sqlite
+*.sqlite3
+/playwright-report/
+/test-results/

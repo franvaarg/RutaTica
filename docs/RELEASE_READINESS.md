@@ -1,134 +1,69 @@
-# RutaTica release-readiness review — 2026-09-08
+# RutaTica release-readiness — 2026-09-19
 
-**Recommendation: not ready for release for San Carlos / the northern zone. Score: 5/10.**
+This report covers the accumulated local working tree and a disposable SQLite backup. No commit, push, deployment, or production database modification was performed. Existing changes present at the start were preserved.
 
-No commit, push, deployment, migration or GTFS import was performed. The tracked SQLite database is unchanged. Review started from a clean working tree.
+## 1. CTP import totals
 
-## Release blockers found
+38,699 normalized input records; **38,657 inserted**, zero updated on first import; **42 quarantined for missing required values** (source descriptions). Zero conflicting source IDs. The duplicate audit verified 16,596 occurrences in 7,935 groups, representing 8,661 extra source rows already collapsed by extraction. Imported data retains source provenance and original coordinates. Import uses batches of 50 in one atomic transaction; regression tests include rollback after the first batch succeeds.
 
-1. **Required geographic coverage is absent.** The bundled database has 88 stops and 72 trips. Its coordinate extent is latitude 9.842–10.2134, longitude -84.34–-83.0365. A read-only API query within 10 km of Ciudad Quesada returns no stops. Only Guápiles appears north of latitude 10.2. A validated northern-zone feed or tested OTP deployment is required.
-2. Production builds previously bypassed TypeScript errors. Active code included incompatible Prisma model calls, a misspelled route type, nullable-map type mismatches and React ref/type errors. Corrected; historical backup trees no longer participate in application checks.
-3. Legacy diagnostics exposed Prisma internals; personal endpoints trusted caller-selected user IDs and allowed cross-user deletion. Diagnostics now return 404. Personal APIs return explicit 503 until authenticated identity and durable storage exist; no current `src` consumers were found.
-4. SQLite deployment configuration lacked explicit tracing and its example URL resolved to the wrong directory. Corrected schema-relative URL resolution, tracing and Prisma generation. Actual Vercel deployment remains unverified.
-5. Route-card selection replaced GTFS geometry with automobile routing. Corrected. Server-local timezone and midnight default could select the wrong service/departure. Corrected.
+## 2. Idempotency and GTFS preservation
 
-## Implemented changes
+Second import: **0 inserted, 0 updated, 38,657 unchanged**. Full CTP table content, IDs and timestamps retain SHA-256 `8f91e9c6df94cb1517257088527bae77d07b1ffde9ee7e4b89bc1e77318f401d`. All 19 pre-existing tables retain identical content hashes. GTFS remains 88 stops, 18 routes, 72 trips and 396 stop-time rows. SQLite integrity and foreign-key checks pass after both imports.
 
-### Mobile UX and accessibility
+## 3–5. Nationwide, province and canton coverage
 
-- Results occupy a bottom panel on small screens, with scrolling, close and reopen controls. Desktop retains the side panel.
-- Route cards support keyboard activation and expose selection state. Nested controls retain their own keyboard behavior.
-- Search fields have accessible names and 44 px height; clear controls have names and larger targets. Suggestions no longer steal focus on hover, and obsolete search responses are discarded.
-- Visible focus styling, reduced-motion CSS and dynamic viewport handling. Failure boundary offers retry without displaying internal exceptions.
-- A search using current location requires an actual GPS position; it no longer silently starts from San José when location is unavailable.
-- Explicit estimate notice and “Tarifa no disponible” when a price is unknown. API failure is distinguished from no transit results; direct driving alternatives are not listed as buses.
+All seven source provinces and all 82 source-enumerated cantons contain imported CTP stops. See [complete province and canton tables](NATIONWIDE_COVERAGE.md) and [machine-readable canton counts](NATIONWIDE_COVERAGE.csv). Imported province totals: Alajuela 10,609; Cartago 4,316; Guanacaste 3,632; Heredia 3,151; Limón 3,804; Puntarenas 4,313; San José 8,832.
 
-### Routing, maps and GTFS/OTP
+GTFS administrative counts are explicitly **inferred** from unique CTP canton labels within 50 m: Alajuela 1, Cartago 1, Heredia 1, San José 11; 74 GTFS stops remain unclassified. Eleven cantons have both sources under this method; 71 have CTP but no classified GTFS. No GTFS-only or zero-usable-data canton was identified in the source enumeration. This does not prove GTFS absence or current administrative completeness.
 
-- Leaflet module loads client-side. Long routes are no longer forcibly zoomed to level 12. ResizeObserver invalidates map size without panning.
-- Selected route geometry is retained; selected-route stops receive prominent markers. Fixed mismatched stop API response fields.
-- Local calendar evaluation and OTP date/time use America/Costa_Rica. Exceptions add/remove services, including services only present in calendar_dates.
-- Validate GTFS time strings, sequence direction and prohibited pickup/drop-off. Include walking access when determining whether a departure is reachable. No wrapping to a past departure as if it were upcoming.
-- Clip shapes with interpolated shape_dist_traveled endpoints when usable, with existing proximity clipping as fallback. Distances are measured geometrically in km, not inferred from undocumented GTFS units.
-- OTP invalid response structures/polylines, failures and timeout fall back safely; log reason categories without payloads or endpoint credentials. OTP runs before the local calendar query.
-- Importer updates changed exception types and returns failure status when errors occur. Removed an unused invalid Prisma query. Retired incompatible demo seeding explicitly.
+CTP bounds: latitude 8.3478333896–11.2117425146, longitude −85.8513971146–−82.6136446429. No imported coordinates fail finite/range/mainland-envelope checks. Exact national-border containment and administrative point-in-polygon classification require validated boundary polygons; saved selector rectangles cannot supply that evidence.
 
-### API/security and performance
+## 6–7. Overlaps and incomplete coverage
 
-- Shared finite/range validation for coordinates, radius, pagination and duplicate/oversized parameter values.
-- Generic public error messages. Diagnostic details are not returned to clients. Download allowlist and own-property check remain; asynchronous reads handle missing files and I/O failure safely.
-- Nearby stop search filters by spatial bounds before distance sorting, instead of scanning only the first 500 stop IDs.
-- Legacy search/nearby use current GTFS models; company filtering is applied to the database query.
-- Legacy planner delegates in-process instead of fetching its own host. Network helper timeouts bound waiting. Location cache is capped at 200 entries.
-- Prisma client is reused per process; regenerated before build. Public assets total approximately 1.8 MB. No dependency expansion or full monitoring platform.
+At 50 m, nine one-to-one likely overlaps and 12 ambiguous pairs were reported; **no merges or route associations** were created. 38,636 CTP stops and 74 GTFS stops have no proximity candidate.
 
-## Verification
+The extractor finished with `review_required`: nationwide WFS count 123,176 versus canton sum 123,171, a five-feature discrepancy. Viewer stops and WFS features are different counts and must not be equated. Forty-two unnamed records remain quarantined. The source enumerates 82 cantons; administrative completeness is not independently certified. Northern-zone mapped stops do not supply missing schedules: Ciudad Quesada has 58 imported CTP stops within 1 km and no GTFS stops within 25 km.
 
-Tests run without external OTP or writes to the application database.
+## 8. Routing
 
-| Check | Result |
-|---|---|
-| `npm run typecheck` | PASS, exit 0 |
-| `npm run lint` | PASS, zero reported issues |
-| `npm test` | PASS, 10 tests, zero failures |
-| `prisma validate` | PASS, schema valid |
-| Prisma generation (`prebuild`) | PASS, client 6.19.3 |
-| Default Turbopack build | BLOCKED by environment, see below |
-| `npm run build -- --webpack` | PASS, exit 0; compilation, TypeScript, 19 pages and tracing completed |
-| `git diff --check` | PASS |
-| Database diff/integrity | Unchanged; quick_check OK; no FK violations |
-| Mobile browser | BLOCKED; no usable screenshot |
+Forward and reverse representative GTFS routes passed local smoke checks (two forward options, one reverse). GTFS controls trips, schedules, sequences, calendars and route associations. CTP-only planning returns no fabricated itinerary and explains the missing route/schedule data. Route adapters preserve routing source, unknown fares and geometry availability. GTFS audit has zero structural errors but 26 referenced shapes are absent. Approximate stop geometry is not an actual road or pedestrian path.
 
-Raw final output: `docs/RELEASE_VERIFICATION.txt`.
+## 9. OTP
 
-- Regression suite: **10 passed** — timezone boundary, calendar additions/removals/expiry, malformed and extended GTFS times, no past-departure wrap, geometry clipping/distance units, query abuse, download traversal/prototype keys, OTP error/invalid/empty responses and polylines, SQLite URL resolution.
-- Representative local route smoke: 200, five GTFS-local options, finite positive durations and finite nonnegative distances, approximately 1.6 seconds in this environment. One option has seven shape points; others use the explicitly approximate stop-geometry fallback. This is not a load test.
-- Read-only API smoke: `/api/stops` 200 (2 results), `/api/nearest-stop` 200 (9), `/api/routes` 200 (2), `/api/routes/search` 200 (15), `/api/routes/nearby` 200 (15). Northern-zone `/api/best-route`: 200 with zero results. Invalid coordinates: 400.
-- SQLite `quick_check`: `ok`; `foreign_key_check`: zero violations. Calendars end 2026-12-31. This does not certify actual operator schedules.
-- Default `npm run build` / Turbopack: failed in restricted environment (Google Fonts access, then internal CSS worker port binding). Retried with external approval; port restriction persisted. Do not treat this as a successful default build.
-- Build tracing inspection: database present in `/api/stops`, `/api/best-route` and `/api/download` traces; DOCX present in download trace; `.next/standalone/db/custom.db` exists. Actual Vercel execution remains untested.
-- Webpack production build compiled and generated 19 pages successfully; final run includes regenerated Prisma and is reported below.
-- Firefox headless mobile capture attempted at 390×844 with permission, but Snap mount namespace/framebuffer errors prevented a usable capture. Temporary browser/server stopped. **No visual/hydration/fullscreen/keyboard E2E certification.** No screenshots from earlier work are reused as evidence.
-- Tracked sensitive-name scan found only `.env.example`; no secrets were added. This is not a complete historical secret audit. Active runtime code/config was checked for development-machine paths.
+Configured OTP is attempted first; absent, failed, malformed, oversized, empty or walking-only results fall back to GTFS. Response streaming is capped at 2 MiB with an eight-second timeout. Fixture tests cover valid responses and fallback. No live OTP deployment, graph or GraphQL schema was certified; local smoke explicitly disabled OTP.
 
-## Remaining known issues / release gates
+## 10–12. Mobile, map and search
 
-- **Dependency drift:** installed Next.js is 16.3.4 and Prisma is 6.19.3, while `bun.lock` records Next.js 16.1.3 and Prisma 6.19.2. Verification here uses installed dependencies. A clean frozen-lockfile install and build must pass before release; no dependency upgrade or lockfile rewrite was performed. Error recovery uses the compatible `reset` callback.
-- Supply and validate San Carlos/northern-zone GTFS coverage. Verify operator schedules, fares, dates and representative routes; current calendars expire at year end.
-- Validate actual Vercel function tracing, database availability, environment variables, cold-start latency and OTP deployment/schema. SQLite here is a read-only snapshot, not durable user storage.
-- Run real mobile/browser checks at 320, 360, 390 and 430 px, including open results, soft keyboard, fullscreen, focus, selected stops and network failures. Automated browser validation was blocked.
-- Public Nominatim/OSRM/Overpass/tile dependencies require production service/policy/capacity review. Autocomplete still uses public Nominatim directly. OSRM foot profile on the public server is not certified pedestrian routing. Do not advertise turn-by-turn pedestrian safety.
-- Local routing does not search the previous service day's after-midnight trips. Transfers use stop geometry; shape-less/repeated-stop loops remain approximate. Initial waiting is excluded from local duration. No realtime delay guarantee.
-- Local planner still performs repeated trip/stop queries and caps transfer candidates; load-test with the full intended feed. Request cancellation across concurrent route selections, OTP body-size limits and deployment-level rate limiting need further hardening.
-- Importer is not an atomic full-feed replacement; missing-data validation, calendar_dates-only feed import and complete multi-direction StopRoute reconstruction still require staging work. Never run against the sole production copy.
-- Favorites/history/settings remain explicitly unavailable until authentication/persistence are designed. No migration was performed. Archived scripts/backups/logs remain in the repository and should receive a separate cleanup/security audit.
+Map queries use visible bounds, debounce, request cancellation, zoom gating and at most 100 markers with truncation/error notices. CTP markers identify their source and missing route/schedule availability. Marker names are accessible. No nationwide browser payload is loaded.
 
-## Files changed
+Autocomplete combines bounded local/source results, offers keyboard selection and explicit external place search, cancels obsolete requests and labels CTP-only stops. Escape dismisses an open suggestion list before dismissing the navigation sheet. Route errors use an alert; the inactive notification control is labeled and disabled. Mobile route results can close/reopen and use a bounded panel. Automated browser results are recorded below.
 
-- `.env.example`
-- `BITACORA_CAMBIOS.md`
-- `BITACORA_DESARROLLO.md`
-- `docs/OPEN_TRIP_PLANNER.md`
-- `docs/POSTGIS_MIGRATION_PROPOSAL.md`
-- `docs/RELEASE_READINESS.md`
-- `docs/RELEASE_VERIFICATION.txt`
-- `eslint.config.mjs`
-- `next.config.ts`
-- `package.json`
-- `prisma/seed.ts`
-- `scripts/import-gtfs.ts`
-- `src/app/api/best-route/route.ts`
-- `src/app/api/companies/route.ts`
-- `src/app/api/download/route.ts`
-- `src/app/api/fare/[routeId]/route.ts`
-- `src/app/api/favorites/[id]/route.ts`
-- `src/app/api/favorites/route.ts`
-- `src/app/api/history/route.ts`
-- `src/app/api/locations/search/route.ts`
-- `src/app/api/nearest-stop/route.ts`
-- `src/app/api/routes/nearby/route.ts`
-- `src/app/api/routes/plan/route.ts`
-- `src/app/api/routes/route.ts`
-- `src/app/api/routes/search/route.ts`
-- `src/app/api/settings/route.ts`
-- `src/app/api/shape/[shapeId]/route.ts`
-- `src/app/api/stops/route.ts`
-- `src/app/api/test2/route.ts`
-- `src/app/api/test3/route.ts`
-- `src/app/api/trip/[tripId]/route.ts`
-- `src/app/error.tsx`
-- `src/app/globals.css`
-- `src/app/page.tsx`
-- `src/components/location-autocomplete.tsx`
-- `src/components/map.tsx`
-- `src/components/ui/carousel.tsx`
-- `src/hooks/use-mobile.ts`
-- `src/lib/api-validation.ts`
-- `src/lib/db.ts`
-- `src/lib/environment.ts`
-- `src/lib/otp-client.ts`
-- `src/lib/service-date.ts`
-- `src/lib/spatial.ts`
-- `src/lib/time-utils.ts`
-- `tests/release.test.ts`
-- `tsconfig.json`
+## 13. API/security
+
+Input validation bounds coordinates, radii, limits, offsets, identifiers, query size and repeated parameters. Download traversal and invalid API requests passed smoke tests. Import paths and CSV headers/size are constrained; malformed/conflicting records are quarantined; SQL values are parameterized. Personal endpoints remain unavailable until authenticated persistence exists. Deployment-level rate limiting, provider capacity and a live deployment security review are not certified by local tests.
+
+## 14. Performance
+
+93 bounded map/nearby/search probes passed across 31 actual locations in all provinces, including urban, rural, border and intercity areas. Largest payload 9,706 bytes; observed p95 877.34 ms, maximum 1,208.86 ms. These are local sequential measurements, not concurrent production load certification. Existing geographic indexes and added trip/shape/route-association indexes support filtered access. First import SQL phase 37.023 s; full import/audit 97.199 s. Snapshot 97,280,000 bytes; peak import RSS 585,216 KiB. Parsing and audit work still occur on an idempotent rerun.
+
+## 15–16. Browser, build and test evidence
+
+Final results are appended after the ordered checks finish. Reproduction: [NATIONWIDE_VALIDATION.md](NATIONWIDE_VALIDATION.md). Detailed local logs are under `/tmp/rutatica-release`; import audits and complete national JSON are under ignored `data/ctp_reports`.
+
+## 17. Files changed
+
+The final working-tree inventory is appended below. It includes pre-existing release changes, not only this continuation.
+
+## 18. Remaining limitations
+
+- Source WFS reconciliation and exact administrative/border classification remain unresolved data gates.
+- Nationwide CTP locations do not provide nationwide GTFS service; no transport data was invented to fill gaps.
+- Missing GTFS shapes, operator schedule/fare verification and calendar freshness remain data limitations.
+- Live OTP compatibility and deployment behavior remain unverified; no deployment was authorized.
+- Local routing still lacks previous-service-day after-midnight lookup; transfer/walking geometry is approximate and initial waiting is excluded from local duration.
+- Real-device soft keyboards, screen-reader usability and external provider reliability need device/operational verification beyond headless checks.
+- The imported snapshot is disposable and is not the unchanged bundled application database. Packaging an approved imported snapshot is a separate release step.
+
+## 19–20. Release assessment
+
+Final score and recommendation are recorded after validation below. A national transport-planning release cannot claim schedule coverage from physical CTP stop coverage.
