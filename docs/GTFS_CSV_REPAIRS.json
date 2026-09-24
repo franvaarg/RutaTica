@@ -1,0 +1,112 @@
+[
+  {
+    "file": "fare_rules.txt",
+    "line": 2,
+    "action": "remove surplus empty trailing column"
+  },
+  {
+    "file": "fare_rules.txt",
+    "line": 3,
+    "action": "remove surplus empty trailing column"
+  },
+  {
+    "file": "fare_rules.txt",
+    "line": 4,
+    "action": "remove surplus empty trailing column"
+  },
+  {
+    "file": "fare_rules.txt",
+    "line": 5,
+    "action": "remove surplus empty trailing column"
+  },
+  {
+    "file": "fare_rules.txt",
+    "line": 6,
+    "action": "remove surplus empty trailing column"
+  },
+  {
+    "file": "fare_rules.txt",
+    "line": 7,
+    "action": "remove surplus empty trailing column"
+  },
+  {
+    "file": "fare_rules.txt",
+    "line": 8,
+    "action": "remove surplus empty trailing column"
+  },
+  {
+    "file": "fare_rules.txt",
+    "line": 9,
+    "action": "remove surplus empty trailing column"
+  },
+  {
+    "file": "fare_rules.txt",
+    "line": 10,
+    "action": "remove surplus empty trailing column"
+  },
+  {
+    "file": "fare_rules.txt",
+    "line": 11,
+    "action": "remove surplus empty trailing column"
+  },
+  {
+    "file": "fare_rules.txt",
+    "line": 12,
+    "action": "remove surplus empty trailing column"
+  },
+  {
+    "file": "fare_rules.txt",
+    "line": 13,
+    "action": "remove surplus empty trailing column"
+  },
+  {
+    "file": "fare_rules.txt",
+    "line": 14,
+    "action": "remove surplus empty trailing column"
+  },
+  {
+    "file": "fare_rules.txt",
+    "line": 15,
+    "action": "remove surplus empty trailing column"
+  },
+  {
+    "file": "fare_rules.txt",
+    "line": 16,
+    "action": "remove surplus empty trailing column"
+  },
+  {
+    "file": "fare_rules.txt",
+    "line": 17,
+    "action": "remove surplus empty trailing column"
+  },
+  {
+    "file": "fare_rules.txt",
+    "line": 18,
+    "action": "remove surplus empty trailing column"
+  },
+  {
+    "file": "fare_rules.txt",
+    "line": 19,
+    "action": "remove surplus empty trailing column"
+  },
+  {
+    "file": "fare_rules.txt",
+    "line": 20,
+    "action": "remove surplus empty trailing column"
+  },
+  {
+    "file": "empresas.csv",
+    "line": 2,
+    "action": "quote existing description containing commas"
+  },
+  {
+    "file": "empresas.csv",
+    "line": 3,
+    "action": "quote existing description containing commas"
+  },
+  {
+    "file": "empresas.csv",
+    "line": 4,
+    "action": "quote existing description containing commas"
+  }
+]

@@ -17,6 +17,7 @@ test('exceptions add and remove services including calendar-free additions', () 
 });
 test('GTFS times support midnight rollover and reject malformed times', () => {
   assert.equal(timeToMinutes('25:30:00'), 1530);
+  assert.equal(timeToMinutes('9:05:00'), 545);
   assert.ok(Number.isNaN(timeToMinutes('12:99:00')));
   assert.equal(minutesToTime(59.999), '01:00:00');
   assert.equal(getNextDepartureTime([{ departure_time: '08:00:00' }], '09:00:00'), null);

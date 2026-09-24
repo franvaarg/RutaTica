@@ -1,0 +1,4 @@
+-- Historical draft promoted without losing its constraints to:
+-- migrations/20260924000000_initial_transport/migration.sql
+-- Apply only through: npm run db:postgresql:migrate
+-- This file intentionally contains no executable DDL.

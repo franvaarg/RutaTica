@@ -1,0 +1,247 @@
+{
+  "input_sha256": "2d3d9232e7a727c422159d0c2cb16f220a45e2c8a57eb68c493eb13bc6c4a1b2",
+  "output_sha256": "b980cf4fc88e7d1ffff451593b554f05c4f64def3e3bb2876c16fbb1070b087a",
+  "searched": [
+    "repository files excluding dependencies/build/git",
+    "upload/RutaticaApp-corregido.zip (no shapes.txt member)",
+    "prisma seed, source code and backups for shape points",
+    "uploaded archive text/CSV/JSON/TS/JS/SQL/Prisma members for all missing IDs"
+  ],
+  "decision": "Clear optional shape_id; preserve trips and stop_times. No continuous pickup/drop-off fields require geometry in this feed. Never interpolate or invent authoritative shapes. Original references preserved here.",
+  "affected_trips": 50,
+  "shapes": [
+    {
+      "shape_id": "SH104A",
+      "trip_ids": [
+        "T104A_WD",
+        "T104A_SA"
+      ],
+      "decision": "optional_reference_cleared",
+      "authoritative_geometry_found": false
+    },
+    {
+      "shape_id": "SH104B",
+      "trip_ids": [
+        "T104B_WD",
+        "T104B_SA"
+      ],
+      "decision": "optional_reference_cleared",
+      "authoritative_geometry_found": false
+    },
+    {
+      "shape_id": "SH106A",
+      "trip_ids": [
+        "T106A_WD",
+        "T106A_SA"
+      ],
+      "decision": "optional_reference_cleared",
+      "authoritative_geometry_found": false
+    },
+    {
+      "shape_id": "SH106B",
+      "trip_ids": [
+        "T106B_WD",
+        "T106B_SA"
+      ],
+      "decision": "optional_reference_cleared",
+      "authoritative_geometry_found": false
+    },
+    {
+      "shape_id": "SH107A",
+      "trip_ids": [
+        "T107A_WD",
+        "T107A_SA"
+      ],
+      "decision": "optional_reference_cleared",
+      "authoritative_geometry_found": false
+    },
+    {
+      "shape_id": "SH107B",
+      "trip_ids": [
+        "T107B_WD",
+        "T107B_SA"
+      ],
+      "decision": "optional_reference_cleared",
+      "authoritative_geometry_found": false
+    },
+    {
+      "shape_id": "SH108A",
+      "trip_ids": [
+        "T108A_WD",
+        "T108A_SA"
+      ],
+      "decision": "optional_reference_cleared",
+      "authoritative_geometry_found": false
+    },
+    {
+      "shape_id": "SH108B",
+      "trip_ids": [
+        "T108B_WD",
+        "T108B_SA"
+      ],
+      "decision": "optional_reference_cleared",
+      "authoritative_geometry_found": false
+    },
+    {
+      "shape_id": "SH109A",
+      "trip_ids": [
+        "T109A_WD",
+        "T109A_SA"
+      ],
+      "decision": "optional_reference_cleared",
+      "authoritative_geometry_found": false
+    },
+    {
+      "shape_id": "SH109B",
+      "trip_ids": [
+        "T109B_WD",
+        "T109B_SA"
+      ],
+      "decision": "optional_reference_cleared",
+      "authoritative_geometry_found": false
+    },
+    {
+      "shape_id": "SH110A",
+      "trip_ids": [
+        "T110A_WD",
+        "T110A_SA"
+      ],
+      "decision": "optional_reference_cleared",
+      "authoritative_geometry_found": false
+    },
+    {
+      "shape_id": "SH110B",
+      "trip_ids": [
+        "T110B_WD",
+        "T110B_SA"
+      ],
+      "decision": "optional_reference_cleared",
+      "authoritative_geometry_found": false
+    },
+    {
+      "shape_id": "SH111A",
+      "trip_ids": [
+        "T111A_WD",
+        "T111A_SA"
+      ],
+      "decision": "optional_reference_cleared",
+      "authoritative_geometry_found": false
+    },
+    {
+      "shape_id": "SH111B",
+      "trip_ids": [
+        "T111B_WD",
+        "T111B_SA"
+      ],
+      "decision": "optional_reference_cleared",
+      "authoritative_geometry_found": false
+    },
+    {
+      "shape_id": "SH112A",
+      "trip_ids": [
+        "T112A_WD",
+        "T112A_SA"
+      ],
+      "decision": "optional_reference_cleared",
+      "authoritative_geometry_found": false
+    },
+    {
+      "shape_id": "SH112B",
+      "trip_ids": [
+        "T112B_WD",
+        "T112B_SA"
+      ],
+      "decision": "optional_reference_cleared",
+      "authoritative_geometry_found": false
+    },
+    {
+      "shape_id": "SH202A",
+      "trip_ids": [
+        "T202A_WD",
+        "T202A_SA"
+      ],
+      "decision": "optional_reference_cleared",
+      "authoritative_geometry_found": false
+    },
+    {
+      "shape_id": "SH202B",
+      "trip_ids": [
+        "T202B_WD",
+        "T202B_SA"
+      ],
+      "decision": "optional_reference_cleared",
+      "authoritative_geometry_found": false
+    },
+    {
+      "shape_id": "SH302A",
+      "trip_ids": [
+        "T302A_WD",
+        "T302A_SA"
+      ],
+      "decision": "optional_reference_cleared",
+      "authoritative_geometry_found": false
+    },
+    {
+      "shape_id": "SH302B",
+      "trip_ids": [
+        "T302B_WD",
+        "T302B_SA"
+      ],
+      "decision": "optional_reference_cleared",
+      "authoritative_geometry_found": false
+    },
+    {
+      "shape_id": "SH305A",
+      "trip_ids": [
+        "T305A_WD",
+        "T305A_SA"
+      ],
+      "decision": "optional_reference_cleared",
+      "authoritative_geometry_found": false
+    },
+    {
+      "shape_id": "SH305B",
+      "trip_ids": [
+        "T305B_WD",
+        "T305B_SA"
+      ],
+      "decision": "optional_reference_cleared",
+      "authoritative_geometry_found": false
+    },
+    {
+      "shape_id": "SH401A",
+      "trip_ids": [
+        "T401A_WD",
+        "T401A_SA"
+      ],
+      "decision": "optional_reference_cleared",
+      "authoritative_geometry_found": false
+    },
+    {
+      "shape_id": "SH401B",
+      "trip_ids": [
+        "T401B_WD",
+        "T401B_SA"
+      ],
+      "decision": "optional_reference_cleared",
+      "authoritative_geometry_found": false
+    },
+    {
+      "shape_id": "SH501A",
+      "trip_ids": [
+        "T501A_WD"
+      ],
+      "decision": "optional_reference_cleared",
+      "authoritative_geometry_found": false
+    },
+    {
+      "shape_id": "SH501B",
+      "trip_ids": [
+        "T501B_WD"
+      ],
+      "decision": "optional_reference_cleared",
+      "authoritative_geometry_found": false
+    }
+  ],
+  "archive_reference_hits": []
+}

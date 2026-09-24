@@ -1,3 +1,4 @@
+import { serviceSeconds } from './service-time';
 import { serviceDateTime, activeServices } from './service-date';
 import { db } from '@/lib/db';
 
@@ -6,12 +7,8 @@ import { db } from '@/lib/db';
  * Handles times > 24:00:00 (next day service, e.g., "25:30:00" = 1:30 AM next day).
  */
 export function timeToMinutes(timeStr: string): number {
-  const parts = timeStr.split(':').map(Number);
-  if (!/^\d{2,3}:[0-5]\d:[0-5]\d$/.test(timeStr)) return Number.NaN;
-  const hours = parts[0];
-  const minutes = parts[1];
-  const seconds = parts[2];
-  return hours * 60 + minutes + seconds / 60;
+  const seconds = serviceSeconds(timeStr);
+  return seconds === null ? Number.NaN : seconds / 60;
 }
 
 /**

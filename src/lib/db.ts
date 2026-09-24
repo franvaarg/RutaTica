@@ -8,7 +8,8 @@ const globalForPrisma = globalThis as unknown as {
 export const db =
   globalForPrisma.prisma ??
   new PrismaClient({
-    datasourceUrl: databaseUrl(process.env.DATABASE_URL),
+    // PostgreSQL staging uses its separate client; a URL cannot switch this provider.
+    datasourceUrl: databaseUrl(process.env.DATABASE_URL, undefined, 'sqlite'),
     log: ['error', 'warn'],
   })
 

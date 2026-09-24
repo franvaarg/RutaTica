@@ -1,3 +1,11 @@
+## Migration preparation — 2026-09-23
+
+These changes prepare an isolated PostgreSQL/Neon staging exercise, not production deployment. No Neon connection was made. The repository SQLite snapshot is protected and unchanged; validation uses a disposable copy. See [migration plan](POSTGRESQL_MIGRATION_PLAN.md) and [local validation evidence](MIGRATION_PREPARATION_VALIDATION.md).
+
+Implemented: strict GTFS audit; documented removal of 26 absent optional shapes affecting 50 trips; all-trip stop-route derivation; canonical version-scoped identities/FKs; calendar-dates-only services; atomic publication/failure tracking; CTP observation history/quarantine/current-state policy; persisted reviewable reconciliation; repeated-stop selection; separate offline PostgreSQL schema/SQL.
+
+Remaining production gates: PostgreSQL execution tests, verification of publication locks/retries, provider-specific connection/search/load checks, reader snapshot consistency during feed publication, current authoritative schedules/holiday exceptions, and optional PostGIS rollout. Source completeness remains review_required. These are explicit future staging/cutover tasks; no production readiness or nationwide schedule coverage is claimed.
+
 # RutaTica release-readiness — 2026-09-19
 
 This report covers the accumulated local working tree and a disposable SQLite backup. No commit, push, deployment, or production database modification was performed. Existing changes present at the start were preserved.

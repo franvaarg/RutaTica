@@ -21,7 +21,14 @@
     "audit:gtfs": "node --import tsx scripts/audit-gtfs.ts",
     "validate:nationwide": "node --import tsx scripts/validate-nationwide.ts",
     "smoke:release": "node --import tsx scripts/release-smoke.ts",
-    "test:browser": "node scripts/verify-mobile.cjs"
+    "test:browser": "node scripts/verify-mobile.cjs",
+    "audit:ctp": "node --import tsx scripts/audit-ctp.ts",
+    "db:postgresql:validate": "prisma validate --schema prisma/postgresql/schema.prisma",
+    "db:postgresql:generate": "prisma generate --schema prisma/postgresql/schema.prisma",
+    "db:postgresql:check": "node --import tsx scripts/postgresql-staging.ts check",
+    "db:postgresql:migrate": "node --import tsx scripts/postgresql-staging.ts pre-migrate && prisma migrate deploy --schema prisma/postgresql/schema.prisma",
+    "db:postgresql:verify": "node --import tsx scripts/postgresql-staging.ts verify",
+    "test:database-config": "node --import tsx --test tests/database-config.test.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

@@ -1,3 +1,5 @@
+import { selectTripSegment } from '@/lib/trip-segments';
+import { routeMembership } from '@/lib/routing-membership';
 import { queryPhysicalStops } from '@/lib/physical-stops';
 import { CTP_ROUTING_NOTICE } from '@/lib/stop-display';
 import { invalidQuery, badQuery } from '@/lib/api-validation';
@@ -150,15 +152,9 @@ export async function GET(request: NextRequest) {
     const destStopIds = destStops.map((s) => s.stop.stop_id);
 
     // Get all StopRoute entries for origin and dest stops
-    const originStopRoutes = await db.stopRoute.findMany({
-      where: { stopId: { in: originStopIds } },
-      select: { stopId: true, routeId: true, company: true },
-    });
+    const originStopRoutes = await routeMembership(db, { stopIds: originStopIds });
 
-    const destStopRoutes = await db.stopRoute.findMany({
-      where: { stopId: { in: destStopIds } },
-      select: { stopId: true, routeId: true, company: true },
-    });
+    const destStopRoutes = await routeMembership(db, { stopIds: destStopIds });
 
     // Build route-to-stop mappings
     const originRoutesByStop = new Map<string, string[]>();
@@ -286,8 +282,9 @@ export async function GET(request: NextRequest) {
 
         if (stopTimes.length < 2) continue;
 
-        const boardSt = stopTimes.find((st) => st.stop_id === originStopId);
-        const alightSt = stopTimes.find((st) => st.stop_id === destStopId);
+        const segment = selectTripSegment(stopTimes, originStopId, destStopId, departAfterMinutes + walkingTimeMinutes(originStops.find(s => s.stop.stop_id === originStopId)!.distanceKm));
+        const boardSt = segment?.board;
+        const alightSt = segment?.alight;
 
         if (!boardSt || !alightSt || boardSt.stop_sequence >= alightSt.stop_sequence || boardSt.pickup_type !== 0 || alightSt.drop_off_type !== 0) continue;
 
@@ -524,16 +521,10 @@ async function findTransferRoutes(
 
   // Find transfer stops: stops that are served by both a first-leg and second-leg route
   // Get all stops for first-leg routes
-  const firstLegStops = await db.stopRoute.findMany({
-    where: { routeId: { in: [...firstLegRouteIds] } },
-    select: { stopId: true, routeId: true },
-  });
+  const firstLegStops = await routeMembership(db, { routeIds: [...firstLegRouteIds] });
 
   // Get all stops for second-leg routes
-  const secondLegStops = await db.stopRoute.findMany({
-    where: { routeId: { in: [...secondLegRouteIds] } },
-    select: { stopId: true, routeId: true },
-  });
+  const secondLegStops = await routeMembership(db, { routeIds: [...secondLegRouteIds] });
 
   // Build stop-to-routes maps
   const stopToFirstRoutes = new Map<string, Set<string>>();
@@ -669,8 +660,9 @@ async function findTransferRoutes(
 
       if (stForLeg.length < 2) continue;
 
-      const boardSt = stForLeg.find((st) => st.stop_id === originStopId);
-      const alightSt = stForLeg.find((st) => st.stop_id === transferStopId);
+      const segment = selectTripSegment(stForLeg, originStopId, transferStopId, departAfterMinutes + walkingTimeMinutes(originStops.find(s => s.stop.stop_id === originStopId)!.distanceKm));
+      const boardSt = segment?.board;
+      const alightSt = segment?.alight;
       if (!boardSt || !alightSt || boardSt.stop_sequence >= alightSt.stop_sequence || boardSt.pickup_type !== 0 || alightSt.drop_off_type !== 0) continue;
 
       const boardMin = timeToMinutes(boardSt.departure_time);
@@ -736,8 +728,9 @@ async function findTransferRoutes(
 
       if (stForLeg.length < 2) continue;
 
-      const boardSt = stForLeg.find((st) => st.stop_id === transferStopId);
-      const alightSt = stForLeg.find((st) => st.stop_id === destStopId);
+      const segment = selectTripSegment(stForLeg, transferStopId, destStopId, timeToMinutes(secondLegAfter));
+      const boardSt = segment?.board;
+      const alightSt = segment?.alight;
       if (!boardSt || !alightSt || boardSt.stop_sequence >= alightSt.stop_sequence || boardSt.pickup_type !== 0 || alightSt.drop_off_type !== 0) continue;
 
       const boardMin = timeToMinutes(boardSt.departure_time);

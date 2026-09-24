@@ -15,14 +15,14 @@ test('GTFS audit reports missing shapes without rewriting data and fails before 
     await cp('gtfs-data',dir,{recursive:true});
     const baseline = auditGtfs(dir);
     assert.deepEqual(baseline.errors,[]);
-    assert.equal(baseline.missingShapes.length,26);
+    assert.equal(baseline.missingShapes.length,0);
     await writeFile(path.join(dir,'stop_times.txt'),'trip_id,stop_id,arrival_time,departure_time,stop_sequence\nT101A_WD,SJO001,,,1\nT101A_WD,SJO001,09:00:00,08:00:00,1\n');
     const result=auditGtfs(dir);
     assert.ok(result.errors.some(e=>e.includes('duplicate')));
-    assert.ok(result.errors.some(e=>e.includes('invalid time')));
+    assert.ok(result.errors.some(e=>e.includes('requires times')));
     assert.ok(result.errors.some(e=>e.includes('decreasing time')));
     await writeFile(path.join(dir,'frequencies.txt'),'trip_id,start_time,end_time,headway_secs\nT101A_WD,08:00:00,09:00:00,600\n');
-    assert.ok(auditGtfs(dir).errors.some(e=>e.includes('frequencies')));
+    assert.ok(auditGtfs(dir).unsupported.some(e=>e.includes('frequencies')));
   } finally { await rm(dir,{recursive:true,force:true}); }
 });
 test('route adapter preserves source, stable identity and unknown fare without inventing geometry', () => {

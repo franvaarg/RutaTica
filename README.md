@@ -1,3 +1,16 @@
+## Local transport versioning (2026-09-23)
+
+PostgreSQL/Neon **connection-only** preparation is available in the [staging runbook](docs/POSTGRESQL_STAGING_CONNECTION.md): isolated client, separate migration history, and read-only diagnostics. SQLite remains the application default. No Neon connection, PostgreSQL migration, or data import is implied by this preparation.
+
+The application remains on SQLite. New GTFS/CTP importers publish immutable canonical versions and replace the existing API projection atomically. Both CLIs default to audit/dry-run; `--apply` requires an explicit disposable SQLite copy and refuses `db/custom.db`. Do not apply these changes to the sole snapshot.
+
+- `npm run audit:gtfs`: corrected feed, strict dangling-shape errors.
+- `npm run audit:ctp`: source normalization/quarantine audit, no database writes.
+- `DATABASE_URL=file:/absolute/path/to/disposable.db npm run import-gtfs -- --apply`
+- `DATABASE_URL=file:/absolute/path/to/disposable.db npm run import-ctp -- --apply`
+
+Apply the reviewed SQLite migrations to the disposable target before importing. For an existing snapshot copy, baseline only after verifying its schema; never replay the baseline over existing tables. The detailed workflow and offline PostgreSQL draft are described in [the migration plan](docs/POSTGRESQL_MIGRATION_PLAN.md). PostgreSQL has NOT been connected, configured or deployed. The old snapshot intentionally still contains its historical data; use the validated copy to exercise the corrected feed.
+
 # RutaTica
 
 RutaTica is a Spanish-language, mobile-first public transport application intended to serve Costa Rica nationally. It combines a map of transport infrastructure with journey planning backed by imported GTFS schedules and an optional external OpenTripPlanner (OTP) service.

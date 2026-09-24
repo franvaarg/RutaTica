@@ -1,3 +1,4 @@
+import { importPrepared } from '../src/lib/storage/legacy-ctp-projection';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, readFile, writeFile, rm, symlink, truncate } from 'node:fs/promises';
@@ -5,7 +6,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { PrismaClient } from '@prisma/client';
 import { NextRequest } from 'next/server';
-import { identity, prepareImport, importPrepared, readCsv, resolveCtpInput, validateRow, type CsvRow } from '../src/lib/ctp-import';
+import { identity, prepareImport, readCsv, resolveCtpInput, validateRow, type CsvRow } from '../src/lib/ctp-import';
 import { queryPhysicalStops, parseStopQuery } from '../src/lib/physical-stops';
 import { reconcileStops, ciudadQuesadaCoverage } from '../src/lib/stop-reconciliation';
 import { CTP_STOP_NOTICE, CTP_ROUTING_NOTICE, stopNotice } from '../src/lib/stop-display';

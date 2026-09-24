@@ -1,3 +1,11 @@
+## Local fallback integrity update — 2026-09-23
+
+Local routing membership is now derived directly from every GTFS trip/stop_time relationship. The derived projection has 122 pairs and includes INT009 → R101; it no longer samples an arbitrary trip per route. Direct and transfer legs select ordered boarding/alighting occurrences, so a loop's first stop occurrence cannot hide a later valid boarding.
+
+The repository feed retains all 72 trips. Fifty dangling optional shape references were cleared after checking repository/archive sources; no geometry was invented. See [per-shape decisions](GTFS_SHAPE_RESOLUTION.json). Missing referenced shapes now fail validation. Missing optional geometry stays unavailable; stop-based distance remains explicitly labeled.
+
+The local planner keeps Costa Rica timezone and service-date exceptions. Canonical service entities now support calendar-dates-only operation. Service-day seconds preserve >24:00, but the local planner does not search the previous service day after midnight or synthesize next-day transfer service. Frequencies, interpolation and continuous pickup/drop-off remain unsupported locally and cannot silently enter the active projection. Use OTP with an appropriate validated feed for these capabilities. Database migration does not provide national route coverage from CTP locations.
+
 # OpenTripPlanner 2
 
 RutaTica admite un servicio OTP externo mediante `OPEN_TRIP_PLANNER_URL`. El valor debe ser el endpoint completo del API **GTFS GraphQL** de OTP 2 (normalmente termina en `/otp/gtfs/v1`); no hay host ni puerto codificado en la aplicación.

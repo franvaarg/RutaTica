@@ -1,9 +1,8 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { parse } from 'csv-parse';
-import { Prisma, type PrismaClient } from '@prisma/client';
 
 export type CsvRow = Record<string, string>;
 export const hash = (value: string) => createHash('sha256').update(value).digest('hex');
@@ -48,6 +47,8 @@ export async function readCsv(file: string, required: string[]): Promise<CsvRow[
 const required = ['source_stop_identifier', 'identificador_parada', 'candidate_id', 'descripcion', 'latitude', 'longitude', 'coord_x', 'coord_y', 'province', 'canton', 'source_crs', 'output_crs', 'source_endpoint', 'retrieved_at'];
 export function validateRow(r: CsvRow): string | null {
   if (required.some(k => !r[k]?.trim())) return 'missing_required_value';
+  if (r.source_stop_identifier !== r.source_stop_identifier.trim() || /[\x00-\x1f\x7f]/.test(r.source_stop_identifier)) return 'invalid_identifier';
+  if (r.descripcion.includes('\0')) return 'invalid_name';
   if (r.source_stop_identifier !== r.identificador_parada) return 'identifier_mismatch';
   if (r.descripcion.length > 1000 || r.source_stop_identifier.length > 200) return 'oversized_value';
   if (!/^[a-f0-9]{64}$/.test(r.candidate_id)) return 'invalid_candidate_id';
@@ -119,41 +120,4 @@ export async function prepareImport(stopsFile: string, conflictsFile: string) {
     sourceDuplicateGroups: duplicateGroups.size, sourceDuplicateExtraRows: duplicateOccurrences - duplicateGroups.size,
     sourceConflictingRows: conflicts.length - duplicateOccurrences,
     sourceConflictReportRows: conflicts.length, skipped: rows.length - accepted.length };
-}
-export async function importPrepared(client: PrismaClient, prepared: Awaited<ReturnType<typeof prepareImport>>, apply = false) {
-  const exists = await client.$queryRawUnsafe<{ name: string }[]>("SELECT name FROM sqlite_master WHERE type='table' AND name='ctp_stops'");
-  if (apply && !exists.length) throw new Error('Apply the reviewed CTP migration before importing');
-  const existing = exists.length ? await client.ctpStop.findMany({ select: { identityKey: true, contentHash: true } }) : [];
-  const hashes = new Map(existing.map(r => [r.identityKey, r.contentHash]));
-  let imported = 0, updated = 0, unchanged = 0;
-  const changes = prepared.accepted.filter(r => {
-    const old = hashes.get(r.identityKey);
-    if (old === r.contentHash) { unchanged++; return false; }
-    if (old) updated++; else imported++;
-    return true;
-  });
-  if (apply) {
-    // One transaction: interruption or a constraint failure rolls back every CTP write.
-    await client.$transaction(async tx => {
-      const now = new Date();
-      // 50 * 17 parameters stays below even SQLite's older 999-variable limit.
-      for (let start = 0; start < changes.length; start += 50) {
-        const values = changes.slice(start, start + 50).map(d => Prisma.sql`(
-          ${randomUUID()}, ${d.identityKey}, ${d.source}, ${d.sourceStopId}, ${d.candidateId},
-          ${d.name}, ${d.lat}, ${d.lon}, ${d.coordX}, ${d.coordY}, ${d.province}, ${d.canton},
-          ${d.district}, ${d.sourceMetadata}, ${d.contentHash}, ${now}, ${now})`);
-        await tx.$executeRaw(Prisma.sql`INSERT INTO "ctp_stops"
-          ("id","identityKey","source","sourceStopId","candidateId","name","lat","lon","coordX","coordY",
-           "province","canton","district","sourceMetadata","contentHash","createdAt","updatedAt")
-          VALUES ${Prisma.join(values)} ON CONFLICT("identityKey") DO UPDATE SET
-          "source"=excluded."source", "sourceStopId"=excluded."sourceStopId", "candidateId"=excluded."candidateId",
-          "name"=excluded."name", "lat"=excluded."lat", "lon"=excluded."lon", "coordX"=excluded."coordX", "coordY"=excluded."coordY",
-          "province"=excluded."province", "canton"=excluded."canton", "district"=excluded."district",
-          "sourceMetadata"=excluded."sourceMetadata", "contentHash"=excluded."contentHash", "updatedAt"=excluded."updatedAt"`);
-      }
-    }, { timeout: 300000, maxWait: 10000 });
-  }
-  const { accepted: _accepted, audit: _audit, ...counts } = prepared;
-  return { mode: apply ? 'apply' : 'dry-run', ...counts, imported, updated, unchanged,
-    countsAreProjected: !apply, ctpTableExists: !!exists.length };
 }

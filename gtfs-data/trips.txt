@@ -21,53 +21,53 @@ T103A_WD,R103,weekday,Escazú,0,SH103A
 T103B_WD,R103,weekday,San José,1,SH103B
 T103A_SA,R103,saturday,Escazú,0,SH103A
 T103B_SA,R103,saturday,San José,1,SH103B
-T104A_WD,R104,weekday,Santa Ana,0,SH104A
-T104B_WD,R104,weekday,San José,1,SH104B
-T104A_SA,R104,saturday,Santa Ana,0,SH104A
-T104B_SA,R104,saturday,San José,1,SH104B
-T305A_WD,R305,weekday,Puriscal,0,SH305A
-T305B_WD,R305,weekday,San José,1,SH305B
-T305A_SA,R305,saturday,Puriscal,0,SH305A
-T305B_SA,R305,saturday,San José,1,SH305B
-T106A_WD,R106,weekday,San Pedro,0,SH106A
-T106B_WD,R106,weekday,San José,1,SH106B
-T106A_SA,R106,saturday,San Pedro,0,SH106A
-T106B_SA,R106,saturday,San José,1,SH106B
-T401A_WD,R401,weekday,Heredia,0,SH401A
-T401B_WD,R401,weekday,Alajuela,1,SH401B
-T401A_SA,R401,saturday,Heredia,0,SH401A
-T401B_SA,R401,saturday,Alajuela,1,SH401B
-T302A_WD,R302,weekday,Turrialba,0,SH302A
-T302B_WD,R302,weekday,Cartago,1,SH302B
-T302A_SA,R302,saturday,Turrialba,0,SH302A
-T302B_SA,R302,saturday,Cartago,1,SH302B
-T202A_WD,R202,weekday,Barva,0,SH202A
-T202B_WD,R202,weekday,Heredia,1,SH202B
-T202A_SA,R202,saturday,Barva,0,SH202A
-T202B_SA,R202,saturday,Heredia,1,SH202B
-T107A_WD,R107,weekday,Guadalupe,0,SH107A
-T107B_WD,R107,weekday,San José,1,SH107B
-T107A_SA,R107,saturday,Guadalupe,0,SH107A
-T107B_SA,R107,saturday,San José,1,SH107B
-T108A_WD,R108,weekday,Tibás,0,SH108A
-T108B_WD,R108,weekday,San José,1,SH108B
-T108A_SA,R108,saturday,Tibás,0,SH108A
-T108B_SA,R108,saturday,San José,1,SH108B
-T109A_WD,R109,weekday,Goicoechea,0,SH109A
-T109B_WD,R109,weekday,San José,1,SH109B
-T109A_SA,R109,saturday,Goicoechea,0,SH109A
-T109B_SA,R109,saturday,San José,1,SH109B
-T501A_WD,R501,weekday,Limón,0,SH501A
-T501B_WD,R501,weekday,San José,1,SH501B
-T110A_WD,R110,weekday,Moravia,0,SH110A
-T110B_WD,R110,weekday,San José,1,SH110B
-T110A_SA,R110,saturday,Moravia,0,SH110A
-T110B_SA,R110,saturday,San José,1,SH110B
-T111A_WD,R111,weekday,Montes de Oca,0,SH111A
-T111B_WD,R111,weekday,San José,1,SH111B
-T111A_SA,R111,saturday,Montes de Oca,0,SH111A
-T111B_SA,R111,saturday,San José,1,SH111B
-T112A_WD,R112,weekday,San José por autopista,0,SH112A
-T112B_WD,R112,weekday,Heredia,1,SH112B
-T112A_SA,R112,saturday,San José por autopista,0,SH112A
-T112B_SA,R112,saturday,Heredia,1,SH112B
+T104A_WD,R104,weekday,Santa Ana,0,
+T104B_WD,R104,weekday,San José,1,
+T104A_SA,R104,saturday,Santa Ana,0,
+T104B_SA,R104,saturday,San José,1,
+T305A_WD,R305,weekday,Puriscal,0,
+T305B_WD,R305,weekday,San José,1,
+T305A_SA,R305,saturday,Puriscal,0,
+T305B_SA,R305,saturday,San José,1,
+T106A_WD,R106,weekday,San Pedro,0,
+T106B_WD,R106,weekday,San José,1,
+T106A_SA,R106,saturday,San Pedro,0,
+T106B_SA,R106,saturday,San José,1,
+T401A_WD,R401,weekday,Heredia,0,
+T401B_WD,R401,weekday,Alajuela,1,
+T401A_SA,R401,saturday,Heredia,0,
+T401B_SA,R401,saturday,Alajuela,1,
+T302A_WD,R302,weekday,Turrialba,0,
+T302B_WD,R302,weekday,Cartago,1,
+T302A_SA,R302,saturday,Turrialba,0,
+T302B_SA,R302,saturday,Cartago,1,
+T202A_WD,R202,weekday,Barva,0,
+T202B_WD,R202,weekday,Heredia,1,
+T202A_SA,R202,saturday,Barva,0,
+T202B_SA,R202,saturday,Heredia,1,
+T107A_WD,R107,weekday,Guadalupe,0,
+T107B_WD,R107,weekday,San José,1,
+T107A_SA,R107,saturday,Guadalupe,0,
+T107B_SA,R107,saturday,San José,1,
+T108A_WD,R108,weekday,Tibás,0,
+T108B_WD,R108,weekday,San José,1,
+T108A_SA,R108,saturday,Tibás,0,
+T108B_SA,R108,saturday,San José,1,
+T109A_WD,R109,weekday,Goicoechea,0,
+T109B_WD,R109,weekday,San José,1,
+T109A_SA,R109,saturday,Goicoechea,0,
+T109B_SA,R109,saturday,San José,1,
+T501A_WD,R501,weekday,Limón,0,
+T501B_WD,R501,weekday,San José,1,
+T110A_WD,R110,weekday,Moravia,0,
+T110B_WD,R110,weekday,San José,1,
+T110A_SA,R110,saturday,Moravia,0,
+T110B_SA,R110,saturday,San José,1,
+T111A_WD,R111,weekday,Montes de Oca,0,
+T111B_WD,R111,weekday,San José,1,
+T111A_SA,R111,saturday,Montes de Oca,0,
+T111B_SA,R111,saturday,San José,1,
+T112A_WD,R112,weekday,San José por autopista,0,
+T112B_WD,R112,weekday,Heredia,1,
+T112A_SA,R112,saturday,San José por autopista,0,
+T112B_SA,R112,saturday,Heredia,1,

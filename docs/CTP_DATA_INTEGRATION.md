@@ -1,3 +1,11 @@
+## Current versioned publication — 2026-09-23
+
+This section supersedes the earlier coordinate-hash identity and refresh policy below. `CtpStopIdentity` now owns source-scoped stable identity; `CtpStopObservation` records immutable versioned source evidence. The legacy `ctp_stops` table is an atomic current-display projection. A moved stop is inactive pending review; a missing stop is inactive with `missing_from_snapshot`. Neither creates an immortal second active stop. Historical observations are retained. Co-located source IDs are never merged.
+
+The CLI uses `publishCtp`, not the historical projection adapter retained under `src/lib/storage/` for regression tests. Dry-run performs no writes. `--apply` refuses the protected repository database and requires migrated disposable SQLite. All 42 blank-name records are preserved in `ImportRejection`; all 816 ambiguous district observations retain null district and original matching evidence. First nationwide publication creates 38,657 identities/observations. Source coverage remains `review_required`, including the five-feature WFS discrepancy.
+
+Reconciliation is persisted against versioned GTFS stops and CTP observations: nine proximity candidates and twelve ambiguous pairs in this snapshot; none automatically accepted. Reviewed decisions require reviewer/evidence/time and survive recomputation. No GTFS route, trip or service is inferred. See [PostgreSQL migration plan](POSTGRESQL_MIGRATION_PLAN.md) for schema mapping, retirement, concurrency and future cutover.
+
 # CTP physical stop integration — 2026-09-18
 
 ## Release boundary

@@ -1,0 +1,14 @@
+{
+  "original_count": 121,
+  "derived_count": 122,
+  "missing_in_original": [
+    [
+      "INT009",
+      "R101"
+    ]
+  ],
+  "extra_in_original": [],
+  "derivation": "DISTINCT stop_times.stop_id + trips.route_id across ALL trips; never sample one trip or use tarifas.csv for membership",
+  "validation_missing": [],
+  "validation_extra": []
+}
