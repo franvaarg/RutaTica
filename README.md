@@ -1,16 +1,3 @@
-## Local transport versioning (2026-09-23)
-
-PostgreSQL/Neon **connection-only** preparation is available in the [staging runbook](docs/POSTGRESQL_STAGING_CONNECTION.md): isolated client, separate migration history, and read-only diagnostics. SQLite remains the application default. No Neon connection, PostgreSQL migration, or data import is implied by this preparation.
-
-The application remains on SQLite. New GTFS/CTP importers publish immutable canonical versions and replace the existing API projection atomically. Both CLIs default to audit/dry-run; `--apply` requires an explicit disposable SQLite copy and refuses `db/custom.db`. Do not apply these changes to the sole snapshot.
-
-- `npm run audit:gtfs`: corrected feed, strict dangling-shape errors.
-- `npm run audit:ctp`: source normalization/quarantine audit, no database writes.
-- `DATABASE_URL=file:/absolute/path/to/disposable.db npm run import-gtfs -- --apply`
-- `DATABASE_URL=file:/absolute/path/to/disposable.db npm run import-ctp -- --apply`
-
-Apply the reviewed SQLite migrations to the disposable target before importing. For an existing snapshot copy, baseline only after verifying its schema; never replay the baseline over existing tables. The detailed workflow and offline PostgreSQL draft are described in [the migration plan](docs/POSTGRESQL_MIGRATION_PLAN.md). PostgreSQL has NOT been connected, configured or deployed. The old snapshot intentionally still contains its historical data; use the validated copy to exercise the corrected feed.
-
 # RutaTica
 
 RutaTica is a Spanish-language, mobile-first public transport application intended to serve Costa Rica nationally. It combines a map of transport infrastructure with journey planning backed by imported GTFS schedules and an optional external OpenTripPlanner (OTP) service.
@@ -19,10 +6,12 @@ RutaTica is a Spanish-language, mobile-first public transport application intend
 
 ## Current scope
 
-Repository audit: September 19, 2026. Stack: Next.js 16.3.4 App Router, React 19, TypeScript, Tailwind CSS 4, Radix/shadcn UI components, Leaflet/react-leaflet, and Prisma 6 with SQLite.
+Repository/documentation review: September 28, 2026. Stack: Next.js 16.3.4 App Router, React 19, TypeScript, Tailwind CSS 4, Radix/shadcn UI components, Leaflet/react-leaflet, and Prisma 6 with SQLite.
 
 | Area | Current status |
 | --- | --- |
+| Versioned publication | Implemented: canonical history, atomic compatibility projections, ImportRun evidence and rollback tests on SQLite. |
+| PostgreSQL/Neon staging | Connectivity, schema migration, schema/catalog verification, GTFS publication and active dataset, and status CLI VERIFIED on Neon staging. CTP publication has not yet succeeded. |
 | GTFS import and local planning | Implemented for the supported scheduled-feed subset; geographic coverage is limited by the imported feed. |
 | Nationwide CTP integration | Importer, separate storage, map/search queries, provenance, and validation tooling implemented. National import validated on a disposable database. |
 | OTP integration | GraphQL client and local fallback implemented and fixture-tested; live deployment compatibility remains unverified. |
@@ -30,9 +19,54 @@ Repository audit: September 19, 2026. Stack: Next.js 16.3.4 App Router, React 19
 | Personal accounts and persistence | Not implemented as usable features. Favorites, history, and settings APIs return 503. Some navigation controls are placeholders; notifications are disabled. |
 | Production national service | Pending data verification, infrastructure, operational validation, and deployment. |
 
-The bundled `db/custom.db` currently contains **88 GTFS stops, 18 routes, 72 trips, 396 stop-time rows, and 169 shape points**. A read-only inspection confirmed that it has no `ctp_stops` table. Its calendars extend through December 31, 2026; this is feed metadata, not independent confirmation of current service.
+### Verified datasets and evidence boundaries
 
-The separate national validation snapshot documented in [release readiness](docs/RELEASE_READINESS.md) contains **38,657 imported CTP stops**, with 42 unnamed records quarantined from 38,699 candidates. It covers seven source provinces and 82 source-enumerated cantons. Those figures describe the reviewed source snapshot, not certified administrative completeness or deployed coverage.
+The corrected repository GTFS source and local publication are documented in [migration validation](docs/MIGRATION_PREPARATION_VALIDATION.md). Neon staging GTFS publication and its active dataset are also **VERIFIED**, with the agencies, stops, routes, trips, stop times, services, calendars, calendar exceptions, shapes and shape points below confirmed in Neon. Derived membership and fare counts retain their local validation scope.
+
+| GTFS entity | Count | Validation scope |
+| --- | ---: | --- |
+| Agencies | 3 | VERIFIED in Neon staging |
+| Stops | 88 | VERIFIED in Neon staging |
+| Routes | 18 | VERIFIED in Neon staging |
+| Trips | 72 | VERIFIED in Neon staging |
+| Stop times | 396 | VERIFIED in Neon staging |
+| Services / weekly calendars | 3 / 3 | VERIFIED in Neon staging |
+| Calendar exceptions | 13 | VERIFIED in Neon staging |
+| Shapes / shape points | 10 / 169 | VERIFIED in Neon staging |
+| Derived stop-route pairs | 122 | Locally validated |
+| Fare attributes / fare rules | 6 / 19 | Locally validated |
+
+The corrected source has zero dangling shape references: 50 optional trip references were cleared, retaining all 72 trips without inventing geometry. The historic snapshot had 121 stop-route pairs; derivation adds INT009/R101. The protected `db/custom.db` remains the historical development snapshot, not the corrected, versioned national publication. Do not infer its contents from the corrected-source counts. Calendars end on December 31, 2026; this does not independently verify current service.
+
+| CTP normalized source / local validation | Count |
+| --- | ---: |
+| Input stop rows | 38,699 |
+| Accepted stops / first-publication identities and observations | 38,657 |
+| Rejected unnamed rows | 42 |
+| Ambiguous districts retained as null | 816 |
+| Normalized conflicts | 0 |
+| Original duplicate-occurrence evidence records | 16,596 |
+| Total ImportRejection evidence records in the documented first publication | 16,638 |
+| Source provinces / source-enumerated cantons | 7 / 82 |
+
+Duplicate-occurrence evidence is not an additional 16,596 rejected normalized stops. The documented local publication had 38,657 usable CTP display records, two active versions (one per source), and two successful publications. Later movement/absence review can reduce display counts without deleting observations. Historical local reconciliation recorded nine candidates and twelve ambiguous matches, with zero automatically accepted. These CTP counts describe the reviewed local snapshot, not a successfully published Neon CTP dataset, certified administrative completeness or national scheduled-service coverage.
+
+**Implemented** means present in repository code; **locally validated** means local source audits/tests; **staging-validated** means verified on live PostgreSQL/Neon. The staging results below reflect the verified state supplied by the project operator; this README correction did not rerun live commands.
+
+| Staging validation | Status |
+| --- | --- |
+| Neon PostgreSQL connectivity | VERIFIED |
+| PostgreSQL staging schema migration | VERIFIED |
+| PostgreSQL schema/catalog verification | VERIFIED |
+| GTFS publication to Neon staging | VERIFIED |
+| GTFS active dataset in Neon | VERIFIED, with counts above |
+| PostgreSQL staging status CLI | VERIFIED |
+| CTP preparation/normalization | VERIFIED locally: 38,699 read, 38,657 accepted, 42 rejected, 816 ambiguous districts |
+| CTP publication to Neon staging | NOT YET SUCCESSFUL; final diagnosis/fix and successful verification remain required |
+
+The previous CTP publication failed safely: no partial CTP dataset became active, and the active GTFS dataset remained intact. This observed failure does not establish complete PostgreSQL fault-injection, concurrency or load certification.
+
+The complete Next.js application has **not been validated end-to-end against Neon**. Application PostgreSQL cutover and PostGIS remain planned. Production is **NOT deployed**; production cutover remains pending.
 
 ## Main features
 
@@ -58,19 +92,27 @@ Expanding national planning requires validated operator/service feeds and an ope
 
 ### CTP integration
 
-`CtpStop` maps to a separate `ctp_stops` table with no GTFS route/trip foreign keys. It retains original coordinates, transformed coordinates, source identifiers, candidate identity, geography, provenance JSON, content hashes, and timestamps. Identity uses the source ID and decimal-normalized original coordinates.
+`CtpStopIdentity` keeps a stable, source-scoped external identity; `CtpStopObservation` keeps immutable versioned location/provenance history. Original EPSG:5367 coordinates, transformed WGS84 coordinates, source administrative metadata, retrieval time and raw provenance survive publication. The separate `ctp_stops` table is the current usable display projection, with no GTFS route/trip foreign keys.
 
-The importer validates fixed local export files, quarantines invalid/conflicting records, audits duplicate occurrences, and performs idempotent CTP-only writes in one transaction. Dry-run is the default. It does not scrape the source or delete records missing from a newer snapshot. Moved stops and retirement/versioning require review.
+The importer validates fixed local exports and preserves quarantine/duplicate evidence. It neither scrapes nor downloads data. Moved stops become inactive pending review; absent stops become inactive with `missing_from_snapshot`, which is not proof of official retirement. Reappearance does not bypass review. Distinct co-located source IDs remain distinct. History is retained, and current pointers/display replacement are atomic.
 
 Map, nearby-stop, and search responses expose bounded public fields, with CTP always marked `hasRouteData: false`. Missing CTP tables degrade gracefully to GTFS display results. Other database errors are not silently treated as missing coverage.
 
 ### GTFS integration
 
-The importer supports agencies, calendars and exceptions, routes, stops, trips, stop times, shapes, fare attributes/rules, and custom `empresas.csv`, `colores.csv`, and `tarifas.csv`. Custom imports also populate supporting company, color, fare, and stop-route data. The planner relies on `StopRoute` associations; a generic feed import needs verification of those associations before routing can be considered usable.
+The importer supports agencies, services, calendars and exceptions, routes, stops, trips, stop times, shapes, fare attributes/rules and custom source files. Canonical version-scoped tables preserve original payloads and the source manifest; fares remain in the manifest and compatibility tables pending canonical fare normalization. Composite foreign keys prevent cross-version references. Service-day times are stored as integer seconds, including values beyond 24:00.
 
-Read-only preflight checks validate identifiers, relationships, coordinates, sequences, times, calendars, and shape distances. Unsupported frequency-based scheduling, missing-time interpolation, and calendar-dates-only trip services fail preflight. Missing referenced shapes generate warnings. The bundled feed currently passes structural preflight with **26 referenced shapes absent**.
+Publication derives `StopRoute` from all trips/stop times. Routing also queries actual trip membership, so a stale cache cannot hide a valid association. Read-only preflight checks identifiers, relationships, coordinates, sequences, times, calendars and shape distances. Dangling referenced shapes are errors. Exception-only services are supported; unsupported local-planner features such as frequencies and missing-time interpolation block publication. The corrected bundled feed audit has no errors, warnings or unsupported features.
 
-GTFS import is not a single atomic snapshot replacement: it upserts records and replaces some tables in separate stages. A failed import can leave partial changes. Use a backed-up staging database and inspect import errors and `ImportLog` before publishing a snapshot.
+### DatasetVersion / ImportRun and atomic publication
+
+`DataSource` defines the source namespace. `DatasetVersion` records checksums, retrieval/publication times, manifest and state. `ImportRun` records validation, counts and pending/importing/validating/succeeded/failed execution states; `ImportRejection` retains CTP evidence. GTFS checksums cover sorted filenames and exact bytes; CTP checksums cover normalized accepted data and audit evidence.
+
+Canonical entity writes, compatibility projection replacement, validation, active-slot switching and successful run completion share one Serializable transaction. A shared publication mutex and up to three attempts on serialization conflicts protect publication. The transaction has a five-minute timeout. Failure inside it rolls back data/activation, preserving the prior publication; failure metadata and CTP quarantine evidence survive outside that transaction. Fault-injection rollback is tested locally. The failed Neon CTP publication also preserved the active GTFS dataset and activated no partial CTP dataset; broader PostgreSQL rollback/fault-injection certification remains pending.
+
+A unique active slot identifies the active version per source; superseded canonical history remains intact. Already published checksums are no-ops and do not reactivate superseded versions. Failed versions can be retried. A crash may leave an incomplete run requiring operator review. There is no automatic command to roll back an already committed publication; do not toggle active slots manually. Post-commit verification failure can occur after successful publication: inspect status before retrying.
+
+Compatibility readers support only one active GTFS source and one CTP source. Serialize operator imports and use a publication maintenance window until multi-query readers pin a version or share a consistent snapshot. Atomic writes alone do not give separate API reads a shared snapshot.
 
 ### OTP integration and fallback behavior
 
@@ -139,7 +181,7 @@ Stop bounding boxes use `south,west,north,east`; they cannot be combined with ra
 
 CTP extraction provenance includes source endpoint, retrieval time, source/output CRS, original payload, and WFS matching metadata. Public APIs omit internal provenance payloads and database primary keys. Source-qualified IDs preserve GTFS/CTP separation. `hasRouteData` indicates stored relationships, not a guaranteed departure today.
 
-Reconciliation reports proximity candidates within 50 m without merging records or creating associations. GTFS administrative coverage inferred from nearby CTP labels is explicitly marked inferred; unclassified stops do not prove absence of service.
+GTFS and CTP are not destructively merged. `StopReconciliation` links a versioned GTFS stop to a specific CTP observation, retaining distance, method, algorithm version and candidate/ambiguous/accepted/rejected state. Proximity within 50 m only proposes candidates. Accepted/rejected decisions require reviewer, evidence and review timestamp; recomputation preserves reviewed decisions. Even acceptance does not create route/service membership. The local CTP apply command computes candidates after publication; PostgreSQL staging CLIs do not generate or accept links. GTFS administrative coverage inferred from nearby CTP labels is explicitly marked inferred; unclassified stops do not prove absence of service.
 
 The source extraction remains `review_required`: national WFS counts differ from summed canton counts by five features. Source labels and a mainland coordinate envelope do not certify exact borders or administrative completeness. Redistribution rights, required attribution, freshness, and incidental personal information in source descriptions still require review. Raw exports are ignored local artifacts and are not downloadable through the public API.
 
@@ -149,14 +191,14 @@ The source extraction remains `review_required`: national WFS counts differ from
 - Stop bounding boxes must be ordered and no larger than one degree per axis. Radial queries filter and rank by distance before pagination.
 - Database access uses Prisma and parameterized values. Source names are rendered as text through React escaping.
 - Downloads use a fixed allowlist and reject traversal, absolute paths, and unexpected keys.
-- CTP import constrains paths and symlinks, requires an existing database, and bounds CSV files to 100 MiB, 150,000 rows, and 64 KiB per record. Strict parsing and provenance/coordinate checks precede writes; reports use JSON/JSONL.
+- CTP import constrains paths and symlinks, requires an existing database, and bounds CSV files to 100 MiB, 150,000 rows, and 64 KiB per record. Strict parsing and provenance/coordinate checks precede writes; versioned publication retains audit evidence in ImportRejection.
 - OTP URLs permit HTTP/HTTPS without embedded credentials; upstream timeouts, response size limits, and contract validation constrain failures. Personal-data endpoints fail closed with 503.
 
 These controls do not establish a completed production security review. Deployment-level rate limiting, provider capacity, authenticated identity, and durable user storage remain outstanding.
 
 ## Database architecture
 
-Prisma currently uses **SQLite**, with schema-relative file URL resolution. The schema contains GTFS core tables, `StopRoute`, companies, route colors/logos/configuration, import logs, personal-data models, and the isolated `CtpStop` model. Personal-data tables do not imply implemented authentication or usable personal APIs.
+The application Prisma client uses **SQLite**, with schema-relative file URL resolution. The schema contains canonical GTFS/CTP history, publication/reconciliation models, compatibility tables, `StopRoute`, company/branding data, import logs and personal-data models. Personal-data tables do not imply implemented authentication or usable personal APIs.
 
 Geographic access uses indexed latitude/longitude bounding boxes followed by Haversine filtering in Node.js. It does not use a true spatial index; substring search may scan names.
 
@@ -164,11 +206,13 @@ Geographic access uses indexed latitude/longitude bounding boxes followed by Hav
 
 The tracked `db/custom.db` is the existing GTFS development snapshot. The current schema is ahead of that snapshot's CTP deployment. Normal GTFS browsing tolerates the missing CTP table; national validation requires a separately migrated and imported copy.
 
-Migrations include a pre-CTP baseline, the additive CTP table, and query indexes. For an existing database, back it up, verify baseline/schema compatibility, and resolve the baseline before applying later migrations as described in [CTP integration](docs/CTP_DATA_INTEGRATION.md). Do not blindly replay the baseline or reset the bundled database.
+SQLite migrations include a pre-CTP baseline, CTP storage, query indexes and versioned transport publication. For an existing database, back it up, verify baseline/schema compatibility, and resolve the baseline before applying later migrations as described in [CTP integration](docs/CTP_DATA_INTEGRATION.md). Do not blindly replay the baseline or reset the bundled database.
 
-### Production database plans
+### PostgreSQL/Neon staging architecture — GTFS verified, CTP publication pending
 
-[PostgreSQL + PostGIS](docs/POSTGIS_MIGRATION_PROPOSAL.md) is a proposal, not an implemented migration. It describes geographic columns, GiST indexes, and distance queries. The current provider and URL validator remain SQLite-specific; changing the URL alone cannot enable PostgreSQL. Read-only snapshot deployment is the interim architecture; persistent user features need a separate reviewed persistence design.
+`prisma/postgresql/schema.prisma` generates an isolated client at `node_modules/.prisma/postgresql-staging`. Its separate migration history defines 37 tables with PostgreSQL constraints and indexes. Operator CLIs use that client; the application continues using the SQLite client. Changing `DATABASE_URL` alone cannot switch the application provider.
+
+Staging initially retains text JSON/date codecs for compatibility. PostGIS, native JSONB/date conversion, application pooling and provider cutover remain planned. Geographic queries currently use indexed coordinate bounds followed by Haversine filtering, not a spatial index. See the [staging runbook](docs/POSTGRESQL_STAGING_CONNECTION.md) for the current commands; older migration-plan descriptions of future importer work are superseded by these implemented CLI entry points.
 
 ## Project structure
 
@@ -178,7 +222,8 @@ src/components/          Map, autocomplete, icons, reusable UI components
 src/hooks/               UI hooks
 src/lib/                 Database, routing, OTP, validation, CTP and GTFS helpers
 prisma/schema.prisma     Database models
-prisma/migrations/       Baseline, CTP storage, query indexes
+prisma/migrations/       SQLite baseline, CTP, indexes, versioned publication
+prisma/postgresql/       Isolated PostgreSQL schema and migration history
 db/custom.db             Existing GTFS development snapshot
 gtfs-data/               Bundled GTFS and custom import files
 data/ctp_exports/        Local CTP inputs (ignored; not supplied by a fresh clone)
@@ -204,16 +249,18 @@ npm run db:generate
 Create a local ignored `.env` using the placeholders below, replacing them before running the application. Select a local SQLite copy for development. No credentials or machine-specific values belong in committed configuration.
 
 ```dotenv
-DATABASE_URL="file:<absolute-path-to-local-sqlite-copy>"
+DATABASE_URL="<sqlite-file-url-for-local-development-copy>"
 # Optional: omit to use local GTFS only.
 OPEN_TRIP_PLANNER_URL="<full-otp-gtfs-graphql-endpoint>"
 ```
+
+`DIRECT_URL` is not read by the staging workflow. Never expose database configuration through `NEXT_PUBLIC_` variables. Staging commands require TLS for Neon (`sslmode=require` or `verify-full`) and the `public` schema.
 
 `DATABASE_URL` is required for database queries. Relative SQLite paths resolve from `prisma/`, not the repository root. Standalone import/validation scripts require the variable explicitly in their process environment; do not assume Next.js `.env` loading applies to them.
 
 | Variable | Purpose |
 | --- | --- |
-| `DATABASE_URL` | SQLite file URL for the selected database. |
+| `DATABASE_URL` | SQLite file URL for the app/local tools; explicitly exported PostgreSQL staging URL only in the isolated operator shell. |
 | `OPEN_TRIP_PLANNER_URL` | Optional full OTP endpoint; omit or leave empty to disable OTP. |
 | `APP_URL` | Optional browser-check server URL; runner defaults to local port 3100. |
 | `PLAYWRIGHT_MODULE` | Optional path to a separately installed Playwright module. |
@@ -230,7 +277,7 @@ npm run lint
 npm run db:generate
 ```
 
-For a **new disposable database** with an explicitly selected URL, `npx prisma migrate deploy` creates the schema. Import reviewed GTFS data afterward. Existing snapshots require the baseline review described above. `db:push`, `db:migrate`, and destructive `db:reset` scripts exist, but are not normal startup steps and should not be run against the sole application/production copy.
+For a **new disposable database**, apply the reviewed SQLite migrations using the procedure in [CTP integration](docs/CTP_DATA_INTEGRATION.md), then import reviewed GTFS data. Existing snapshots require the baseline review described above. `db:push`, `db:migrate`, and destructive `db:reset` scripts exist, but are not normal startup steps and should not be run against the sole application/production copy.
 
 ### Build commands
 
@@ -253,34 +300,60 @@ npm run start:standalone
 
 All URL/path values below are placeholders. Import commands write to the selected database; run them only against an intentionally selected, backed-up target. None are required merely to launch the existing GTFS snapshot.
 
-### GTFS import workflow
+### Local SQLite development imports
 
-1. Obtain and review an extracted feed directory and any required custom files. The importer reads files, not a remote feed or ZIP URL.
-2. Run the read-only audit and review warnings as well as errors.
-3. Prepare a migrated staging database and import explicitly.
-4. Inspect `ImportLog`, stop-route relationships, calendars, fares, shapes, and representative forward/reverse routes before releasing the resulting snapshot.
+Prepare an existing disposable copy with reviewed SQLite migrations before applying. Existing snapshots need schema/baseline review; never reset or replay a baseline over the sole snapshot. Both local importers default to audit/dry-run. Apply requires an explicit existing SQLite target and refuses `db/custom.db`, including symlink aliases.
 
 ```bash
 npm run audit:gtfs
-npm run audit:gtfs -- <validated-feed-directory>
-DATABASE_URL='file:<absolute-path-to-staging-sqlite>' npm run import-gtfs -- --gtfs-dir '<validated-feed-directory>'
+npm run audit:ctp
+npm run import-gtfs -- --dry-run
+npm run import-ctp -- --dry-run
+DATABASE_URL='<sqlite-file-url-for-migrated-disposable-copy>' npm run import-gtfs -- --gtfs-dir '<validated-feed-directory>' --apply
+DATABASE_URL='<sqlite-file-url-for-migrated-disposable-copy>' npm run import-ctp -- --apply
 ```
 
-There is no GTFS dry-run import mode; `audit:gtfs` is the read-only preflight. Preserve a backup because import stages can partially succeed.
+CTP requires reviewed local `data/ctp_exports/ctp_all_stops.csv` and `ctp_duplicate_conflicts.csv`; national coverage checks additionally require `ctp_validation_summary.csv`. These ignored inputs are not supplied by a fresh clone. Inspect `DatasetVersion`, `ImportRun` and `ImportRejection`, canonical/projection parity and source checksums after publication. The current versioned CLIs print JSON summaries; historical per-run report directories describe earlier tooling. Keep source files and audit evidence for later verification, and review local reports before sharing.
 
-### CTP import workflow
+### Neon staging: schema, GTFS and CTP operator commands
 
-1. Supply reviewed `ctp_all_stops.csv` and `ctp_duplicate_conflicts.csv` under `data/ctp_exports/`. These ignored artifacts are not downloaded automatically. National validation also needs `ctp_validation_summary.csv`.
-2. Prepare an existing disposable SQLite backup with the reviewed migrations applied.
-3. Run dry-run, inspect quarantine/duplicate/reconciliation reports, then apply to that selected copy.
-4. Repeat the import and verify zero inserts/updates, unchanged GTFS tables, and database integrity.
+Use a dedicated Bash shell and supply the intended staging URL through a hidden prompt; keep the application's SQLite `.env` unchanged. Do not put a real URL in documentation or shell history. Commands must run from the repository root with dependencies installed. The URL alone cannot prove that a target is staging: select the intended isolated database operationally.
 
 ```bash
-DATABASE_URL='file:<absolute-path-to-existing-sqlite-copy>' npm run import-ctp -- --dry-run
-DATABASE_URL='file:<absolute-path-to-existing-sqlite-copy>' npm run import-ctp -- --apply
+bash
+read -r -s -p 'Neon staging DATABASE_URL: ' DATABASE_URL
+export DATABASE_URL
+npm run db:postgresql:validate
+npm run db:postgresql:generate
+npm run db:postgresql:check
+# Initial schema only: empty public schema or exact completed baseline rerun.
+npm run db:postgresql:migrate
+npm run db:postgresql:verify
+npm run db:postgresql:status
+
+# These two import commands WRITE immediately; no flags or implicit dry-run.
+npm run db:postgresql:import:gtfs
+npm run db:postgresql:verify:gtfs
+npm run db:postgresql:import:ctp
+npm run db:postgresql:verify:ctp
+npm run db:postgresql:status
+unset DATABASE_URL
+exit
 ```
 
-Each run writes a unique report directory under `data/ctp_reports/`, including `summary.json`, `audit.jsonl`, and `reconciliation.json`, or `failure.json` on failure. Serialize imports. Review reports before sharing: they can contain local paths and raw source details.
+Generation is local and does not connect. `check` is read-only connectivity/schema inspection; `migrate` guards and applies the independent initial migration; `verify` checks the catalog, expected tables, constraints, indexes and migration checksum. Never run root SQLite `db:push`, `db:migrate` or `db:reset` against PostgreSQL. The initial migration guard is not a general future migration runner.
+
+Imports pin inputs to corrected `gtfs-data` and normalized `data/ctp_exports`, using `rutatica-gtfs` and `ctp-official` respectively. They validate canonical/projection content before activation, then verify the active publication. Verifiers use read-only Serializable snapshots and return nonzero on mismatch. They compare local-source checksums, counts, relationships, stop-route membership, services/shapes, CTP provenance/quarantine and current/display consistency. Verification requires the matching retained input files; an older active version may legitimately differ from current local inputs after a failed replacement.
+
+For failure investigation, rerun the read-only commands:
+
+```bash
+npm run db:postgresql:status
+npm run db:postgresql:verify:gtfs
+npm run db:postgresql:verify:ctp
+```
+
+Run them within the staging shell while its URL is exported. Status lists versions, active slots, runs and counts; canonical totals can include historical versions. Incomplete runs older than one hour are marked possibly abandoned, not proven abandoned. Confirm the writer has stopped before intervention, retain evidence, correct the cause and retry. Do not delete history or manually change active slots. Staging errors are sanitized; do not share raw local database errors or source payloads. Connectivity, schema/catalog checks, GTFS publication/active data and status CLI are verified on Neon. The previous CTP attempt failed safely; CTP publication still requires diagnosis/fix and successful verification. Complete application runtime and load validation against Neon remain pending.
 
 ## Testing and Playwright/E2E status
 
@@ -291,7 +364,19 @@ npm run lint
 git diff --check
 ```
 
-The current project status supplied for this audit reports **24/24 tests, typecheck, ESLint, Webpack production build, and diff checks passing**. Those checks were not rerun as part of this documentation-only audit. The read-only GTFS audit was rerun and passed with the missing-shape warning described above.
+Validation rerun on September 28, 2026:
+
+| Check | Result |
+| --- | --- |
+| `npm test` | 41 passed, zero failed; rerun outside the sandbox after its Python subprocess restriction blocked temporary-database setup. |
+| `npm run typecheck` | Passed when rerun after build type generation; the initial overlapping run encountered transient missing generated types. Run build and typecheck sequentially. |
+| `npm run lint` | Passed. |
+| `npm run build -- --webpack` | Passed, including TypeScript, page generation and build tracing. |
+| `npm run audit:gtfs` | Passed: zero errors, warnings, unsupported features or dangling shapes. |
+| `npm run audit:ctp` | Passed with the accepted/quarantined counts above and zero normalized conflicts. |
+| README review | Diff reviewed, whitespace check passed, all 26 documented npm script names exist in package.json, and local documentation links resolve. |
+
+Source audits verify the corrected GTFS and normalized CTP inputs; historical full-data publication evidence is linked above. The operator-confirmed live Neon results are listed above; no live commands were rerun for this README correction. Complete Next.js end-to-end validation against Neon, production deployment and live OTP validation are not established. Browser checks were not rerun. Local tests of PostgreSQL verification contracts alone do not certify live PostgreSQL behavior.
 
 Tests use Node's built-in test runner through `tsx`. They cover service dates and exceptions, time parsing, geometry clipping, scoring/provenance, input and download validation, OTP fixtures and fallback, CTP CSV/path hardening, temporary SQLite migrations, atomic rollback, idempotency, and routing isolation. Temporary test databases do not certify the production dataset.
 
@@ -308,13 +393,11 @@ The runner checks CTP API results across seven provinces and five viewport width
 Follow [the ordered national validation procedure](docs/NATIONWIDE_VALIDATION.md) against a disposable imported snapshot:
 
 ```bash
-DATABASE_URL='file:<absolute-path-to-imported-snapshot>' npm run validate:nationwide
-DATABASE_URL='file:<absolute-path-to-imported-snapshot>' npm run smoke:release
-DATABASE_URL='file:<absolute-path-to-imported-snapshot>' node --import tsx scripts/verify-ctp.ts
-python3 scripts/verify-import-snapshot.py '<absolute-path-to-imported-snapshot>'
+DATABASE_URL='<sqlite-file-url-for-imported-snapshot>' npm run validate:nationwide
+DATABASE_URL='<sqlite-file-url-for-imported-snapshot>' npm run smoke:release
 ```
 
-The snapshot verifier requires the pre-import table-hash mapping in `before.json` beside the database. It records the first CTP hash for subsequent idempotency checks; see the procedure before running it.
+Additional SQLite-only diagnostic scripts are described in the linked procedure. The historical snapshot verifier requires `before.json` hashes and assumes pre-existing tables remain unchanged; that assumption does not apply to deliberate versioned GTFS projection replacement. Use the current publication tests and PostgreSQL verifiers for that workflow.
 
 `validate:nationwide` reads imported data and source coverage metadata, checks coordinates, reports province/canton counts and inferred GTFS coverage, computes overlap candidates, and probes bounded map/nearby/search queries. It writes `data/ctp_reports/nationwide.json`. `smoke:release` calls API handlers directly with OTP disabled and checks representative routes, malformed input, and download traversal. Its fixtures depend on the bundled GTFS IDs and active schedules.
 
@@ -328,19 +411,34 @@ The browser uses the Next.js UI and API handlers; server-side Prisma reads SQLit
 
 `next.config.ts` produces standalone output outside Vercel and explicitly traces `db/custom.db` into API artifacts and the allowlisted DOCX into the download handler. A different validation database is not automatically packaged just because `DATABASE_URL` points to it. Publishing an approved imported snapshot requires an explicit packaging and runtime-path check.
 
-The documented Vercel approach is a read-only bundled SQLite snapshot, not durable writable serverless storage. Imports must run as operator jobs outside request handling. An existing `Caddyfile` provides a local reverse-proxy configuration, including query-selected upstream ports; it is not a reviewed public production ingress configuration. No live deployment is certified by this README.
+The documented Vercel approach is a read-only bundled SQLite snapshot, not durable writable serverless storage. Imports must run as operator jobs outside request handling. An existing `Caddyfile` provides a local reverse-proxy configuration, including query-selected upstream ports; it is not a reviewed public production ingress configuration. Neon staging database and GTFS validation do not constitute application deployment. Production is not deployed.
 
 ## Known limitations and remaining production work
 
 - Acquire and verify wider GTFS/operator coverage, current schedules/fares, missing shapes, and source redistribution permissions. Resolve the CTP WFS discrepancy and validate administrative boundaries.
-- Review CTP snapshot refresh, moved/retired stops, history, and publication policy. Package the approved national snapshot explicitly.
+- Operationalize the implemented CTP movement/absence review and publication policy. Rehearse refresh/recovery and package the approved national snapshot explicitly.
 - Deploy and validate a pinned OTP graph/schema with appropriate memory, TLS, health checks, and observability.
 - Address local routing limitations: supported GTFS subset, one-transfer search, initial wait exclusion, previous-service-day lookup, approximate walking, and ambiguous loop geometry.
 - Complete authentication, persistent favorites/history/settings, unfinished navigation, and real-device/accessibility verification. No GTFS-Realtime vehicle feed is implemented.
-- Validate concurrent load, database/search performance, provider policies/capacity, rate limits, backups/restore, monitoring, and production security. PostgreSQL/PostGIS remains planned.
+- Validate concurrent load, database/search performance, provider policies/capacity, rate limits, backups/restore, monitoring, and production security. Neon connectivity, schema/catalog checks, GTFS publication and status CLI are verified. CTP PostgreSQL publication diagnosis/fix and successful verification, full application validation against Neon, production cutover and PostGIS remain pending.
+
+## Production deployment plan — planned, not completed
+
+1. Archive/checksum approved source exports and the prior database/build; verify rights, freshness, calendars and unresolved CTP coverage issues.
+2. Build on the verified Neon connectivity, migrated/verified schema, GTFS publication/active counts and status CLI. Diagnose/fix CTP PostgreSQL publication, publish it successfully and run its verifier. Retain sanitized evidence and complete PostgreSQL idempotency, fault-injection, locking and retry validation.
+3. Implement application PostgreSQL provider/client selection, deliberate search/geographic parity, pool limits and deployment packaging. Preserve text codecs initially; treat PostGIS as a separate change. Replace SQLite-specific diagnostics and tracing only during actual cutover.
+4. Run API/browser/build checks against staging, representative routing and CTP-only cases, concurrent load, provider failure tests, security/monitoring checks and backup/restore rehearsals. Validate a pinned OTP service/graph if enabled. Establish reader snapshot consistency or maintenance windows.
+5. Prepare the production Next.js host, managed PostgreSQL, separate optional OTP service, TLS/ingress, secret management and operator import jobs. Confirm operational readiness and production cutover authorization before switching traffic/configuration.
+6. Freeze imports/writes, reconcile final checksums, publish the approved datasets, deploy and smoke-test. Keep the prior database/build available. On cutover failure, restore the prior application configuration/build/database selection and retain failure evidence; do not destructively modify the old database.
+
+Production is **NOT deployed**. Production cutover remains pending; verified Neon staging GTFS publication does not imply a completed application provider cutover.
 
 ## Documentation
 
+- [Current PostgreSQL/Neon staging commands](docs/POSTGRESQL_STAGING_CONNECTION.md)
+- [Versioned publication model and migration/cutover design](docs/POSTGRESQL_MIGRATION_PLAN.md) — historical future-work statements require comparison with current tooling above
+- [Dated local migration validation and exact counts](docs/MIGRATION_PREPARATION_VALIDATION.md)
+- [Shape repair decisions](docs/GTFS_SHAPE_RESOLUTION.json), [CSV repairs](docs/GTFS_CSV_REPAIRS.json), [stop-route reconciliation](docs/STOP_ROUTE_RESOLUTION.json)
 - [CTP integration, provenance, migrations, and import controls](docs/CTP_DATA_INTEGRATION.md)
 - [Nationwide validation procedure](docs/NATIONWIDE_VALIDATION.md)
 - [Province/canton coverage](docs/NATIONWIDE_COVERAGE.md) and [CSV coverage table](docs/NATIONWIDE_COVERAGE.csv)
