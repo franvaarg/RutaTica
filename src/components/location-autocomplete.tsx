@@ -123,7 +123,7 @@ export default function LocationAutocomplete({
     requestRef.current?.abort()
     requestRef.current = controller
     // If suppressSuggestions is active, skip searching entirely
-    if (suppressSuggestions) {
+    if (suppressSuggestions || selectedLocation) {
       if (searchTimeout.current) clearTimeout(searchTimeout.current)
       return
     }
@@ -179,17 +179,22 @@ export default function LocationAutocomplete({
         clearTimeout(searchTimeout.current)
       }
     }
-  }, [displayValue, suppressSuggestions])
+  }, [displayValue, suppressSuggestions, selectedLocation])
 
   const handleSelect = (location: LocationSuggestion) => {
     requestRef.current?.abort()
     setSelectedLocation(location)
-    onChange(location.name)
-    onSelect(location)
     setShowSuggestions(false)
+    setActiveIndex(-1)
+    setLoading(false)
+    onSelect(location)
   }
 
   const handleClear = () => {
+    requestRef.current?.abort()
+    if (searchTimeout.current) clearTimeout(searchTimeout.current)
+    setLoading(false)
+    setActiveIndex(-1)
     onChange('')
     setSelectedLocation(null)
     setSuggestions([])
@@ -260,12 +265,14 @@ export default function LocationAutocomplete({
           value={displayValue}
           onChange={(e) => {
             const newValue = e.target.value
+            setSelectedLocation(null)
+            setActiveIndex(-1)
             onChange(newValue)
             setLoading(false) // Reiniciar para buscar primero en memoria
           }}
           onKeyDown={handleKeyDown}
           onFocus={() => {
-            if (displayValue.length >= 2 && suggestions.length > 0) {
+            if (!selectedLocation && !suppressSuggestions && displayValue.length >= 2 && suggestions.length > 0) {
               setShowSuggestions(true)
             }
           }}

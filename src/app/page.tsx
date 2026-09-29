@@ -452,22 +452,23 @@ export default function BusPlannerApp() {
         return
       }
 
-      const lat = parseFloat(location.lat)
-      const lon = parseFloat(location.lon)
+      const lat = Number(location.lat)
+      const lon = Number(location.lon)
 
-      if (isNaN(lat) || isNaN(lon)) {
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
         console.error('Coordenadas inválidas:', { lat, lon, location })
         setError('Las coordenadas de origen no son válidas')
         return
       }
 
-      setSelectedOrigin({
+      const selected: SelectedLocation = {
         name: location.name || 'Origen desconocido',
         lat: lat,
         lon: lon,
-        displayName: location.displayName || location.name || 'Origen desconocido',
-      })
-      setOriginText(location.name || '')
+        displayName: location.displayName || location.fullAddress || location.name || 'Origen desconocido',
+      }
+      setSelectedOrigin(selected)
+      setOriginText(selected.name)
       setError(null)
 
       // Centrar mapa en el origen seleccionado
@@ -477,6 +478,7 @@ export default function BusPlannerApp() {
 
     } catch (err) {
       console.error('Error al seleccionar origen:', err)
+      setError('Error al procesar la ubicación de origen')
     }
   }
 
@@ -588,26 +590,26 @@ export default function BusPlannerApp() {
         return
       }
 
-      const lat = parseFloat(location.lat)
-      const lon = parseFloat(location.lon)
+      const lat = Number(location.lat)
+      const lon = Number(location.lon)
 
-      if (isNaN(lat) || isNaN(lon)) {
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
         console.error('Coordenadas inválidas:', { lat, lon, location })
         setError('Las coordenadas seleccionadas no son válidas')
         return
       }
 
-      // Suppress autocomplete suggestions so the dropdown doesn't reopen
-      // and cover the "Buscar Ruta" button
-      setSuppressDestSuggestions(true)
-
-      setSelectedDestination({
+      const selected: SelectedLocation = {
         name: location.name || 'Destino desconocido',
         lat: lat,
         lon: lon,
-        displayName: location.displayName || location.name || 'Destino desconocido',
-      })
-      setDestination(location.name || '')
+        displayName: location.displayName || location.fullAddress || location.name || 'Destino desconocido',
+      }
+      setSelectedDestination(selected)
+      setDestination(selected.name)
+      setSuppressDestSuggestions(true)
+      setMapCenter([lat, lon])
+      setMapZoom(13)
       setError(null)
     } catch (error) {
       console.error('Error al seleccionar destino:', error)
@@ -1490,9 +1492,7 @@ export default function BusPlannerApp() {
                               variant="outline"
                               onClick={() => {
                                 const name = dest.displayName || dest.name
-                                setSuppressDestSuggestions(true)
-                                setDestination(name)
-                                setSelectedDestination({
+                                handleDestinationSelect({
                                   name: name,
                                   lat: dest.lat,
                                   lon: dest.lon,
