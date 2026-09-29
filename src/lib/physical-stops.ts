@@ -43,9 +43,24 @@ export async function queryPhysicalStops(q: StopQuery, client: PrismaClient = db
       stop_id: true, name: true, lat: true, lon: true, code: true, desc: true, zone_id: true, wheelchair_boarding: true,
       _count: { select: { stopRoutes: true, stopTimes: true } },
     } }) : [],
-    useCtp ? client.ctpStop.findMany({ where: cw, take, orderBy: { identityKey: 'asc' }, select: {
-      identityKey: true, name: true, lat: true, lon: true, province: true, canton: true, district: true,
-    } }).then(rows => ({ rows, available: true })).catch(error => { if (missingCtpTable(error)) return { rows: [], available: false }; throw error; }) : { rows: [], available: true },
+    useCtp ? (async () => {
+      const select = { identityKey: true, name: true, lat: true, lon: true, province: true, canton: true, district: true } as const;
+      const orderBy = { identityKey: 'asc' } as const;
+      // Prefer the actual district/canton over incidental substrings (Pital also matches "hospital").
+      const placeNames = q.search ? [...new Set([q.search, q.search.toLocaleLowerCase('es'), q.search.toLocaleUpperCase('es'),
+        q.search.toLocaleLowerCase('es').replace(/(^|\s)\p{L}/gu, letter => letter.toLocaleUpperCase('es'))])] : [];
+      const priority: Prisma.CtpStopWhereInput | undefined = q.search && !radial ? { OR: [
+        { province: { in: placeNames } }, { canton: { in: placeNames } }, { district: { in: placeNames } }, { name: { in: placeNames } },
+      ] } : undefined;
+      const [places, others] = await Promise.all([
+        priority ? client.ctpStop.findMany({ where: { AND: [cw, priority] }, take, orderBy, select }) : [],
+        client.ctpStop.findMany({ where: priority ? { AND: [cw,
+          { NOT: { OR: [{ province: { in: placeNames } }, { canton: { in: placeNames } }, { name: { in: placeNames } }] } },
+          { OR: [{ district: null }, { district: { notIn: placeNames } }] },
+        ] } : cw, take, orderBy, select }),
+      ]);
+      return { rows: [...places, ...others].slice(0, take), available: true };
+    })().catch(error => { if (missingCtpTable(error)) return { rows: [], available: false }; throw error; }) : { rows: [], available: true },
     useGtfs && !radial ? client.gtfsStop.count({ where: gw }) : 0,
     useCtp && !radial ? client.ctpStop.count({ where: cw }).catch(error => { if (missingCtpTable(error)) return 0; throw error; }) : 0,
   ]);

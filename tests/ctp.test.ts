@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { PrismaClient } from '@prisma/client';
 import { NextRequest } from 'next/server';
-import { identity, prepareImport, readCsv, resolveCtpInput, validateRow, type CsvRow } from '../src/lib/ctp-import';
+import { identity, prepareImport, readCsv, resolveCtpInput, validateRow, toCtpData, type CsvRow } from '../src/lib/ctp-import';
 import { queryPhysicalStops, parseStopQuery } from '../src/lib/physical-stops';
 import { reconcileStops, ciudadQuesadaCoverage } from '../src/lib/stop-reconciliation';
 import { CTP_STOP_NOTICE, CTP_ROUTING_NOTICE, stopNotice } from '../src/lib/stop-display';
@@ -162,4 +162,32 @@ test('CTP writes 101 accepted stops in three SQL batches and zero batches on rep
     await assert.rejects(importPrepared(client,broken,true));
     assert.deepEqual(await client.ctpStop.findMany({orderBy:{identityKey:'asc'}}),before);
   } finally {await client.$disconnect();}
+}));
+
+
+test('place search prioritizes Pital district over hospital substrings with stable pagination', async () => fixtures(async dir => {
+  const client = new PrismaClient({ datasourceUrl: `file:${path.join(dir, 'search.db')}` });
+  try {
+    for (const migration of ['20260917000000_baseline', '20260918000000_ctp_stops']) {
+      for (const sql of (await readFile(`prisma/migrations/${migration}/migration.sql`, 'utf8')).split(';').filter(s => s.trim())) await client.$executeRawUnsafe(sql);
+    }
+    for (const [identityKey, name, district, canton] of [
+      ['a', 'Hospital de otra zona', 'Otro', 'Otro'],
+      ['y', 'Parada norte', 'Pital', 'San Carlos'],
+      ['z', 'Parada sur', 'Pital', 'San Carlos'],
+    ]) {
+      await client.ctpStop.create({ data: { ...toCtpData({ ...sample, source_stop_identifier: identityKey, descripcion: name, district, canton }), identityKey } });
+    }
+    await client.ctpStop.create({ data: { ...toCtpData({ ...sample, source_stop_identifier: 'b', descripcion: 'Hospital con distrito ambiguo' }), identityKey: 'b', district: null } });
+    const first = await queryPhysicalStops({ source: 'CTP', search: 'Pital', limit: 1 }, client);
+    const second = await queryPhysicalStops({ source: 'CTP', search: 'Pital', limit: 1, offset: 1 }, client);
+    const last = await queryPhysicalStops({ source: 'CTP', search: 'Pital', limit: 1, offset: 2 }, client);
+    for (const search of ['pital', 'PITAL']) assert.equal((await queryPhysicalStops({ source: 'CTP', search, limit: 1 }, client)).stops[0].district, 'Pital');
+    assert.equal(first.total, 4); assert.equal(first.hasMore, true);
+    assert.equal(first.stops[0].district, 'Pital'); assert.equal(second.stops[0].district, 'Pital');
+    assert.notEqual(first.stops[0].id, second.stops[0].id);
+    assert.equal(last.stops[0].name, 'Hospital de otra zona'); assert.equal(last.hasMore, true);
+    const ambiguous = await queryPhysicalStops({ source: 'CTP', search: 'Pital', limit: 1, offset: 3 }, client);
+    assert.equal(ambiguous.stops[0].district, null); assert.equal(ambiguous.hasMore, false);
+  } finally { await client.$disconnect(); }
 }));

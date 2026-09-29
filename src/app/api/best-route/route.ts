@@ -1,3 +1,4 @@
+import { hasStoredTransitConnection } from '@/lib/transit-coverage';
 import { selectTripSegment } from '@/lib/trip-segments';
 import { routeMembership } from '@/lib/routing-membership';
 import { queryPhysicalStops } from '@/lib/physical-stops';
@@ -132,6 +133,8 @@ export async function GET(request: NextRequest) {
         origin: { lat: originLat, lon: originLon },
         destination: { lat: destLat, lon: destLon },
         routes: [],
+        routingSource: 'gtfs-local',
+        reason: 'no_coverage',
         message: await noRouteMessage(originLat, originLon),
       });
     }
@@ -143,6 +146,8 @@ export async function GET(request: NextRequest) {
         origin: { lat: originLat, lon: originLon },
         destination: { lat: destLat, lon: destLon },
         routes: [],
+        routingSource: 'gtfs-local',
+        reason: 'no_coverage',
         message: await noRouteMessage(destLat, destLon),
       });
     }
@@ -476,7 +481,16 @@ export async function GET(request: NextRequest) {
       routingSource: 'gtfs-local',
     };
 
-    return NextResponse.json({ ...response, ...(topRoutes.length === 0 ? { message: await noRouteMessage(originLat, originLon, destLat, destLon) } : {}) });
+    if (topRoutes.length === 0) {
+      const connected = await hasStoredTransitConnection(db, originStopIds, destStopIds);
+      return NextResponse.json({ ...response,
+        reason: connected ? 'no_scheduled_trip' : 'no_connection',
+        message: connected
+          ? 'Tenemos datos GTFS para este trayecto, pero no hay un viaje programado disponible después de la hora indicada en la fecha de hoy. Verifica los horarios con la empresa.'
+          : 'Todavía no contamos con una conexión de rutas GTFS para este trayecto. Las paradas físicas registradas no garantizan rutas ni horarios disponibles.',
+      });
+    }
+    return NextResponse.json(response);
   } catch (error: unknown) {
     const message = 'Error finding best route';
     console.error('Error finding best route:', { type: error instanceof Error ? error.name : 'UnknownError' });

@@ -2,7 +2,7 @@
 
 import { stopNotice, type PublicStop } from '@/lib/stop-display'
 
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import dynamic from 'next/dynamic'
 import { useMap } from 'react-leaflet'
 import { Focus, Minus, Plus } from '@/components/app-icons'
@@ -344,6 +344,17 @@ const BusMap = ({
   // válidas. Esperamos a que el mapa dispare su evento "ready" antes de permitir
   // cualquier fitBounds/setView programático.
   const [mapReady, setMapReady] = useState(false)
+  // React-Leaflet's whenReady fires before its forwarded ref is populated.
+  // Register the ready state only after receiving the actual map instance.
+  const handleMapRef = useCallback((map: any) => {
+    mapRef.current = map
+    if (!map) return
+    map.whenReady(() => {
+      setMapReady(true)
+      requestAnimationFrame(() => map.invalidateSize())
+    })
+  }, [])
+
 
   // Actualizar centro y zoom del mapa cuando cambian las props
   // NO actualizar cuando hay una ruta dibujada Y no se está en tracking — RouteBoundsFitter se encarga
@@ -759,17 +770,7 @@ const BusMap = ({
         className="w-full h-full"
         scrollWheelZoom={false}
         zoomControl={false}
-        ref={mapRef}
-        whenReady={() => {
-          // Se dispara una vez que Leaflet terminó su inicialización interna
-          // (incluyendo el cálculo del tamaño del contenedor). A partir de aquí
-          // es seguro llamar a fitBounds()/setView() sin riesgo de NaN.
-          setMapReady(true)
-          // Por si el contenedor cambia de tamaño justo después del montaje inicial
-          requestAnimationFrame(() => {
-            mapRef.current?.invalidateSize()
-          })
-        }}
+        ref={handleMapRef}
       >
         {/* Capa de OpenStreetMap */}
         <TileLayer

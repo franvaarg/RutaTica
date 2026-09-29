@@ -109,6 +109,7 @@ export default function BusPlannerApp() {
   const [mapCenter, setMapCenter] = useState<[number, number]>([9.9281, -84.0907])
   const [mapZoom, setMapZoom] = useState(14)
   const [noTransitMessage, setNoTransitMessage] = useState('')
+  const [noTransitReason, setNoTransitReason] = useState('')
   const [isUserInteracting, setIsUserInteracting] = useState(false)
   const [lastUserActivity, setLastUserActivity] = useState(0)
   const [manualCenter, setManualCenter] = useState<[number, number] | null>(null)
@@ -560,6 +561,7 @@ export default function BusPlannerApp() {
         setRoutePanelDismissed(false)
       } else {
         // No hay transporte público - mostrar notificación con info de ruta directa
+        setNoTransitReason(data.reason || '')
         setNoTransitMessage(data.message || 'No se encontraron rutas de autobús para este trayecto.')
         setHasPlanned(true)
         setPlannedRoutes([])
@@ -785,29 +787,9 @@ export default function BusPlannerApp() {
 
       } else {
         // No se encontraron rutas de bus — trazar ruta directa con OSRM
+        setNoTransitReason(data.reason || '')
         setNoTransitMessage(data.message || 'No se encontraron rutas de autobús para este trayecto.')
         setHasPlanned(true)
-
-        const directRoute: PlanatedRoute = {
-          id: 'direct-route-' + Math.random().toString(36).slice(2, 6),
-          company: 'Ruta Directa',
-          routeNumber: 'Directo',
-          origin: currentAddress || 'Tu ubicación',
-          destination: selectedDestination.name || destination,
-          price: 0,
-          currency: 'CRC',
-          boardingStop: {
-            name: currentAddress || 'Tu ubicación',
-            city: null,
-            coordinates: currentLocation ? { latitude: currentLocation.latitude, longitude: currentLocation.longitude } : { latitude: originLat, longitude: originLon },
-          },
-          destinationStop: {
-            name: selectedDestination.displayName || selectedDestination.name,
-            city: null,
-            coordinates: { latitude: selectedDestination.lat, longitude: selectedDestination.lon },
-          },
-          nearbyStops: [],
-        }
 
         setPlannedRoutes([])
         setSelectedRoute(null)
@@ -854,6 +836,7 @@ export default function BusPlannerApp() {
     setPlanning(false)
     setLoadingRoute(false)
     setNoTransitMessage('')
+    setNoTransitReason('')
     // Limpiar timer de auto-ocultar panel
     if (routePanelTimerRef.current) {
       clearTimeout(routePanelTimerRef.current)
@@ -1594,7 +1577,7 @@ export default function BusPlannerApp() {
                     <Bus className="w-4 h-4 text-amber-600" />
                   </div>
                   <div>
-                    <p className="text-sm font-semibold text-amber-800">Sin transporte público registrado</p>
+                    <p className="text-sm font-semibold text-amber-800">{noTransitReason === 'no_scheduled_trip' ? 'Sin viajes programados a esta hora' : 'Sin datos de rutas para este trayecto'}</p>
                     <p className="text-xs text-amber-700 mt-0.5">
                       {noTransitMessage || 'No se encontraron rutas de autobús para este trayecto.'}{routePath?.direct ? ' Se muestra una alternativa en automóvil en el mapa.' : ''}
                     </p>
@@ -1608,7 +1591,7 @@ export default function BusPlannerApp() {
                   <div className="space-y-2">
                     <div className="flex items-center gap-2">
                       <Navigation className="w-4 h-4 text-[#0052B4]" />
-                      <span className="text-xs font-semibold text-[#374151]">Ruta directa</span>
+                      <span className="text-xs font-semibold text-[#374151]">Alternativa en automóvil</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <div className="flex-1">
@@ -1636,8 +1619,8 @@ export default function BusPlannerApp() {
 
               {!routePath?.direct && (
                 <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg">
-                  <Loader2 className="w-4 h-4 text-[#0052B4] animate-spin flex-shrink-0" />
-                  <p className="text-xs text-[#0052B4]">Calculando ruta directa...</p>
+                  {(planning || loadingRoute) && <Loader2 className="w-4 h-4 text-[#0052B4] animate-spin flex-shrink-0" />}
+                  <p className="text-xs text-[#0052B4]">{planning || loadingRoute ? 'Consultando alternativa en automóvil...' : 'No se pudo obtener una alternativa en automóvil.'}</p>
                 </div>
               )}
             </div>
