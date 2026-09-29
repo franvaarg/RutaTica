@@ -1,11 +1,18 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { databaseUrl, postgresqlStagingUrl } from '../src/lib/environment';
+import { applicationDatabaseUrl, databaseUrl, postgresqlStagingUrl } from '../src/lib/environment';
 import { stagingManifest, verifyStagingCatalog, assertStagingMigrationTarget, STAGING_MIGRATION, type Catalog } from '../src/lib/postgresql-diagnostics';
 
 const sql = readFileSync(`prisma/postgresql/migrations/${STAGING_MIGRATION}/migration.sql`, 'utf8');
 const manifest = stagingManifest(sql);
+test('Vercel uses its bundled SQLite snapshot independently of local or staging URLs', () => {
+  for (const value of [undefined, 'file:./custom.db', 'file:/old/workspace/db/custom.db', 'postgresql://localhost/staging']) {
+    assert.equal(applicationDatabaseUrl(value, true, '/var/task'), 'file:/var/task/db/custom.db');
+  }
+  assert.equal(applicationDatabaseUrl('file:/tmp/candidate.db', false, '/app'), 'file:/tmp/candidate.db');
+  assert.throws(() => applicationDatabaseUrl('postgresql://localhost/staging', false));
+});
 function catalog(): Catalog {
   return {
     tables: manifest.tables.map(name => ({ name })),

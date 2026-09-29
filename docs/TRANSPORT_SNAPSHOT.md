@@ -2,6 +2,8 @@
 
 The deployed application reads `db/custom.db` (SQLite). PostgreSQL staging and OTP configuration are unchanged.
 
+On Vercel, the application resolves the bundled snapshot from the function working directory explicitly. A stale or absent `DATABASE_URL` cannot redirect the SQLite application to an operator database or a development-machine path. Outside Vercel, explicitly selected candidate URLs continue to work unchanged.
+
 ## Data and provenance
 
 The approved local exports were reused without downloading or rebuilding the CTP source:

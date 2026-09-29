@@ -1,4 +1,9 @@
 import { sqliteUrl } from './storage/sqlite';
+/** Vercel serves the reviewed snapshot traced into the function, never an operator database. */
+export function applicationDatabaseUrl(value: string | undefined, vercel = process.env.VERCEL === '1', root = process.cwd()) {
+  return vercel ? sqliteUrl('file:../db/custom.db', root) : databaseUrl(value, root, 'sqlite');
+}
+
 /** Provider must match the generated client. SQLite remains the application default. */
 export function databaseUrl(value: string | undefined, root = process.cwd(), provider: 'sqlite' | 'postgresql' = 'sqlite'): string | undefined {
   if (!value) return undefined;
