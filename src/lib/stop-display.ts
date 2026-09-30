@@ -1,5 +1,5 @@
 export const CTP_STOP_NOTICE = 'Parada oficial registrada por CTP. Ruta/horario todavía no disponible en RutaTica.';
-export const CTP_ROUTING_NOTICE = 'Hay paradas oficiales registradas en esta zona, pero los datos de rutas y horarios todavía no están disponibles para este trayecto.';
+export const CTP_ROUTING_NOTICE = 'Hay paradas oficiales registradas en esta zona, pero no hay un itinerario GTFS disponible para este trayecto. Puedes explorar recorridos ARESEP y paradas CTP en el mapa.';
 export type PublicStop = {
   id: string; stopId: string; name: string; lat: number; lon: number;
   source: 'GTFS' | 'CTP'; hasRouteData: boolean; routeCount: number;

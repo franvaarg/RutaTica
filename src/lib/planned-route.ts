@@ -1,3 +1,10 @@
+export type ItineraryStop = {
+  name: string; lat: number; lon: number; stopId?: string; tripId?: string;
+  stopSequence?: number; arrivalTime?: string; departureTime?: string;
+  routeNumber?: string; operator?: string; role?: 'boarding' | 'intermediate' | 'alighting';
+  source?: 'GTFS';
+}
+
 export interface PlanatedRoute {
   id: string
   company: string
@@ -33,7 +40,8 @@ export interface PlanatedRoute {
     distance: number
   }>
   // GTFS-specific fields
-  _stops?: Array<{ name: string; lat: number; lon: number }>
+  _stops?: ItineraryStop[]
+  _shapePaths?: Array<Array<{ lat: number; lon: number }>>
   _shapePoints?: Array<{ lat: number; lon: number }>
   _score?: number
   _departTime?: string
@@ -48,14 +56,14 @@ export interface PlanatedRoute {
 export function mapPlannedRoutes(routes: unknown[], routingSource: string): PlanatedRoute[] {
   return routes.map((r: any, index: number) => ({
           id: `${r.route?.routeId || 'R'}-${r.boardingStop?.name || 'A'}-${r.alightingStop?.name || 'B'}-${index}`,
-          company: r.route?.company || 'N/A',
-          routeNumber: r.route?.shortName || 'N/A',
+          company: r.route?.company || '',
+          routeNumber: r.route?.shortName || r.route?.longName || '',
           origin: r.boardingStop?.name || 'Origen',
           destination: r.alightingStop?.name || 'Destino',
           price: r.costCRC ?? null,
           currency: 'CRC',
           routingSource,
-          geometryAvailable: r.shapePoints?.length > 1,
+          geometryAvailable: r.shapePoints?.length > 1 || r.shapePaths?.some((path: unknown[]) => path.length > 1) || false,
           distanceKm: r.distanceKm ?? null,
           transitDistanceKm: r.transitDistanceKm ?? null,
           durationMin: r.totalTimeMinutes || null,
@@ -72,6 +80,7 @@ export function mapPlannedRoutes(routes: unknown[], routingSource: string): Plan
           nearbyStops: [],
           _stops: r.stops || [],
           _shapePoints: r.shapePoints || [],
+          _shapePaths: r.shapePaths || [],
           _score: r.score || 0,
           _departTime: r.departTime || '',
           _arriveTime: r.arriveTime || '',

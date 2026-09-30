@@ -17,6 +17,9 @@ export interface OtpRouteResult {
     to: { name: string; lat: number; lon: number };
     route?: { gtfsId?: string; shortName?: string; longName?: string };
     agency?: string;
+    departureTime?: string;
+    arrivalTime?: string;
+    stops: Array<{ name: string; lat: number; lon: number; stopId?: string; role: "boarding" | "intermediate" | "alighting"; source: "GTFS"; routeNumber?: string; operator?: string }>;
   }>;
 }
 
@@ -31,6 +34,8 @@ const OTP_QUERY = `query RutaTicaPlan($from: InputCoordinates!, $to: InputCoordi
         distance
         duration
         transitLeg
+        startTime endTime departureDelay arrivalDelay
+        intermediateStops { gtfsId name lat lon }
         legGeometry { points }
         from { name lat lon }
         to { name lat lon }
@@ -116,6 +121,9 @@ export async function planWithOtp(
     return itineraries.slice(0, 5).map((itinerary: any) => {
       const nonnegative = (n: unknown) => typeof n === 'number' && Number.isFinite(n) && n >= 0;
       if (!nonnegative(itinerary.duration) || !nonnegative(itinerary.walkDistance) || !nonnegative(itinerary.numberOfTransfers) || !Number.isInteger(itinerary.numberOfTransfers) || !Array.isArray(itinerary.legs) || !itinerary.legs.length || itinerary.legs.some((l: any) => !nonnegative(l.distance) || !nonnegative(l.duration) || typeof l.mode !== 'string' || typeof l.transitLeg !== 'boolean' || (l.transitLeg && typeof l.route?.gtfsId !== 'string') || ['shortName','longName'].some(k => l.route?.[k] != null && typeof l.route[k] !== 'string') || (l.agency?.name != null && typeof l.agency.name !== 'string') || [l.from, l.to].some(p => !p || typeof p.name !== 'string' || !Number.isFinite(p.lat) || !Number.isFinite(p.lon) || Math.abs(p.lat) > 90 || Math.abs(p.lon) > 180))) throw new Error('Invalid OTP itinerary');
+      for (const leg of itinerary.legs) {
+        if (leg.transitLeg && (!Array.isArray(leg.intermediateStops) || leg.intermediateStops.some((stop: any) => !stop || typeof stop.name !== 'string' || !Number.isFinite(stop.lat) || !Number.isFinite(stop.lon) || Math.abs(stop.lat) > 90 || Math.abs(stop.lon) > 180))) throw new Error('Missing authoritative OTP stops');
+      }
       const legs = itinerary.legs.map((leg: any) => ({
         mode: leg.mode,
         transitLeg: leg.transitLeg,
@@ -126,6 +134,13 @@ export async function planWithOtp(
         to: leg.to,
         route: leg.route || undefined,
         agency: leg.agency?.name,
+        departureTime: Number.isFinite(leg.startTime) && Number.isFinite(leg.departureDelay) ? serviceDateTime(new Date(leg.startTime - leg.departureDelay * 1000)).time : undefined,
+        arrivalTime: Number.isFinite(leg.endTime) && Number.isFinite(leg.arrivalDelay) ? serviceDateTime(new Date(leg.endTime - leg.arrivalDelay * 1000)).time : undefined,
+        stops: leg.transitLeg ? [leg.from, ...leg.intermediateStops, leg.to].map((stop: any, i: number, all: any[]) => ({
+          name: stop.name, lat: stop.lat, lon: stop.lon, stopId: stop.gtfsId,
+          source: 'GTFS' as const, routeNumber: leg.route?.shortName, operator: leg.agency?.name,
+          role: i === 0 ? 'boarding' as const : i === all.length - 1 ? 'alighting' as const : 'intermediate' as const,
+        })) : [],
       }));
       return {
         distanceKm: legs.reduce((sum: number, leg: any) => sum + leg.distanceKm, 0),

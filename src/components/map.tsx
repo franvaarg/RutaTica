@@ -1,5 +1,7 @@
 'use client'
 
+import type { AresepRoute, CorridorStop } from '@/lib/aresep-types'
+import type { ItineraryStop } from '@/lib/planned-route'
 import { stopNotice, type PublicStop } from '@/lib/stop-display'
 
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
@@ -50,6 +52,7 @@ const Popup = dynamic(
   () => import('react-leaflet').then((mod) => mod.Popup),
   { ssr: false }
 )
+const Tooltip = dynamic(() => import('react-leaflet').then(mod => mod.Tooltip), { ssr: false })
 const Polyline = dynamic(
   () => import('react-leaflet').then((mod) => mod.Polyline),
   { ssr: false }
@@ -79,7 +82,7 @@ function RouteBoundsFitter({
     if (isTracking) return
 
     // Serializar routePath para comparar cambios
-    const routeKey = JSON.stringify(routePath)
+    const routeKey = JSON.stringify([routePath, selectedRoute?.id])
     if (routeKey === prevRoutePathRef.current) return
     prevRoutePathRef.current = routeKey
 
@@ -91,6 +94,8 @@ function RouteBoundsFitter({
     if (routePath.walking2 && routePath.walking2.length > 0) allPoints.push(...routePath.walking2)
     if (routePath.direct && routePath.direct.length > 0) allPoints.push(...routePath.direct)
 
+    selectedRoute?._shapePaths?.forEach(path => allPoints.push(...path.map(p => [p.lat, p.lon] as [number, number])))
+    selectedRoute?._stops?.forEach(stop => allPoints.push([stop.lat, stop.lon]))
     if (allPoints.length === 0) return
 
     // Incluir la ubicación del usuario/origen en los bounds
@@ -113,7 +118,8 @@ function RouteBoundsFitter({
       // se corrige post-animación si el zoom resultante es muy bajo.
       map.fitBounds(allPoints, {
         maxZoom: 15,    // No acercarse más de 15
-        padding: [60, 60],
+        paddingTopLeft: [30, 100],
+        paddingBottomRight: map.getSize().x >= 640 ? [350, 90] : [30, Math.round(map.getSize().y * 0.5) + 20],
         animate: true,
         duration: 0.8,
       })
@@ -254,7 +260,10 @@ interface RouteStop {
 }
 
 interface PlannedRoute {
-  _stops?: Array<{ name: string; lat: number; lon: number }>
+  _shapePaths?: Array<Array<{ lat: number; lon: number }>>
+  _stops?: ItineraryStop[]
+  routeNumber?: string
+  company?: string
   id: string
   boardingStop: RouteStop & { coordinates?: { latitude: number; longitude: number } }
   destinationStop: (RouteStop & { coordinates?: { latitude: number; longitude: number } | null }) | null
@@ -332,6 +341,13 @@ const BusMap = ({
 }: BusMapProps) => {
   const [isMounted, setIsMounted] = useState(false)
   const [L, setL] = useState<any>(null)
+  const [aresepRoutes, setAresepRoutes] = useState<Array<AresepRoute & { nearbyStopCount: number; ctpAvailable: boolean }>>([])
+  const [aresepRoute, setAresepRoute] = useState<AresepRoute | null>(null)
+  const [corridorStops, setCorridorStops] = useState<CorridorStop[]>([])
+  const [aresepHint, setAresepHint] = useState('')
+  const [aresepRefresh, setAresepRefresh] = useState(0)
+  const aresepRequest = useRef<AbortController | null>(null)
+  const [aresepLoading, setAresepLoading] = useState(false)
   const [dbStops, setDbStops] = useState<PublicStop[]>([])
   const [stopHint, setStopHint] = useState('')
   const [loadingDbStops, setLoadingDbStops] = useState(false)
@@ -361,7 +377,7 @@ const BusMap = ({
   useEffect(() => {
     if (!mapRef.current || !center || !mapReady) return
     // Si hay ruta dibujada y NO estamos en tracking, RouteBoundsFitter controla el zoom via fitBounds
-    if (routePath && !isTracking) return
+    if ((routePath || aresepRoute) && !isTracking) return
 
     const map = mapRef.current
 
@@ -388,7 +404,7 @@ const BusMap = ({
         console.error('Error al llamar setView:', error, { center, zoom })
       }
     }
-  }, [center, zoom, mapReady, routePath, isTracking])
+  }, [center, zoom, mapReady, routePath, isTracking, aresepRoute])
 
   useEffect(() => {
     let mounted = true
@@ -433,6 +449,9 @@ const BusMap = ({
   // Query only the visible viewport, independently of route availability.
   useEffect(() => {
     if (!mapReady || !mapRef.current) return
+    setDbStops([])
+    setStopHint('')
+    if (selectedRoute || aresepRoute) return
     const map = mapRef.current
     let controller: AbortController | undefined
     let timer: ReturnType<typeof setTimeout>
@@ -461,11 +480,80 @@ const BusMap = ({
     update()
     map.on('moveend', update)
     return () => { controller?.abort(); clearTimeout(timer); map.off('moveend', update) }
-  }, [mapReady])
+  }, [mapReady, selectedRoute, aresepRoute])
+
+  useEffect(() => {
+    aresepRequest.current?.abort()
+    // Parent search/itinerary changes invalidate the external corridor selection.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setAresepRoute(null)
+    setCorridorStops([])
+    setAresepLoading(false)
+  }, [selectedRoute, center[0], center[1]])
+
+  useEffect(() => {
+    if (!mapReady || !mapRef.current || selectedRoute || aresepRoute) return
+    const map = mapRef.current
+    let controller: AbortController | undefined
+    let timer: ReturnType<typeof setTimeout>
+    const update = () => {
+      controller?.abort()
+      clearTimeout(timer)
+      setAresepRoutes([])
+      if (map.getZoom() < 12) { setAresepHint('Acerca el mapa para descubrir recorridos ARESEP.'); return }
+      timer = setTimeout(async () => {
+        controller = new AbortController()
+        const current = controller
+        const b = map.getBounds()
+        const bbox = [b.getSouth(), b.getWest(), b.getNorth(), b.getEast()].join(',')
+        setAresepHint('Consultando recorridos ARESEP…')
+        try {
+          const response = await fetch(`/api/aresep?bbox=${bbox}`, { signal: current.signal })
+          if (!response.ok) throw new Error('ARESEP lookup failed')
+          const data = await response.json()
+          if (current.signal.aborted) return
+          setAresepRoutes(data.routes)
+          setAresepHint(data.hasMore ? 'Se muestran 8 recorridos. Acerca el mapa para ver otros.' : !data.routes.length ? 'Sin recorridos ARESEP encontrados en esta área.' : '')
+        } catch {
+          if (!current.signal.aborted) setAresepHint('Recorridos ARESEP temporalmente no disponibles.')
+        }
+      }, 500)
+    }
+    update()
+    map.on('moveend', update)
+    return () => { controller?.abort(); clearTimeout(timer); map.off('moveend', update) }
+  }, [mapReady, selectedRoute, aresepRoute, aresepRefresh])
+
+  useEffect(() => () => aresepRequest.current?.abort(), [])
+
+  const selectAresep = async (route: AresepRoute) => {
+    aresepRequest.current?.abort()
+    const controller = new AbortController()
+    aresepRequest.current = controller
+    setAresepRoute(route)
+    setCorridorStops([])
+    setAresepLoading(true)
+    setAresepHint('Consultando paradas físicas cercanas al recorrido…')
+    const bounds: Array<[number, number]> = route.paths.flat().map(p => [p.lat, p.lon])
+    if (originCoordinates) bounds.push([originCoordinates.latitude, originCoordinates.longitude])
+    else if (userLocation) bounds.push(userLocation)
+    if (destinationCoordinates) bounds.push([destinationCoordinates.latitude, destinationCoordinates.longitude])
+    mapRef.current?.fitBounds(bounds, { paddingTopLeft: [30, 150], paddingBottomRight: [30, 90] })
+    try {
+      const response = await fetch(`/api/aresep?id=${encodeURIComponent(route.id)}`, { signal: controller.signal })
+      if (!response.ok) throw new Error('Corridor lookup failed')
+      const data = await response.json()
+      if (controller.signal.aborted) return
+      setCorridorStops(data.stops)
+      setAresepHint(!data.ctpAvailable ? 'Cobertura CTP pendiente de carga.' : `${data.total} paradas físicas cercanas al recorrido${data.hasMore ? ' · se muestran 500' : ''}. La cercanía no confirma servicio ni pertenencia a esta ruta.`)
+    } catch {
+      if (!controller.signal.aborted) setAresepHint('Paradas del corredor temporalmente no disponibles.')
+    } finally { if (!controller.signal.aborted) setAresepLoading(false) }
+  }
 
   const ctpIcon = useMemo(() => L ? L.divIcon({
-    className: '', html: '<span style="display:block;width:14px;height:14px;border:2px solid #64748b;background:white;border-radius:50%"></span>',
-    iconSize: [14, 14], iconAnchor: [7, 7],
+    className: '', html: '<span style="display:block;margin:5px;width:14px;height:14px;border:2px solid #64748b;background:white;border-radius:50%"></span>',
+    iconSize: [24, 24], iconAnchor: [12, 12],
   }) : null, [L])
 
   // Crear iconos personalizados con useMemo para evitar recreaciones
@@ -667,6 +755,12 @@ const BusMap = ({
     })
   }, [L])
 
+  const alightingIcon = useMemo(() => L ? L.divIcon({
+    className: 'custom-alighting-marker',
+    html: '<span style="display:flex;align-items:center;justify-content:center;width:36px;height:36px;border:3px solid white;background:#dc2626;border-radius:50%;color:white;font-size:22px;box-shadow:0 2px 6px #0004">↓</span>',
+    iconSize: [36, 36], iconAnchor: [18, 18],
+  }) : null, [L])
+
   const destinationIcon = useMemo(() => {
     if (!L) return null
     return L.divIcon({
@@ -685,6 +779,32 @@ const BusMap = ({
       iconAnchor: [24, 48],
     })
   }, [L])
+
+  const selectedStopMarkers = useMemo(() => {
+    const groups = new Map<string, ItineraryStop[]>()
+    for (const stop of selectedRoute?._stops || []) {
+      const key = `${stop.lat},${stop.lon}`
+      groups.set(key, [...(groups.get(key) || []), stop])
+    }
+    return [...groups.values()].map(calls => {
+      const boarding = calls.some(stop => stop.role === 'boarding')
+      const alighting = calls.some(stop => stop.role === 'alighting')
+      return { stop: calls[0], calls, boarding, alighting, label: boarding && alighting ? 'Sube aquí / Baja aquí' : boarding ? 'Sube aquí' : alighting ? 'Baja aquí' : 'Parada GTFS' }
+    })
+  }, [selectedRoute])
+
+  const approximatePaths = useMemo(() => {
+    if (!selectedRoute || routePath?.bus?.length) return []
+    const paths: Array<Array<[number, number]>> = []
+    let path: Array<[number, number]> = []
+    for (const stop of selectedRoute._stops || []) {
+      if (stop.role === 'boarding' && path.length) { if (path.length > 1) paths.push(path); path = [] }
+      path.push([stop.lat, stop.lon])
+      if (stop.role === 'alighting') { if (path.length > 1) paths.push(path); path = [] }
+    }
+    if (path.length > 1) paths.push(path)
+    return paths.filter((_, index) => !(selectedRoute._shapePaths?.[index]?.length && selectedRoute._shapePaths[index].length > 1))
+  }, [selectedRoute, routePath?.bus])
 
   // Crear polilínea para la ruta seleccionada
   const getRoutePolylines = () => {
@@ -710,8 +830,8 @@ const BusMap = ({
       if (routePath.walking && routePath.walking.length > 0) {
         polylines.push({
           positions: routePath.walking,
-          color: '#0052B4', // Azul para caminar
-          weight: 5,
+          color: '#64748b', // Caminata aproximada
+          weight: 3,
           dashArray: '10, 10',
         })
       }
@@ -720,7 +840,7 @@ const BusMap = ({
       if (routePath.bus && routePath.bus.length > 0) {
         polylines.push({
           positions: routePath.bus,
-          color: '#16a34a', // Verde para autobús
+          color: '#2563EB', // Azul para autobús
           weight: 6,
         })
       }
@@ -729,8 +849,8 @@ const BusMap = ({
       if (routePath.walking2 && routePath.walking2.length > 0) {
         polylines.push({
           positions: routePath.walking2,
-          color: '#0052B4', // Azul para caminar
-          weight: 5,
+          color: '#64748b', // Caminata aproximada
+          weight: 3,
           dashArray: '10, 10',
         })
       }
@@ -744,7 +864,7 @@ const BusMap = ({
         dashArray: '5, 5',
       })
     }
-    // Sin datos de ruta: NO dibujar líneas rectas — se mostrará "Ruta por definir"
+    // Missing shapes use the explicitly labeled stop-sequence reference paths above.
 
     return polylines
   }
@@ -763,6 +883,32 @@ const BusMap = ({
 
   return (
     <div className="relative w-full h-full min-h-[300px] rounded-lg overflow-hidden">
+      {!selectedRoute && <div className="absolute top-14 left-2 z-[1000] w-64 max-w-[70%] max-h-[45%] overflow-y-auto rounded-lg bg-white/95 p-2 shadow text-xs">
+        {aresepRoute ? <>
+          <details key={`aresep-${aresepRoute.id}`}>
+          <summary className="cursor-pointer font-semibold">Ruta / Ramal {aresepRoute.routeNumber} · información</summary>
+          {aresepRoute.operator && <p>{aresepRoute.operator}</p>}
+          {aresepRoute.description && <p>{aresepRoute.description}</p>}
+          <p>Fuente: ARESEP · Sin horario GTFS disponible para este recorrido</p>
+          <p role="status">{aresepHint}</p>
+          {aresepHint.includes('temporalmente') && <button type="button" className="min-h-11 underline" onClick={() => selectAresep(aresepRoute)}>Reintentar consulta de paradas</button>}
+          {!aresepLoading && !!corridorStops.length && <details><summary>Ver paradas físicas cercanas</summary><ul>{corridorStops.map(stop => <li key={stop.id}>{stop.name} · CTP</li>)}</ul></details>}
+          </details>
+          <p className="mt-1 text-slate-600">ARESEP · Sin horario GTFS disponible</p>
+          <button type="button" className="min-h-11 underline" onClick={() => { aresepRequest.current?.abort(); setAresepRoute(null); setCorridorStops([]) }}>Volver a explorar el área</button>
+        </> : <details key="aresep-discovery">
+          <summary className="cursor-pointer">Recorridos ARESEP en esta área ({aresepRoutes.length})</summary>
+          <p role="status">{aresepHint}</p>
+          {aresepHint.includes('temporalmente') && <button type="button" className="min-h-11 underline" onClick={() => setAresepRefresh(value => value + 1)}>Reintentar consulta ARESEP</button>}
+          {aresepRoutes.map(route => <button key={route.id} type="button" className="block w-full border-t py-2 text-left min-h-11" onClick={() => selectAresep(route)}>
+            <strong>Ruta / Ramal {route.routeNumber}</strong>
+            {route.operator && <p>{route.operator}</p>}{route.description && <p>{route.description}</p>}
+            <p>{route.ctpAvailable ? `${route.nearbyStopCount} paradas físicas cercanas al recorrido` : 'Cobertura CTP pendiente de carga'}</p>
+            <p>Fuente: ARESEP · Sin horario GTFS disponible para este recorrido</p>
+          </button>)}
+        </details>}
+      </div>}
+      {!!approximatePaths.length && <p className="absolute bottom-20 left-2 z-[1000] max-w-[70%] rounded bg-white/95 px-2 py-1 text-xs text-slate-700 pointer-events-none">Recorrido aproximado entre paradas GTFS. No representa el trazado de calles.</p>}
       {stopHint && <p role="status" className="absolute bottom-6 left-2 right-2 z-[1000] bg-white/95 rounded px-2 py-1 text-xs text-slate-600 pointer-events-none">{stopHint}</p>}
       <MapContainer
         center={center}
@@ -797,7 +943,7 @@ const BusMap = ({
         />
 
         {/* Polilíneas de la ruta seleccionada o conexión directa */}
-        {getRoutePolylines().map((polyline, index) => (
+        {!aresepRoute && getRoutePolylines().map((polyline, index) => (
           <Polyline
             key={index}
             positions={polyline.positions}
@@ -805,13 +951,22 @@ const BusMap = ({
               color: polyline.color,
               weight: polyline.weight,
               dashArray: polyline.dashArray,
-              opacity: 0.8,
+              opacity: 0.95,
             }}
           />
         ))}
 
+        {approximatePaths.map((path, index) => <Polyline key={`approximate-${index}`} positions={path} pathOptions={{ color: '#2563EB', weight: 6, dashArray: '8, 6', opacity: 0.95 }} />)}
+        {selectedRoute?._shapePaths?.map((path, index) => path.length > 1 ? <Polyline key={`gtfs-leg-${index}`} positions={path.map(p => [p.lat, p.lon])} pathOptions={{ color: '#2563EB', weight: 6 }} /> : null)}
+        {!selectedRoute && aresepRoute?.paths.map((path, index) => <Polyline key={`aresep-${index}`} positions={path.map(p => [p.lat, p.lon])} pathOptions={{ color: '#2563EB', weight: 6 }} />)}
+        {!selectedRoute && aresepRoute && corridorStops.map(stop => <Marker key={stop.id} position={[stop.lat, stop.lon]} icon={ctpIcon} title={`CTP: ${stop.name}`}>
+          <Popup autoPanPaddingTopLeft={[10, 150]}><strong>Parada física cercana al recorrido</strong><p>{stop.name}</p>
+            <p>{[stop.district, stop.canton, stop.province].filter(Boolean).join(', ')}</p>
+            <p>{stop.lat.toFixed(5)}, {stop.lon.toFixed(5)}</p><p>Fuente: CTP</p><p>{stop.relationship}</p>
+          </Popup>
+        </Marker>)}
         {/* Marcador de origen (ubicación del usuario) */}
-        {userLocation && (
+        {userLocation && (!originCoordinates || isTracking) && (
           <Marker
             position={userLocation}
             icon={isTracking ? trackingIcon : (selectedRoute ? userIcon : originIcon)}
@@ -846,14 +1001,27 @@ const BusMap = ({
           </Marker>
         )}
 
-        {selectedRoute?._stops?.map((stop, index) => (
-          <Marker key={`selected-${index}`} position={[stop.lat, stop.lon]} icon={busStationIcon} zIndexOffset={500}>
-            <Popup><strong>Parada de la ruta seleccionada</strong><p>{stop.name}</p></Popup>
+        {selectedRoute && selectedStopMarkers.map(({ stop, calls, boarding, alighting, label }, index) => (
+          <Marker key={`selected-${index}`} position={[stop.lat, stop.lon]} title={`${label}: ${stop.name}`}
+            icon={boarding ? boardingIcon : alighting ? alightingIcon : ctpIcon} zIndexOffset={boarding || alighting ? 500 : 100}>
+            {(boarding || alighting) && <Tooltip permanent direction={boarding ? 'top' : 'bottom'}>{label}</Tooltip>}
+            <Popup>
+              <strong>{label}</strong><p>{stop.name}</p>
+              {calls.map((call, callIndex) => <div key={callIndex} className={callIndex ? 'mt-2 border-t pt-2' : ''}>
+                {calls.length > 1 && <p>{call.role === 'boarding' ? 'Sube aquí' : call.role === 'alighting' ? 'Baja aquí' : 'Parada intermedia'}</p>}
+                {call.stopSequence !== undefined && <p>Secuencia: {call.stopSequence}</p>}
+                <p>Ruta {call.routeNumber || selectedRoute.routeNumber}</p>
+                {(call.operator || selectedRoute.company) && <p>{call.operator || selectedRoute.company}</p>}
+                {call.arrivalTime && <p>Llegada: {call.arrivalTime}</p>}
+                {call.departureTime && <p>Salida: {call.departureTime}</p>}
+              </div>)}
+              <p>Fuente: GTFS</p>
+            </Popup>
           </Marker>
         ))}
 
         {/* Marcadores de paradas de buses de la base de datos (resaltados) */}
-        {dbStops && dbStops.length > 0 && (
+        {!selectedRoute && !aresepRoute && dbStops && dbStops.length > 0 && (
           <>
             {dbStops.map((stop) => (
               <Marker
@@ -888,7 +1056,7 @@ const BusMap = ({
         )}
 
         {/* Marcador de parada de embarque */}
-        {selectedRoute?.boardingStop?.coordinates && (
+        {!selectedRoute?._stops?.length && selectedRoute?.boardingStop?.coordinates && (
           <Marker
             position={[selectedRoute.boardingStop.coordinates.latitude, selectedRoute.boardingStop.coordinates.longitude]}
             icon={boardingIcon}
@@ -905,14 +1073,14 @@ const BusMap = ({
         )}
 
         {/* Marcador de destino */}
-        {selectedRoute?.destinationStop?.coordinates && (
+        {!selectedRoute?._stops?.length && selectedRoute?.destinationStop?.coordinates && (
           <Marker
             position={[selectedRoute.destinationStop.coordinates.latitude, selectedRoute.destinationStop.coordinates.longitude]}
             icon={destinationIcon}
           >
             <Popup>
               <div className="text-sm p-1 min-w-32">
-                <strong className="text-[#E31837]">🏁 Destino</strong>
+                <strong className="text-[#E31837]">Baja aquí</strong>
                 <br />
                 {selectedRoute.destinationStop.name}
                 {selectedRoute.destinationStop.city && <><br /><span className="text-xs text-[#6B7280]">{selectedRoute.destinationStop.city}</span></>}
@@ -938,7 +1106,7 @@ const BusMap = ({
         )}
 
         {/* Marcador de parada más cercana (solo cuando no hay ruta ni destino seleccionado) */}
-        {!selectedRoute && !destinationCoordinates && nearestStop && (
+        {!selectedRoute && !aresepRoute && !destinationCoordinates && nearestStop && (
           <Marker
             position={[nearestStop.coordinates.latitude, nearestStop.coordinates.longitude]}
             icon={stopIcon}
@@ -954,7 +1122,7 @@ const BusMap = ({
         )}
 
         {/* Marcadores de paradas de autobús de OpenStreetMap */}
-        {busStops && busStops.length > 0 && (
+        {!selectedRoute && !aresepRoute && busStops && busStops.length > 0 && (
           <>
             {busStops.map((stop) => (
               <Marker

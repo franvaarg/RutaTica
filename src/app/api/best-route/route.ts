@@ -1,3 +1,4 @@
+import type { ItineraryStop } from '@/lib/planned-route';
 import { hasStoredTransitConnection } from '@/lib/transit-coverage';
 import { selectTripSegment } from '@/lib/trip-segments';
 import { routeMembership } from '@/lib/routing-membership';
@@ -7,7 +8,7 @@ import { invalidQuery, badQuery } from '@/lib/api-validation';
 import { serviceDateTime } from '@/lib/service-date';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { findNearestStops, pathDistanceKm, slicePathBetween, slicePathByDistance, walkingTimeMinutes } from '@/lib/spatial';
+import { findNearestStops, usableTripShape, pathDistanceKm, slicePathBetween, slicePathByDistance, walkingTimeMinutes } from '@/lib/spatial';
 import { timeToMinutes, minutesToTime, getActiveServiceIdsToday } from '@/lib/time-utils';
 import { loadScoringConfig, scoreAndSortRoutes, RouteOption } from '@/lib/route-scoring';
 import { planWithOtp } from '@/lib/otp-client';
@@ -29,8 +30,9 @@ interface RouteResult {
   route: { routeId: string; shortName: string; longName: string; color: string; company: string };
   departTime: string;
   arriveTime: string;
-  stops: { name: string; lat: number; lon: number; time: string }[];
+  stops: (ItineraryStop & { time: string })[];
   shapePoints: { lat: number; lon: number }[];
+  shapePaths?: Array<Array<{ lat: number; lon: number }>>;
   transferInfo?: { transferStop: string; waitMinutes: number; secondRoute: string };
 }
 
@@ -105,14 +107,12 @@ export async function GET(request: NextRequest) {
             color: '#16a34a',
             company: firstTransit.agency || '',
           },
-          departTime: '',
-          arriveTime: '',
-          stops: itinerary.legs.flatMap((leg) => [
-            { name: leg.from.name, lat: leg.from.lat, lon: leg.from.lon, time: '' },
-            { name: leg.to.name, lat: leg.to.lat, lon: leg.to.lon, time: '' },
-          ]),
+          departTime: firstTransit.departureTime || '',
+          arriveTime: lastTransit.arrivalTime || '',
+          stops: transitLegs.flatMap(leg => leg.stops.map(stop => ({ ...stop, time: '' }))),
           // Do not connect disconnected transit legs with an invented bus segment.
           shapePoints: transitLegs.length === 1 ? transitLegs[0].geometry : [],
+          shapePaths: transitLegs.length > 1 ? transitLegs.map(leg => leg.geometry) : [],
         };
       });
       return NextResponse.json({
@@ -276,7 +276,7 @@ export async function GET(request: NextRequest) {
         shapeId: string | null;
         boardTime: string;
         alightTime: string;
-        intermediateStops: { name: string; lat: number; lon: number; time: string }[];
+        intermediateStops: (ItineraryStop & { time: string })[];
         boardShapeDistance: number | null;
         alightShapeDistance: number | null;
       } | null = null;
@@ -311,6 +311,9 @@ export async function GET(request: NextRequest) {
             lat: st.stop.lat,
             lon: st.stop.lon,
             time: st.arrival_time,
+            stopId: st.stop_id, tripId: trip.trip_id, stopSequence: st.stop_sequence,
+            arrivalTime: st.arrival_time, departureTime: st.departure_time, source: 'GTFS' as const,
+            role: st.stop_sequence === boardSt.stop_sequence ? 'boarding' as const : st.stop_sequence === alightSt.stop_sequence ? 'alighting' as const : 'intermediate' as const,
           }));
 
           bestOption = {
@@ -388,7 +391,7 @@ export async function GET(request: NextRequest) {
         },
         departTime: bestOption.boardTime,
         arriveTime: bestOption.alightTime,
-        stops: bestOption.intermediateStops,
+        stops: bestOption.intermediateStops.map(stop => ({ ...stop, routeNumber: rd?.shortName, operator: rd?.agencyName })),
         shapePoints,
         _shapeId: bestOption.shapeId,
         _boardDistance: bestOption.boardShapeDistance,
@@ -450,6 +453,7 @@ export async function GET(request: NextRequest) {
             { lat: option.boardingStop.lat, lon: option.boardingStop.lon },
             { lat: option.alightingStop.lat, lon: option.alightingStop.lon }
           );
+          if (!usableTripShape(option.shapePoints, option.stops)) option.shapePoints = [];
           if (option.distanceSource === 'stop_geometry' && option.shapePoints.length > 1) {
             option.transitDistanceKm = pathDistanceKm(option.shapePoints);
             option.distanceKm = option.walkingDistanceKm + option.transitDistanceKm;
@@ -659,7 +663,7 @@ async function findTransferRoutes(
       shapeId: string | null;
       departTime: string;
       arriveTime: string;
-      stops: { name: string; lat: number; lon: number; time: string }[];
+      stops: (ItineraryStop & { time: string })[];
     } | null = null;
 
     for (const trip of firstTrips) {
@@ -704,6 +708,9 @@ async function findTransferRoutes(
             lat: st.stop.lat,
             lon: st.stop.lon,
             time: st.arrival_time,
+            stopId: st.stop_id, tripId: trip.trip_id, stopSequence: st.stop_sequence,
+            arrivalTime: st.arrival_time, departureTime: st.departure_time, source: 'GTFS' as const,
+            role: st.stop_sequence === boardSt.stop_sequence ? 'boarding' as const : st.stop_sequence === alightSt.stop_sequence ? 'alighting' as const : 'intermediate' as const,
           })),
         };
       }
@@ -727,7 +734,7 @@ async function findTransferRoutes(
       shapeId: string | null;
       departTime: string;
       arriveTime: string;
-      stops: { name: string; lat: number; lon: number; time: string }[];
+      stops: (ItineraryStop & { time: string })[];
     } | null = null;
 
     for (const trip of secondTrips) {
@@ -773,6 +780,9 @@ async function findTransferRoutes(
             lat: st.stop.lat,
             lon: st.stop.lon,
             time: st.arrival_time,
+            stopId: st.stop_id, tripId: trip.trip_id, stopSequence: st.stop_sequence,
+            arrivalTime: st.arrival_time, departureTime: st.departure_time, source: 'GTFS' as const,
+            role: st.stop_sequence === boardSt.stop_sequence ? 'boarding' as const : st.stop_sequence === alightSt.stop_sequence ? 'alighting' as const : 'intermediate' as const,
           })),
         };
       }
@@ -807,10 +817,16 @@ async function findTransferRoutes(
 
     const firstRd = routeDetails.get(firstRouteId);
 
+    const shapePaths = await Promise.all([bestFirstLeg, bestSecondLeg].map(async leg => {
+      if (!leg.shapeId) return [];
+      const points = await db.gtfsShape.findMany({ where: { shape_id: leg.shapeId }, orderBy: { shape_pt_sequence: 'asc' } });
+      const shape = slicePathBetween(points.map(p => ({ lat: p.shape_pt_lat, lon: p.shape_pt_lon })), leg.stops[0], leg.stops.at(-1)!);
+      return usableTripShape(shape, leg.stops) ? shape : [];
+    }));
+
     const allStops = [
-      ...bestFirstLeg.stops,
-      { name: transferStop.name, lat: transferStop.lat, lon: transferStop.lon, time: bestSecondLeg.departTime },
-      ...bestSecondLeg.stops.slice(1),
+      ...bestFirstLeg.stops.map(stop => ({ ...stop, routeNumber: firstRd?.shortName, operator: firstRd?.agencyName })),
+      ...bestSecondLeg.stops.map(stop => ({ ...stop, routeNumber: routeDetails.get(secondRouteId)?.shortName, operator: routeDetails.get(secondRouteId)?.agencyName })),
     ];
     const transitDistanceKm = pathDistanceKm(allStops.map((stop) => ({ lat: stop.lat, lon: stop.lon })));
     const walkingDistanceKm = walkDistOrigin + walkDistDest;
@@ -848,6 +864,7 @@ async function findTransferRoutes(
       arriveTime: bestSecondLeg.arriveTime,
       stops: allStops,
       shapePoints: [],
+      shapePaths,
       transferInfo: {
         transferStop: transferStop.name,
         waitMinutes: Math.max(transferWait, 0),

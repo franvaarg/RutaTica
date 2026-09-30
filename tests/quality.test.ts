@@ -53,9 +53,13 @@ test('OTP query uses TransportMode inputs and only verified transit legs become 
       return Response.json({data:{plan:{itineraries:[itinerary]}}});
     };
     assert.deepEqual(await planWithOtp(leg.from,leg.to,new Date()),[]);
-    itinerary.legs=[{...leg,mode:'BUS',transitLeg:true,route:{gtfsId:'feed:route'}} as typeof leg];
+    itinerary.legs=[{...leg,mode:'BUS',transitLeg:true,route:{gtfsId:'feed:route'},intermediateStops:[{gtfsId:'feed:middle',name:'Middle',lat:10.05,lon:-84}]} as typeof leg];
     const result=await planWithOtp(leg.from,leg.to,new Date());
     assert.equal(result?.length,1); assert.equal(result?.[0].legs[0].transitLeg,true);
+    assert.deepEqual(result?.[0].legs[0].stops.map(s=>s.role),['boarding','intermediate','alighting']);
+    assert.equal(result?.[0].legs[0].stops[1].stopId,'feed:middle');
+    itinerary.legs=[{...leg,mode:'BUS',transitLeg:true,route:{gtfsId:'feed:route'}} as typeof leg];
+    assert.equal(await planWithOtp(leg.from,leg.to,new Date()),null);
     itinerary.legs=[{...leg,mode:'BUS',transitLeg:true}];
     assert.equal(await planWithOtp(leg.from,leg.to,new Date()),null);
     globalThis.fetch=async()=>new Response('not json');

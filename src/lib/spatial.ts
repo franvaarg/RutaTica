@@ -226,3 +226,12 @@ export function slicePathByDistance(
   };
   return [interpolate(start), ...points.filter(p => p.distance! > start && p.distance! < end).map(p => ({lat:p.lat,lon:p.lon})), interpolate(end)];
 }
+
+/** Reject obvious coordinate jumps without correcting or inventing feed geometry. */
+export function usableTripShape(points: Coordinate[], stops: Coordinate[]): boolean {
+  if (points.length < 2 || stops.length < 2) return false;
+  const maxJumpKm = Math.max(25, pathDistanceKm(stops) * 2);
+  return points.every((point, index) => Number.isFinite(point.lat) && Number.isFinite(point.lon)
+    && Math.abs(point.lat) <= 90 && Math.abs(point.lon) <= 180
+    && (index === 0 || haversineDistance(points[index - 1].lat, points[index - 1].lon, point.lat, point.lon) <= maxJumpKm));
+}

@@ -1726,7 +1726,7 @@ export default function BusPlannerApp() {
                       <p className="text-xs text-gray-700 break-words">
                         {route.routingSource === 'otp' ? 'Ruta OTP' : 'Horario GTFS · alternativa local'}
                         {route.routingSource !== 'otp' && ' · caminata y distancia aproximadas'}
-                        {!route.geometryAvailable && ' · trazado no disponible'}
+                        {!route.geometryAvailable && (route._stops && route._stops.length > 1 ? ' · recorrido aproximado entre paradas' : ' · trazado no disponible')}
                       </p>
                       {/* Key Metrics - Compact */}
                       <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-md p-2 shadow-sm">
@@ -1759,6 +1759,21 @@ export default function BusPlannerApp() {
                         </div>
                       </div>
 
+                      {route._transfers !== undefined && <p className="text-xs">{route._transfers + 1} {route._transfers === 0 ? 'bus · sin transbordos' : `buses · ${route._transfers} transbordo${route._transfers === 1 ? '' : 's'}`}</p>}
+                      {!!route._walkingDistanceKm && <p className="text-xs">≈ {Math.ceil(route._walkingDistanceKm / 5 * 60)} min caminando</p>}
+                      {route._departTime && <p className="text-xs">Salida: {route._departTime}</p>}
+                      {route._arriveTime && <p className="text-xs">Llegada: {route._arriveTime}</p>}
+                      {!!route._stops?.length && <details onClick={event => event.stopPropagation()} className="text-xs py-2">
+                        <summary className="cursor-pointer">Ver paradas · {route._stops.filter(stop => stop.role === 'intermediate').length} intermedias</summary>
+                        <ol className="space-y-2 mt-2 border-l-2 border-slate-200 pl-3">
+                          {route._stops.map((stop, index) => <li key={`${stop.tripId}-${index}`}>
+                            <strong>{stop.role === 'boarding' ? '● Sube aquí: ' : stop.role === 'alighting' ? '● Baja aquí: ' : '○ '}{stop.name}</strong>
+                            <p>{stop.routeNumber || route.routeNumber}{stop.operator ? ` · ${stop.operator}` : ''} · GTFS{stop.stopSequence !== undefined ? ` · Secuencia ${stop.stopSequence}` : ''}</p>
+                            {stop.arrivalTime && <p>Llegada: {stop.arrivalTime}</p>}
+                            {stop.departureTime && <p>Salida: {stop.departureTime}</p>}
+                          </li>)}
+                        </ol>
+                      </details>}
                       {/* Route Path Details - Compact */}
                       <div className="bg-gradient-to-r from-blue-50 to-red-50 rounded-md p-2 flex items-center gap-1.5">
                         <div className="flex flex-col items-center">
@@ -1767,13 +1782,13 @@ export default function BusPlannerApp() {
                           <div className="w-2 h-2 rounded-full bg-[#E31837]" />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-[11px] font-semibold text-[#374151] truncate">{route.boardingStop.name}</p>
+                          <p className="text-[11px] font-semibold text-[#374151] truncate">Sube aquí: {route.boardingStop.name}</p>
                           <div className="flex items-center gap-0.5 my-0">
                             <ArrowRight className="w-2.5 h-2.5 text-[#9CA3AF] flex-shrink-0" />
                             <span className="text-[9px] text-[#6B7280]">{route._boardingStopDistanceKm ? `${route._boardingStopDistanceKm.toFixed(1)} km` : ''}</span>
                           </div>
                           <p className="text-[11px] font-semibold text-[#374151] truncate">
-                            {route.destinationStop?.name || route.destination}
+                            Baja aquí: {route.destinationStop?.name || route.destination}
                           </p>
                         </div>
                       </div>
