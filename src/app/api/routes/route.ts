@@ -73,7 +73,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ routes: formattedRoutes, total });
   } catch (error: unknown) {
-    const message = 'Error fetching routes';
+    const message = 'No se pudieron consultar las rutas. Intenta de nuevo.';
     console.error('Error fetching routes:', { type: error instanceof Error ? error.name : 'UnknownError' });
     return NextResponse.json({ error: message }, { status: 500 });
   }

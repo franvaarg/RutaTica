@@ -40,7 +40,7 @@ export async function GET(
     });
 
     if (!trip) {
-      return NextResponse.json({ error: 'Trip not found' }, { status: 404 });
+      return NextResponse.json({ error: 'No encontramos el viaje solicitado.' }, { status: 404 });
     }
 
     let shape: { lat: number; lon: number }[] = [];
@@ -90,7 +90,7 @@ export async function GET(
       shape,
     });
   } catch (error: unknown) {
-    const message = 'Error fetching trip';
+    const message = 'No se pudo consultar el viaje. Intenta de nuevo.';
     console.error('Error fetching trip:', { type: error instanceof Error ? error.name : 'UnknownError' });
     return NextResponse.json({ error: message }, { status: 500 });
   }

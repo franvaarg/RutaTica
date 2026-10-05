@@ -11,6 +11,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ ...result, stops: result.stops.map(({ distanceKm, ...stop }) => ({ stop, distanceKm })) });
   } catch (error) {
     console.error('Error finding nearest stop:', { type: error instanceof Error ? error.name : 'UnknownError' });
-    return NextResponse.json({ error: 'Error finding nearest stop' }, { status: 500 });
+    return NextResponse.json({ error: 'No se pudo encontrar una parada cercana. Intenta de nuevo.' }, { status: 500 });
   }
 }

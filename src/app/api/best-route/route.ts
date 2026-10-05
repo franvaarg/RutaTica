@@ -58,7 +58,7 @@ export async function GET(request: NextRequest) {
 
     if (!originLatStr || !originLonStr || !destLatStr || !destLonStr) {
       return NextResponse.json(
-        { error: 'originLat, originLon, destLat, and destLon are required' },
+        { error: 'Selecciona un origen y un destino para buscar tu ruta.' },
         { status: 400 }
       );
     }
@@ -71,7 +71,7 @@ export async function GET(request: NextRequest) {
     if (
       [originLat, originLon, destLat, destLon].some((v) => !Number.isFinite(v)) || Math.abs(originLat) > 90 || Math.abs(destLat) > 90 || Math.abs(originLon) > 180 || Math.abs(destLon) > 180 || !/^[0-2]\d:[0-5]\d:[0-5]\d$/.test(departAfter) || Number(departAfter.slice(0, 2)) > 23
     ) {
-      return NextResponse.json({ error: 'Invalid coordinates' }, { status: 400 });
+      return NextResponse.json({ error: 'Revisa el origen, el destino y la hora del viaje.' }, { status: 400 });
     }
 
     const departAfterMinutes = timeToMinutes(departAfter);
@@ -514,7 +514,7 @@ export async function GET(request: NextRequest) {
     }
     return NextResponse.json(response);
   } catch (error: unknown) {
-    const message = 'Error finding best route';
+    const message = 'No se pudo consultar la ruta. Intenta de nuevo en un momento.';
     console.error('Error finding best route:', { type: error instanceof Error ? error.name : 'UnknownError' });
     return NextResponse.json({ error: message }, { status: 500 });
   }

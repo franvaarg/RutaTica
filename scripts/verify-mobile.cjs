@@ -21,7 +21,8 @@ const fs=require('node:fs');
   page.on('pageerror',e=>errors.push(e.message));
   page.on('console',msg=>{if(msg.type()==='error'&&/hydration|did not match|React error/i.test(msg.text()))errors.push(msg.text())});
   // External outages are deliberate; all application/SQLite APIs remain real.
-  await page.route('https://**/*',route=>route.abort());
+  const appOrigin = new URL(process.env.APP_URL || 'http://127.0.0.1:3100').origin;
+  await page.route('https://**/*',route=>new URL(route.request().url()).origin === appOrigin ? route.continue() : route.abort());
   await page.goto(process.env.APP_URL || 'http://127.0.0.1:3100',{waitUntil:'networkidle',timeout:120000});
   await page.getByRole('button',{name:'Abrir menú'}).click();
   const input=page.getByRole('combobox',{name:'Escribe el destino...'});

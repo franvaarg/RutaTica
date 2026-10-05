@@ -14,7 +14,8 @@ const base = process.env.APP_URL || 'http://127.0.0.1:3100';
    // The bundled calendar has morning departures; the test can run at any hour.
    let data;
    await page.route('**/api/best-route?**',async request=>{
-    const url=new URL(request.request().url());url.searchParams.set('departAfter','04:00:00');
+    const url=new URL(request.request().url());
+    if (!process.env.LIVE_CURRENT_TIME) url.searchParams.set('departAfter','04:00:00');
     const response=await request.fetch({url:url.toString(),timeout:120000});assert.equal(response.status(),200);
     data=await response.json();assert.ok(data.routes.length);await request.fulfill({response,json:data});
    });
@@ -91,7 +92,11 @@ const base = process.env.APP_URL || 'http://127.0.0.1:3100';
    const progressText = await progress.innerText();
    await page.getByRole('button',{name:'Detener Viaje',exact:true}).click();
    await page.getByRole('button',{name:'Finalizar Viaje',exact:true}).click();
+   assert.equal(await page.locator('.leaflet-marker-icon[title^="Sube aquí:"],.leaflet-marker-icon[title^="Baja aquí:"],.leaflet-marker-icon[title^="Parada:"],path.leaflet-interactive[stroke="#2563EB"]').count(),0,'reset clears route and stop layers');
+   assert.equal(await page.getByRole('heading',{name:/Tu viaje/}).count(),0,'reset clears results');
+   assert.equal(await page.getByText('Viaje en curso',{exact:true}).count(),0,'reset clears trip');
    await page.getByRole('button',{name:'Abrir menú'}).click();
+   assert.equal(await page.getByRole('combobox',{name:'Escribe el destino...'}).inputValue(),'','reset clears destination');
    await page.getByRole('button',{name:'Eliminar Casa',exact:true}).click();
    assert.equal(await page.getByRole('button',{name:'Ir a Casa',exact:true}).count(),0);
    assert.deepEqual(errors,[]);

@@ -13,6 +13,7 @@ Planifica viajes en autobús entre localidades y lugares de Costa Rica.
 - La ruta seleccionada es azul. El mapa muestra únicamente las paradas entre la subida y la bajada, incluidos los extremos e intermedias; no muestra paradas de otros recorridos. Las etiquetas permanentes se limitan a “Sube aquí” y “Baja aquí”; tocar una parada muestra sus detalles.
 - Guarda cualquier origen o destino en este navegador, cambia su nombre a Casa/Trabajo y elimínalo cuando quieras. Las ubicaciones guardadas aparecen al enfocar un campo vacío y en el menú. Se conserva el almacenamiento de versiones anteriores.
 - **Iniciar viaje** activa el seguimiento directamente. **Viaje en curso** muestra destino, próxima parada, paradas restantes, minutos restantes estimados y dónde bajar. El panel es inferior y compacto en móvil. El destino permanece visible al iniciar el viaje.
+- Durante la consulta se muestra **Buscando ruta...** y se bloquean envíos repetidos. Cambiar origen, destino o reiniciar limpia el recorrido y el seguimiento anterior y cancela la consulta pendiente. Los fallos muestran mensajes en español y permiten volver a buscar.
 
 ## Datos y duración
 
@@ -42,7 +43,7 @@ git diff --check
 
 El entorno de desarrollo requiere su configuración de base de datos; no se publican credenciales ni archivos `.env`. Consultar `AGENTS.md` y las guías de la versión instalada de Next.js antes de modificar código.
 
-`scripts/verify-active-trip.cjs` verifica el flujo de escritorio/móvil y puede ejecutarse con `APP_URL=https://ruta-tica.vercel.app` y `PLAYWRIGHT_MODULE` apuntando a una instalación externa de Playwright. Usa el planificador real con una salida matutina para probar el calendario limitado; el movimiento GPS se simula. `tests/derived-transit.test.ts` verifica filtrado de instalaciones, orden del tramo y rechazo de asociaciones sin confirmar.
+`scripts/verify-active-trip.cjs` verifica el flujo de escritorio/móvil y puede ejecutarse con `APP_URL=https://ruta-tica.vercel.app` y `PLAYWRIGHT_MODULE` apuntando a una instalación externa de Playwright. Usa el planificador real con una salida matutina para probar el calendario limitado; `LIVE_CURRENT_TIME=1` conserva la hora actual de la consulta. El movimiento GPS se simula. También comprueba que finalizar limpie el recorrido, las paradas, los resultados y el destino. `tests/derived-transit.test.ts` verifica filtrado de instalaciones, orden del tramo y rechazo de asociaciones sin confirmar.
 
 La búsqueda pública de Nominatim se activa mediante **Buscar lugares**, no con cada pulsación; se cachea y limita a una solicitud por segundo por instancia. El proveedor puede cambiarse con `NOMINATIM_SEARCH_URL`. El uso público debe mantenerse moderado, con el límite agregado de una solicitud por segundo para la aplicación, según la [política de Nominatim](https://operations.osmfoundation.org/policies/nominatim/). Para escalar se necesita un proveedor o instancia propios. La atribución de OpenStreetMap permanece en el mapa.
 

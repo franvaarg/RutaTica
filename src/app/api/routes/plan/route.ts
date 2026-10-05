@@ -70,7 +70,7 @@ export async function GET(request: NextRequest) {
         : 'This endpoint now delegates to /api/best-route. Please provide lat, lon, and destination query parameters.',
     });
   } catch (error: unknown) {
-    const message = 'Error planning route';
+    const message = 'No se pudo buscar la ruta. Intenta de nuevo.';
     console.error('Error planning route:', { type: error instanceof Error ? error.name : 'UnknownError' });
     return NextResponse.json({ success: false, error: message }, { status: 500 });
   }

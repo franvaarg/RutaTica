@@ -90,6 +90,8 @@ export default function BusPlannerApp() {
   const [routePath, setRoutePath] = useState<RoutePath | null>(null)
   const routePathRef = useRef<RoutePath | null>(null)
   const routeGeneration = useRef(0)
+  const routeRequest = useRef<AbortController | null>(null)
+  const routeSubmitting = useRef(false)
   const [busStops, setBusStops] = useState<BusStop[] | null>(null)
   const [hasPlanned, setHasPlanned] = useState(false)
   const [loadingLocation, setLoadingLocation] = useState(false)
@@ -143,6 +145,22 @@ export default function BusPlannerApp() {
   }
   const invalidateJourney = () => {
     routeGeneration.current++
+    routeRequest.current?.abort()
+    routeRequest.current = null
+    routeSubmitting.current = false
+    setPlanning(false)
+    setLoadingRoute(false)
+    setNoTransitMessage('')
+    setNoTransitReason('')
+    setError(null)
+    setIsTripPaused(false)
+    setTripStartTime(null)
+    setElapsedTime(0)
+    setPassedStopIndex(-1)
+    setShowArrivalNotification(false)
+    setShowCountdown(false)
+    if (countdownRef.current) clearInterval(countdownRef.current)
+    countdownRef.current = null
     if (trackingId !== null) navigator.geolocation?.clearWatch(trackingId)
     setTrackingId(null)
     setIsTracking(false)
@@ -698,6 +716,7 @@ export default function BusPlannerApp() {
   }
 
   const handlePlanRoute = async () => {
+    if (routeSubmitting.current) return
     if (!selectedDestination) {
       if (!destination.trim()) {
         setError('Por favor ingresa un destino')
@@ -721,7 +740,13 @@ export default function BusPlannerApp() {
       return;
     }
 
-    const generation = ++routeGeneration.current
+    invalidateJourney()
+    const generation = routeGeneration.current
+    const controller = new AbortController()
+    routeRequest.current = controller
+    routeSubmitting.current = true
+    setPlanning(true)
+    setLoadingRoute(true)
     setNearbyRadiusKm(null)
 
     // Asegurar que el panel de rutas será visible
@@ -744,10 +769,6 @@ export default function BusPlannerApp() {
       ? (currentLocation?.longitude ?? -84.0907)
       : (selectedOrigin?.lon ?? -84.0907)
 
-    // Guardar la ruta actual antes de limpiar para preservarla si no hay rutas de bus
-    const previousRoutePath = routePathRef.current
-    const previousSelectedRoute = selectedRoute
-
     setPlanning(true)
     setLoadingRoute(true)
     setError(null)
@@ -764,7 +785,7 @@ export default function BusPlannerApp() {
         destLon: selectedDestination.lon.toString(),
       })
 
-      const response = await fetch(`/api/best-route?${params}`, { signal: AbortSignal.timeout(20000) })
+      const response = await fetch(`/api/best-route?${params}`, { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(20000)]) })
       if (!response.ok) throw new Error('Error al buscar rutas')
 
       const data = await response.json()
@@ -866,14 +887,20 @@ export default function BusPlannerApp() {
       setSelectedRoute(null)
       setPlannedRoutes([])
       setError('Error al buscar rutas. Por favor intenta de nuevo.')
+      setHasPlanned(true)
+      setRoutePanelDismissed(false)
     } finally {
-      if (generation === routeGeneration.current) setPlanning(false)
-      setLoadingRoute(false)
+      if (generation === routeGeneration.current) {
+        setPlanning(false)
+        setLoadingRoute(false)
+        routeSubmitting.current = false
+        routeRequest.current = null
+      }
     }
   }
 
   const handleResetSearch = () => {
-    routeGeneration.current++
+    invalidateJourney()
     setPlanning(false)
     setLoadingRoute(false)
     setNoTransitMessage('')
@@ -1162,6 +1189,12 @@ export default function BusPlannerApp() {
     <div
       className="app-viewport relative w-full overflow-hidden bg-gray-100"
     >
+      {planning && (
+        <div role="status" aria-live="polite" className="absolute top-20 left-1/2 -translate-x-1/2 z-[1200] flex items-center gap-2 rounded-xl bg-white px-4 py-3 shadow-lg text-sm text-gray-800">
+          <Loader2 aria-hidden="true" className="h-5 w-5 animate-spin" />
+          Buscando ruta...
+        </div>
+      )}
       {/* Full Screen Map - Siempre visible */}
       <div className="absolute inset-0 z-0">
         <BusMap
@@ -1361,6 +1394,7 @@ export default function BusPlannerApp() {
                               id="location-toggle"
                               checked={useCurrentLocation}
                               onCheckedChange={(checked) => {
+                                invalidateJourney()
                                 setUseCurrentLocation(checked)
                                 if (!checked) {
                                   setSelectedOrigin(null)
@@ -1569,7 +1603,7 @@ export default function BusPlannerApp() {
                   variant="outline"
                   size="sm"
                   onClick={handleResetSearch}
-                  className="text-sm border-white/40 text-white hover:bg-white/20 hover:text-white hover:border-white/60"
+                  className="min-h-11 bg-transparent text-sm border-white/60 text-white hover:bg-white/20 hover:text-white hover:border-white"
                 >
                   <X className="w-4 h-4 mr-1" />
                   Reiniciar
@@ -1657,6 +1691,13 @@ export default function BusPlannerApp() {
                   }`}
                   onClick={async () => {
                     const generation = ++routeGeneration.current
+                    routeRequest.current?.abort()
+                    routeRequest.current = null
+                    routeSubmitting.current = false
+                    setPlanning(false)
+                    setLoadingRoute(false)
+                    setRoutePath(null)
+                    routePathRef.current = null
                     setSelectedRoute(route)
                     const rp: RoutePath = {}
                     const promises: Promise<void>[] = []

@@ -51,7 +51,7 @@ export async function GET(
       })),
     });
   } catch (error: unknown) {
-    const message = 'Error fetching fare';
+    const message = 'No se pudo consultar la tarifa. Intenta de nuevo.';
     console.error('Error fetching fare:', { type: error instanceof Error ? error.name : 'UnknownError' });
     return NextResponse.json({ error: message }, { status: 500 });
   }

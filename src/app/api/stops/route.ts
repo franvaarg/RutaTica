@@ -9,6 +9,6 @@ export async function GET(request: NextRequest) {
   try { return NextResponse.json(await queryPhysicalStops(query)); }
   catch (error) {
     console.error('Error fetching stops:', { type: error instanceof Error ? error.name : 'UnknownError' });
-    return NextResponse.json({ error: 'Error fetching stops' }, { status: 500 });
+    return NextResponse.json({ error: 'No se pudieron consultar las paradas. Intenta de nuevo.' }, { status: 500 });
   }
 }

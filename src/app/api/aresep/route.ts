@@ -9,12 +9,12 @@ export async function GET(request: NextRequest) {
   try {
     if (id) { if (!/^\d{1,10}$/.test(id)) throw new Error('Invalid ID'); }
     else { bbox = parseStopQuery(p).bbox; if (!bbox) throw new Error('Area required'); }
-  } catch { return NextResponse.json({ error: 'Invalid area or route' }, { status: 400 }); }
+  } catch { return NextResponse.json({ error: 'Revisa la zona o el recorrido seleccionado.' }, { status: 400 }); }
   try {
     const result = await getAresepRoutes(bbox, id || undefined);
     if (id) {
       const route = result.routes[0];
-      if (!route) return NextResponse.json({ error: 'Route not found' }, { status: 404 });
+      if (!route) return NextResponse.json({ error: 'No encontramos la ruta solicitada.' }, { status: 404 });
       const physical = await getCorridorStops(route);
       return NextResponse.json({ route, ...physical, normalized: normalizeDerivedRoute(route, physical.stops) });
     }

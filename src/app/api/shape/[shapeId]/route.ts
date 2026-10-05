@@ -22,7 +22,7 @@ export async function GET(
     });
 
     if (shapePoints.length === 0) {
-      return NextResponse.json({ error: 'Shape not found' }, { status: 404 });
+      return NextResponse.json({ error: 'No encontramos el recorrido solicitado.' }, { status: 404 });
     }
 
     const points = shapePoints.map((p) => ({
@@ -34,7 +34,7 @@ export async function GET(
 
     return NextResponse.json({ points });
   } catch (error: unknown) {
-    const message = 'Error fetching shape';
+    const message = 'No se pudo consultar el recorrido. Intenta de nuevo.';
     console.error('Error fetching shape:', { type: error instanceof Error ? error.name : 'UnknownError' });
     return NextResponse.json({ error: message }, { status: 500 });
   }

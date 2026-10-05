@@ -45,7 +45,7 @@ export async function GET() {
 
     return NextResponse.json({ companies: companiesWithCounts });
   } catch (error: unknown) {
-    const message = 'Error fetching companies';
+    const message = 'No se pudieron consultar las empresas. Intenta de nuevo.';
     console.error('Error fetching companies:', { type: error instanceof Error ? error.name : 'UnknownError' });
     return NextResponse.json({ error: message }, { status: 500 });
   }
