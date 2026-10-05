@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { parseStopQuery } from '@/lib/physical-stops';
 import { getAresepRoutes, getCorridorStops } from '@/lib/aresep';
+import { normalizeDerivedRoute } from '@/lib/derived-transit';
 export async function GET(request: NextRequest) {
   const p = request.nextUrl.searchParams;
   const id = p.get('id');
@@ -14,7 +15,8 @@ export async function GET(request: NextRequest) {
     if (id) {
       const route = result.routes[0];
       if (!route) return NextResponse.json({ error: 'Route not found' }, { status: 404 });
-      return NextResponse.json({ route, ...await getCorridorStops(route) });
+      const physical = await getCorridorStops(route);
+      return NextResponse.json({ route, ...physical, normalized: normalizeDerivedRoute(route, physical.stops) });
     }
     const routes = await Promise.all(result.routes.map(async route => {
       const { total, ctpAvailable } = await getCorridorStops(route);

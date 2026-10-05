@@ -1,5 +1,5 @@
-export const CTP_STOP_NOTICE = 'Parada oficial registrada por CTP. Ruta/horario todavía no disponible en RutaTica.';
-export const CTP_ROUTING_NOTICE = 'Hay paradas oficiales registradas en esta zona, pero no hay un itinerario GTFS disponible para este trayecto. Puedes explorar recorridos ARESEP y paradas CTP en el mapa.';
+export const CTP_STOP_NOTICE = 'Parada registrada. Confirma el servicio y el sentido antes de abordar.';
+export const CTP_ROUTING_NOTICE = 'Hay paradas registradas en esta zona, pero todavía no tenemos una conexión de autobús confirmada para este viaje. Prueba con otra localidad cercana.';
 export type PublicStop = {
   id: string; stopId: string; name: string; lat: number; lon: number;
   source: 'GTFS' | 'CTP'; hasRouteData: boolean; routeCount: number;
@@ -8,5 +8,5 @@ export type PublicStop = {
   wheelchairBoarding: number | null; distanceKm?: number;
 };
 export function stopNotice(stop: Pick<PublicStop, 'source' | 'hasRouteData'>) {
-  return stop.source === 'CTP' ? CTP_STOP_NOTICE : stop.hasRouteData ? 'Parada con rutas asociadas en GTFS.' : 'Parada GTFS sin rutas asociadas disponibles.';
+  return stop.source === 'CTP' ? CTP_STOP_NOTICE : stop.hasRouteData ? 'Parada con servicio de autobús.' : 'Parada sin servicio confirmado disponible.';
 }

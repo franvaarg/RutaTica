@@ -30,13 +30,13 @@ const fs=require('node:fs');
   await input.press('Escape');assert.equal(await input.getAttribute('aria-expanded'),'false');
   await input.press('ArrowDown');await input.press('Enter');
   await page.getByRole('button',{name:'Buscar Ruta',exact:true}).click();
-  await page.getByText('Hay paradas oficiales registradas', {exact:false}).waitFor({timeout:45000});
+  await page.getByText('Hay paradas registradas', {exact:false}).waitFor({timeout:45000});
   assert.equal(await page.getByText('Ruta OTP',{exact:true}).count(),0);
   await page.getByRole('button',{name:'Ver mapa / cerrar resultados'}).click();
   await page.getByRole('button',{name:'Acercar',exact:true}).click();
   await page.getByRole('button',{name:'Alejar',exact:true}).click();
-  await page.getByRole('button',{name:'Ver resultados',exact:true}).click();
-  await page.getByText('Hay paradas oficiales registradas', {exact:false}).waitFor();
+  await page.getByRole('button',{name:'Ver detalles',exact:true}).click();
+  await page.getByText('Hay paradas registradas', {exact:false}).waitFor();
   const dimensions=await page.evaluate(()=>({width:innerWidth,body:document.body.scrollWidth}));
   assert.ok(dimensions.body<=width,`Overflow at ${width}`);assert.deepEqual(errors,[]);
   // A short viewport approximates the reduced space when the soft keyboard opens.

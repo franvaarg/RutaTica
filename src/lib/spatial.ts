@@ -1,4 +1,6 @@
 import { db } from '@/lib/db';
+import { TRANSIT_ESTIMATES } from './transit-estimates';
+import { isPassengerStop } from './passenger-stops';
 
 /**
  * Haversine formula to calculate distance between two coordinates in kilometers.
@@ -145,7 +147,7 @@ export async function findNearestStops(
       stop,
       distanceKm: haversineDistance(lat, lon, stop.lat, stop.lon),
     }))
-    .filter((s) => s.distanceKm <= maxDistanceKm)
+    .filter((s) => s.distanceKm <= maxDistanceKm && isPassengerStop(s.stop.name, s.stop.desc || ''))
     .sort((a, b) => a.distanceKm - b.distanceKm)
     .slice(0, limit);
 
@@ -207,7 +209,7 @@ export function midpoint(
  * Assumes average walking speed of 5 km/h.
  */
 export function walkingTimeMinutes(distanceKm: number): number {
-  return (distanceKm / 5) * 60;
+  return (distanceKm / TRANSIT_ESTIMATES.walkingSpeedKmh) * 60;
 }
 
 /** Clip using feed distance units without assuming those units are kilometers. */

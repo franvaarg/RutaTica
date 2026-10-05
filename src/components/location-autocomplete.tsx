@@ -1,6 +1,6 @@
 'use client'
 
-import type { PublicStop } from '@/lib/stop-display'
+import { isPassengerStop } from '@/lib/passenger-stops'
 
 import { useState, useEffect, useRef, useId } from 'react'
 import { Search, MapPin, Home, Building2, X, Loader2 } from 'lucide-react'
@@ -31,7 +31,10 @@ interface LocationAutocompleteProps {
   disabled?: boolean
   /** When true, suggestions are hidden and no search is triggered. Resets on next user keystroke. */
   suppressSuggestions?: boolean
+  savedLocations?: Array<{ name: string; lat: number; lon: number; displayName?: string; label?: string }>
 }
+
+const foldSearch = (value: string) => value.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase()
 
 // Datos en memoria de ubicaciones comunes de Costa Rica (usadas como sugerencias iniciales)
 const COSTA_RICA_LOCATIONS: LocationSuggestion[] = [
@@ -54,22 +57,9 @@ const COSTA_RICA_LOCATIONS: LocationSuggestion[] = [
   { id: '17', name: 'Puriscal', displayName: 'Puriscal - San José', type: 'ciudad', lat: 9.8511, lon: -84.3294, fullAddress: 'Santiago, Puriscal, San José, Costa Rica', locationData: { provincia: 'San José', canton: 'Puriscal', localidad: 'Santiago', barrio: '' } },
   { id: '18', name: 'Escazú', displayName: 'Escazú - San José', type: 'ciudad', lat: 9.9280, lon: -84.1417, fullAddress: 'Escazú, Escazú, San José, Costa Rica', locationData: { provincia: 'San José', canton: 'Escazú', localidad: 'Escazú', barrio: '' } },
   { id: '19', name: 'Santa Ana', displayName: 'Santa Ana - San José', type: 'ciudad', lat: 9.9333, lon: -84.1817, fullAddress: 'Santa Ana, Santa Ana, San José, Costa Rica', locationData: { provincia: 'San José', canton: 'Santa Ana', localidad: 'Santa Ana', barrio: '' } },
+  { id: 'sjf', name: 'San Joaquín', displayName: 'San Joaquín - Flores - Heredia', type: 'localidad', lat: 10.0031, lon: -84.1546, fullAddress: 'San Joaquín, Flores, Heredia, Costa Rica' },
   { id: '20', name: 'Alajuelita', displayName: 'Alajuelita - San José', type: 'ciudad', lat: 9.9017, lon: -84.1028, fullAddress: 'Alajuelita, Alajuelita, San José, Costa Rica', locationData: { provincia: 'San José', canton: 'Alajuelita', localidad: 'Alajuelita', barrio: '' } },
 ]
-
-async function searchOfficialStops(query: string, signal: AbortSignal): Promise<LocationSuggestion[]> {
-  try {
-    const responses = await Promise.all(['GTFS','CTP'].map(source => fetch(`/api/stops?search=${encodeURIComponent(query)}&source=${source}&limit=3`, { signal: AbortSignal.any([signal, AbortSignal.timeout(5000)]) })))
-    const payloads = await Promise.all(responses.map(async response => response.ok ? response.json() : { stops: [] }))
-    const data = { stops: payloads.flatMap(payload => payload.stops) }
-    return data.stops.map((s: PublicStop) => ({
-      id: s.id, name: s.name, lat: s.lat, lon: s.lon, type: 'lugar',
-      displayName: `${s.name} — ${s.source === 'CTP' ? 'CTP · sin ruta/horario disponible' : 'GTFS'}`,
-      fullAddress: [s.district, s.canton, s.province].filter(Boolean).join(', '),
-      locationData: { barrio: '', localidad: '', canton: s.canton || '', provincia: s.province || '' },
-    }))
-  } catch { return [] }
-}
 
 // Mapear tipos de Nominatim a nuestros tipos
 function mapNominatimType(nominatimType: string, addr: any): 'barrio' | 'localidad' | 'ciudad' | 'lugar' {
@@ -86,6 +76,7 @@ export default function LocationAutocomplete({
   placeholder = "Escribe el destino...",
   disabled = false,
   suppressSuggestions = false,
+  savedLocations = [],
 }: LocationAutocompleteProps) {
   const [suggestions, setSuggestions] = useState<LocationSuggestion[]>([])
   const [selectedLocation, setSelectedLocation] = useState<LocationSuggestion | null>(null)
@@ -152,15 +143,14 @@ export default function LocationAutocomplete({
 
       // Primero buscar en memoria para ubicaciones comunes
       const memoryResults = COSTA_RICA_LOCATIONS.filter(loc =>
-        loc.name.toLowerCase().includes(query.toLowerCase()) ||
-        loc.displayName.toLowerCase().includes(query.toLowerCase()) ||
+        foldSearch(loc.name).includes(foldSearch(query)) ||
+        foldSearch(loc.displayName).includes(foldSearch(query)) ||
         loc.locationData?.provincia?.toLowerCase().includes(query.toLowerCase()) ||
         loc.locationData?.canton?.toLowerCase().includes(query.toLowerCase())
       )
 
       results = memoryResults
-      const officialStops = await searchOfficialStops(query, controller.signal)
-      results = [...results.slice(0, 5), ...officialStops]
+      results = results.slice(0, 6)
       // Usar setTimeout para evitar setState síncrono en effect
       setTimeout(() => {
         if (cancelled || controller.signal.aborted) return
@@ -169,6 +159,7 @@ export default function LocationAutocomplete({
         setSuggestions(results)
         setShowSuggestions(true)
         setLoading(false)
+        // Broaden through a place provider only on explicit request.
       }, 0)
     }, 400)
 
@@ -229,11 +220,11 @@ export default function LocationAutocomplete({
       if (!response.ok) throw new Error('Search unavailable')
       const data = await response.json()
       if (controller.signal.aborted) return
-      setSuggestions(current => [...data.locations, ...current.filter(s => String(s.id).startsWith('CTP:') || String(s.id).startsWith('GTFS:'))])
+      setSuggestions((data.locations || []).filter((item: LocationSuggestion) => isPassengerStop(item.name, item.fullAddress)).slice(0, 8))
       setShowSuggestions(true)
       setActiveIndex(-1)
     } catch {
-      if (!controller.signal.aborted) setSearchError('No se pudieron buscar lugares. Puedes elegir una parada o reintentar.')
+      if (!controller.signal.aborted) setSearchError('No se pudieron buscar lugares. Intenta con otra localidad o reintenta.')
     } finally {
       if (!controller.signal.aborted) setLoading(false)
     }
@@ -253,6 +244,9 @@ export default function LocationAutocomplete({
     if (e.key === 'Enter' && showSuggestions && suggestions[activeIndex]) {
       e.preventDefault()
       handleSelect(suggestions[activeIndex])
+    } else if (e.key === 'Enter' && displayValue.trim().length >= 2) {
+      e.preventDefault()
+      searchPlaces()
     }
   }
 
@@ -272,6 +266,11 @@ export default function LocationAutocomplete({
           }}
           onKeyDown={handleKeyDown}
           onFocus={() => {
+            if (!displayValue && savedLocations.length) {
+              setSuggestions(savedLocations.map((item, index) => ({ id: `saved-${index}`, name: item.name, lat: item.lat, lon: item.lon, displayName: item.label ? `${item.label} · ${item.name}` : item.displayName || item.name, fullAddress: 'Ubicación guardada', type: 'lugar' })))
+              setShowSuggestions(true)
+              return
+            }
             if (!selectedLocation && !suppressSuggestions && displayValue.length >= 2 && suggestions.length > 0) {
               setShowSuggestions(true)
             }
@@ -352,7 +351,7 @@ export default function LocationAutocomplete({
               ))}
             </div>
           )}
-          <button type="button" className="min-h-11 w-full px-3 text-sm text-blue-800" disabled={loading} onClick={searchPlaces}>Buscar más lugares</button>
+          <button type="button" className="min-h-11 w-full px-3 text-sm text-blue-800" disabled={loading} onClick={searchPlaces}>Buscar lugares</button>
           {searchError && <p role="status" className="p-3 text-sm text-red-700">{searchError}</p>}
         </div>
       )}

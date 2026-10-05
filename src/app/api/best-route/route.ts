@@ -1,3 +1,5 @@
+import { findVerifiedDerivedJourneys } from '@/lib/verified-derived-routes';
+import { isPassengerStop } from '@/lib/passenger-stops';
 import type { ItineraryStop } from '@/lib/planned-route';
 import { hasStoredTransitConnection } from '@/lib/transit-coverage';
 import { selectTripSegment } from '@/lib/trip-segments';
@@ -8,12 +10,13 @@ import { invalidQuery, badQuery } from '@/lib/api-validation';
 import { serviceDateTime } from '@/lib/service-date';
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { findNearestStops, usableTripShape, pathDistanceKm, slicePathBetween, slicePathByDistance, walkingTimeMinutes } from '@/lib/spatial';
+import { findNearestStops, haversineDistance, usableTripShape, pathDistanceKm, slicePathBetween, slicePathByDistance, walkingTimeMinutes } from '@/lib/spatial';
 import { timeToMinutes, minutesToTime, getActiveServiceIdsToday } from '@/lib/time-utils';
 import { loadScoringConfig, scoreAndSortRoutes, RouteOption } from '@/lib/route-scoring';
 import { planWithOtp } from '@/lib/otp-client';
 
 interface RouteResult {
+  dataKind?: 'OFFICIAL_GTFS' | 'DERIVED_GTFS';
   _boardDistance?: number | null;
   _alightDistance?: number | null;
   score: number;
@@ -72,6 +75,11 @@ export async function GET(request: NextRequest) {
     }
 
     const departAfterMinutes = timeToMinutes(departAfter);
+    const derivedFallback = async () => {
+      const routes = await findVerifiedDerivedJourneys({ lat: originLat, lon: originLon }, { lat: destLat, lon: destLon });
+      return routes.length ? NextResponse.json({ origin: { lat: originLat, lon: originLon }, destination: { lat: destLat, lon: destLon }, routes, routingSource: 'derived-gtfs' }) : null;
+    };
+
 
 
     // OTP 2 GTFS GraphQL is preferred when configured. A failed or empty OTP
@@ -82,8 +90,14 @@ export async function GET(request: NextRequest) {
       { lat: destLat, lon: destLon },
       departure
     );
-    if (otpRoutes?.length) {
-      const routes: RouteResult[] = otpRoutes.map((itinerary) => {
+    const usableOtpRoutes = (otpRoutes || []).filter(itinerary => {
+      const legs = itinerary.legs.filter(leg => leg.transitLeg), first = legs[0], last = legs.at(-1);
+      return first && last && isPassengerStop(first.from.name) && isPassengerStop(last.to.name)
+        && haversineDistance(originLat, originLon, first.from.lat, first.from.lon) <= 1
+        && haversineDistance(destLat, destLon, last.to.lat, last.to.lon) <= 1;
+    });
+    if (usableOtpRoutes.length) {
+      const routes: RouteResult[] = usableOtpRoutes.map((itinerary) => {
         const transitLegs = itinerary.legs.filter((leg) => leg.transitLeg);
         const firstTransit = transitLegs[0] || itinerary.legs[0];
         const lastTransit = transitLegs.at(-1) || itinerary.legs.at(-1)!;
@@ -129,6 +143,7 @@ export async function GET(request: NextRequest) {
     // Step 1: Find nearest origin stops (within 1km)
     const originStops = await findNearestStops(originLat, originLon, 1, 10);
     if (originStops.length === 0) {
+      const derived = await derivedFallback(); if (derived) return derived;
       return NextResponse.json({
         origin: { lat: originLat, lon: originLon },
         destination: { lat: destLat, lon: destLon },
@@ -142,6 +157,7 @@ export async function GET(request: NextRequest) {
     // Step 2: Find nearest destination stops (within 1km)
     const destStops = await findNearestStops(destLat, destLon, 1, 10);
     if (destStops.length === 0) {
+      const derived = await derivedFallback(); if (derived) return derived;
       return NextResponse.json({
         origin: { lat: originLat, lon: originLon },
         destination: { lat: destLat, lon: destLon },
@@ -368,6 +384,7 @@ export async function GET(request: NextRequest) {
         transitDistanceKm: Math.round(transitDistanceKm * 1000) / 1000,
         distanceSource: 'stop_geometry',
         durationSource: 'gtfs_schedule',
+        dataKind: 'OFFICIAL_GTFS',
         transfers: 0,
         costCRC: cost,
         boardingStop: {
@@ -486,12 +503,13 @@ export async function GET(request: NextRequest) {
     };
 
     if (topRoutes.length === 0) {
+      const derived = await derivedFallback(); if (derived) return derived;
       const connected = await hasStoredTransitConnection(db, originStopIds, destStopIds);
       return NextResponse.json({ ...response,
         reason: connected ? 'no_scheduled_trip' : 'no_connection',
         message: connected
-          ? 'Tenemos datos GTFS para este trayecto, pero no hay un viaje programado disponible después de la hora indicada en la fecha de hoy. Verifica los horarios con la empresa.'
-          : 'Todavía no contamos con una conexión de rutas GTFS para este trayecto. Las paradas físicas registradas no garantizan rutas ni horarios disponibles.',
+          ? 'No hay salidas disponibles a esta hora. Prueba más temprano o consulta el horario con la empresa.'
+          : 'Todavía no tenemos una conexión de autobús confirmada entre estos lugares. Prueba con otra localidad cercana.',
       });
     }
     return NextResponse.json(response);
@@ -703,7 +721,7 @@ async function findTransferRoutes(
           shapeId: trip.shape_id,
           departTime: boardSt.departure_time,
           arriveTime: alightSt.arrival_time,
-          stops: allSt.map((st) => ({
+          stops: allSt.filter(st => isPassengerStop(st.stop.name)).map((st) => ({
             name: st.stop.name,
             lat: st.stop.lat,
             lon: st.stop.lon,
@@ -775,7 +793,7 @@ async function findTransferRoutes(
           shapeId: trip.shape_id,
           departTime: boardSt.departure_time,
           arriveTime: alightSt.arrival_time,
-          stops: allSt.map((st) => ({
+          stops: allSt.filter(st => isPassengerStop(st.stop.name)).map((st) => ({
             name: st.stop.name,
             lat: st.stop.lat,
             lon: st.stop.lon,
@@ -797,7 +815,7 @@ async function findTransferRoutes(
       select: { name: true, lat: true, lon: true },
     });
 
-    if (!originStop || !destStop || !transferStop) continue;
+    if (!originStop || !destStop || !transferStop || !isPassengerStop(transferStop.name)) continue;
 
     const walkDistOrigin = originStop.distanceKm;
     const walkDistDest = destStop.distanceKm;
@@ -839,6 +857,7 @@ async function findTransferRoutes(
       transitDistanceKm: Math.round(transitDistanceKm * 1000) / 1000,
       distanceSource: 'stop_geometry',
       durationSource: 'gtfs_schedule',
+        dataKind: 'OFFICIAL_GTFS',
       transfers: 1,
       costCRC: cost,
       boardingStop: {

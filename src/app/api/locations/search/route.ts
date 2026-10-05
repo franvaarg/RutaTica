@@ -1,11 +1,13 @@
 import { queryPhysicalStops } from '@/lib/physical-stops';
 import { stopNotice } from '@/lib/stop-display';
+import { isPassengerStop } from '@/lib/passenger-stops';
 import { invalidQuery, badQuery } from '@/lib/api-validation';
 import { NextRequest, NextResponse } from 'next/server'
 
 // Cache simple en memoria para reducir solicitudes a Nominatim
 const searchCache = new Map<string, any>()
-const CACHE_DURATION = 5 * 60 * 1000 // 5 minutos en milisegundos
+let lastProviderRequest = 0
+const CACHE_DURATION = 24 * 60 * 60 * 1000 // 5 minutos en milisegundos
 
 export async function GET(request: NextRequest) {
   try {
@@ -24,7 +26,7 @@ export async function GET(request: NextRequest) {
     if (searchParams.get('type') === 'stop') {
       const result = await queryPhysicalStops({ search: query, limit: 6 });
       return NextResponse.json({ success: true, ctpAvailable: result.ctpAvailable, locations: result.stops.map(s => ({
-        ...s, type: 'lugar', displayName: `${s.name} — ${s.source}`, fullAddress: stopNotice(s),
+        ...s, type: 'lugar', displayName: s.name, fullAddress: stopNotice(s),
         locationData: { provincia: s.province || '', canton: s.canton || '', localidad: s.district || '', barrio: '' },
       })) });
     }
@@ -39,16 +41,20 @@ export async function GET(request: NextRequest) {
       })
     }
 
+    if (Date.now() - lastProviderRequest < 1000) return NextResponse.json({ success: false, error: 'Espera un momento y vuelve a buscar.', locations: [] }, { status: 429 })
+    lastProviderRequest = Date.now()
+
     // Usar la API de búsqueda de Nominatim para encontrar lugares en Costa Rica
     // Agregamos límites específicos para Costa Rica
     let data
     try {
       const response = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=8&addressdetails=1&countrycodes=CR&accept-language=es`,
+        `${process.env.NOMINATIM_SEARCH_URL || 'https://nominatim.openstreetmap.org/search'}?format=json&q=${encodeURIComponent(query)}&limit=12&addressdetails=1&dedupe=1&countrycodes=cr&accept-language=es`,
         {
           signal: AbortSignal.timeout(8000),
+          next: { revalidate: 86400 },
         headers: {
-            'User-Agent': 'RutaTica/2.0 (https://rutatica.app)',
+            'User-Agent': 'RutaTica/2.0 (https://ruta-tica.vercel.app)',
             'Accept-Language': 'es',
           },
         }
@@ -95,8 +101,11 @@ export async function GET(request: NextRequest) {
     const locations = (data || [])
       .filter((item: any) => {
         // Solo incluir barrios, localidades, ciudades
-        const validTypes = ['neighbourhood', 'suburb', 'village', 'town', 'city', 'hamlet']
-        return item && (validTypes.includes(item.type) || item.class === 'place') && Number.isFinite(Number(item.lat)) && Number.isFinite(Number(item.lon)) && Math.abs(Number(item.lat)) <= 90 && Math.abs(Number(item.lon)) <= 180
+        return item && isPassengerStop(item.name || '', item.display_name || '') && item.class !== 'industrial' && item.type !== 'bus_depot' && Number.isFinite(Number(item.lat)) && Number.isFinite(Number(item.lon)) && Math.abs(Number(item.lat)) <= 90 && Math.abs(Number(item.lon)) <= 180
+      })
+      .sort((a: any, b: any) => {
+        const rank = (item: any) => ['city','town','village','hamlet','suburb','neighbourhood','administrative'].includes(item.type) || item.class === 'place' ? 0 : 1
+        return rank(a) - rank(b)
       })
       .map((item: any) => {
         // Determinar el tipo para mostrar icono
@@ -149,7 +158,7 @@ export async function GET(request: NextRequest) {
         return {
           id: item.place_id || item.osm_id,
           name: item.name || item.display_name?.split(',')[0] || 'Lugar',
-          displayName: displayParts.join(' - ') || item.display_name,
+          displayName: [...new Set([item.name || item.display_name?.split(',')[0], ...displayParts].filter(Boolean))].join(' - ') || item.display_name,
           type: type,
           lat: parseFloat(item.lat),
           lon: parseFloat(item.lon),

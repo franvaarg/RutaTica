@@ -5,7 +5,7 @@ const base = process.env.APP_URL || 'http://127.0.0.1:3100';
 (async () => {
  const browser = await chromium.launch({headless:true,args:['--no-sandbox']});
  try {
-  for (const mobile of [false,true]) {
+  for (const mobile of (process.env.MOBILE_ONLY ? [true] : [false,true])) {
    const context = await browser.newContext({viewport:{width:mobile?390:1280,height:900},isMobile:mobile,hasTouch:mobile,geolocation:{latitude:9.9281,longitude:-84.0907},permissions:['geolocation']});
    const page = await context.newPage(), errors=[];
    page.setDefaultTimeout(60000);
@@ -22,17 +22,30 @@ const base = process.env.APP_URL || 'http://127.0.0.1:3100';
    await page.locator('.leaflet-container').waitFor({timeout:120000});
    await page.waitForTimeout(2000);
    assert.equal(await page.locator('.leaflet-marker-icon[title^="CTP:"],.leaflet-marker-icon[title^="GTFS:"],.custom-stop-marker').count(),0,'initial map clean');
+   await page.getByRole('button',{name:'Paradas cerca de mí',exact:true}).click();
+   await page.locator('.leaflet-marker-icon[title^="Parada:"]').first().waitFor();
+   await page.getByRole('combobox',{name:'Radio de paradas cercanas'}).selectOption('0.3');
+   await page.getByRole('button',{name:'Ocultar paradas cercanas',exact:true}).click();
+   assert.equal(await page.locator('.leaflet-marker-icon[title^="Parada:"]').count(),0);
    await page.getByRole('button',{name:'Abrir menú'}).click();
    await page.getByRole('switch',{name:'Mi ubicación'}).click();
    await page.getByRole('combobox',{name:'Escribe el lugar de origen...'}).fill('San José');
    await page.getByRole('option').filter({hasText:'San José - San José'}).first().click();
+   await page.getByRole('combobox',{name:'Escribe el destino...'}).fill('San Joaquín');
+   await page.getByRole('option').filter({hasText:'San Joaquín - Flores - Heredia'}).first().waitFor();
+   assert.equal(await page.getByRole('option').filter({hasText:/Plantel|Garaje|Depósito/}).count(),0);
    await page.getByRole('combobox',{name:'Escribe el destino...'}).fill('Alajuela');
    await page.getByRole('option').filter({hasText:'Alajuela - Alajuela'}).first().click();
-   await page.getByRole('button',{name:'Guardar localidad',exact:true}).click();
+   await page.getByRole('button',{name:'Guardar ubicación',exact:true}).click();
    await page.reload({waitUntil:'domcontentloaded'});
    await page.locator('.leaflet-container').waitFor({timeout:120000});
    await page.getByRole('button',{name:'Abrir menú'}).click();
-   await page.getByRole('button',{name:'Ir a Alajuela',exact:true}).click();
+   const dest = page.getByRole('combobox',{name:'Escribe el destino...'});
+   await dest.focus();
+   await page.getByRole('option').filter({hasText:'Ubicación guardada'}).first().waitFor();
+   await dest.press('Escape');
+   await page.getByRole('textbox',{name:'Nombre guardado de Alajuela'}).fill('Casa');
+   await page.getByRole('button',{name:'Ir a Casa',exact:true}).click();
    assert.equal(await page.getByRole('combobox',{name:'Escribe el destino...'}).inputValue(),'Alajuela');
    // Reload also validates current-location origin rather than a persisted test origin.
    await page.getByRole('button',{name:'Buscar Ruta',exact:true}).click();
@@ -43,12 +56,17 @@ const base = process.env.APP_URL || 'http://127.0.0.1:3100';
    assert.ok(route.totalTimeMinutes>0 && route.durationSource==='gtfs_schedule');
    assert.ok(route.stops.some(stop=>stop.role==='intermediate'));
    assert.equal(await page.locator('.leaflet-marker-icon[title^="CTP:"],.leaflet-marker-icon[title^="GTFS:"]').count(),0);
-   assert.equal(await page.locator('.leaflet-marker-icon[title^="Sube aquí:"],.leaflet-marker-icon[title^="Baja aquí:"],.leaflet-marker-icon[title^="Parada GTFS:"]').count(),new Set(route.stops.map(s=>`${s.lat},${s.lon}`)).size);
+   assert.equal(await page.locator('.leaflet-marker-icon[title^="Sube aquí:"],.leaflet-marker-icon[title^="Baja aquí:"],.leaflet-marker-icon[title^="Parada:"]').count(),new Set(route.stops.map(s=>`${s.lat},${s.lon}`)).size);
    await page.locator('path.leaflet-interactive[stroke="#2563EB"]').first().waitFor();
    await page.getByText(/Ver paradas ·/).first().click();
-   await page.getByText(/Secuencia/).first().waitFor();
-   await page.getByRole('button',{name:'Iniciar Viaje',exact:true}).click();
-   await page.getByRole('button',{name:'Iniciar ahora',exact:true}).click();
+   assert.equal(await page.getByText(/GTFS|ARESEP|CTP|Secuencia/).count(),0,'technical source labels hidden');
+   await page.getByRole('heading',{name:/Tu viaje/}).waitFor();
+   assert.equal(await page.getByText('Rutas',{exact:true}).count(),0);
+   await page.screenshot({path:`/tmp/rutatica-planned-${mobile?'mobile':'desktop'}.png`});
+   const start=page.getByRole('button',{name:'Iniciar viaje',exact:true});
+   assert.equal(await start.isVisible(),true);
+   await page.getByRole('button',{name:'Ver ruta',exact:true}).click();
+   await page.getByRole('button',{name:'Iniciar viaje',exact:true}).click();
    await page.getByText('Viaje en curso',{exact:true}).last().waitFor();
    const progress=page.getByRole('status').filter({hasText:'Próxima parada:'}).last();
    await progress.waitFor();
@@ -70,8 +88,14 @@ const base = process.env.APP_URL || 'http://127.0.0.1:3100';
    },mobile);
 
    await page.screenshot({path:`/tmp/rutatica-active-${mobile?'mobile':'desktop'}.png`});
+   const progressText = await progress.innerText();
+   await page.getByRole('button',{name:'Detener Viaje',exact:true}).click();
+   await page.getByRole('button',{name:'Finalizar Viaje',exact:true}).click();
+   await page.getByRole('button',{name:'Abrir menú'}).click();
+   await page.getByRole('button',{name:'Eliminar Casa',exact:true}).click();
+   assert.equal(await page.getByRole('button',{name:'Ir a Casa',exact:true}).count(),0);
    assert.deepEqual(errors,[]);
-   console.log(JSON.stringify({base,mobile,initialMap:'clean',localities:'pass',origin:'current and locality',saved:'persisted',destination:'Alajuela',route:route.route.shortName,stops:route.stops.length,duration:route.totalTimeMinutes,blue:'pass',progress:await progress.innerText(),errors}));
+   console.log(JSON.stringify({base,mobile,initialMap:'clean',localities:'pass',origin:'current and locality',saved:'persisted',destination:'Alajuela',route:route.route.shortName,stops:route.stops.length,duration:route.totalTimeMinutes,blue:'pass',progress:progressText,errors}));
    await context.close();
   }
  } finally {await browser.close();}

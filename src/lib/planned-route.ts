@@ -2,7 +2,8 @@ export type ItineraryStop = {
   name: string; lat: number; lon: number; stopId?: string; tripId?: string;
   stopSequence?: number; arrivalTime?: string; departureTime?: string;
   routeNumber?: string; operator?: string; role?: 'boarding' | 'intermediate' | 'alighting';
-  source?: 'GTFS';
+  source?: 'GTFS' | 'DERIVED_GTFS';
+  estimatedMinutesFromStart?: number;
 }
 
 export interface PlanatedRoute {
@@ -13,6 +14,8 @@ export interface PlanatedRoute {
   destination: string
   price: number | null
   routingSource?: string
+  dataKind?: 'OFFICIAL_GTFS' | 'DERIVED_GTFS'
+  durationSource?: string
   geometryAvailable?: boolean
   currency: string
   distanceKm?: number | null
@@ -63,6 +66,8 @@ export function mapPlannedRoutes(routes: unknown[], routingSource: string): Plan
           price: r.costCRC ?? null,
           currency: 'CRC',
           routingSource,
+          dataKind: r.dataKind || 'OFFICIAL_GTFS',
+          durationSource: r.durationSource,
           geometryAvailable: r.shapePoints?.length > 1 || r.shapePaths?.some((path: unknown[]) => path.length > 1) || false,
           distanceKm: r.distanceKm ?? null,
           transitDistanceKm: r.transitDistanceKm ?? null,
