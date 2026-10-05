@@ -6,22 +6,7 @@ import { useState, useEffect, useRef, useId } from 'react'
 import { Search, MapPin, Home, Building2, X, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
-interface LocationSuggestion {
-  id: string | number
-  name: string
-  displayName: string
-  type: 'barrio' | 'localidad' | 'ciudad' | 'lugar'
-  lat: number
-  lon: number
-  fullAddress: string
-  locationData?: {
-    barrio?: string
-    localidad?: string
-    canton?: string
-    provincia?: string
-    postcode?: string
-  }
-}
+import type { LocationSuggestion } from '@/lib/search-localities'
 
 interface LocationAutocompleteProps {
   value: string
@@ -37,29 +22,7 @@ interface LocationAutocompleteProps {
 const foldSearch = (value: string) => value.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase()
 
 // Datos en memoria de ubicaciones comunes de Costa Rica (usadas como sugerencias iniciales)
-const COSTA_RICA_LOCATIONS: LocationSuggestion[] = [
-  { id: '1', name: 'San José', displayName: 'San José - San José', type: 'ciudad', lat: 9.9281, lon: -84.0907, fullAddress: 'San José, San José, Costa Rica', locationData: { provincia: 'San José', canton: 'San José', localidad: 'San José', barrio: '' } },
-  { id: '2', name: 'Alajuela', displayName: 'Alajuela - Alajuela', type: 'ciudad', lat: 10.0163, lon: -84.2169, fullAddress: 'Alajuela, Alajuela, Costa Rica', locationData: { provincia: 'Alajuela', canton: 'Alajuela', localidad: 'Alajuela', barrio: '' } },
-  { id: '3', name: 'Cartago', displayName: 'Cartago - Cartago', type: 'ciudad', lat: 9.8652, lon: -83.9145, fullAddress: 'Cartago, Cartago, Costa Rica', locationData: { provincia: 'Cartago', canton: 'Cartago', localidad: 'Cartago', barrio: '' } },
-  { id: '4', name: 'Heredia', displayName: 'Heredia - Heredia', type: 'ciudad', lat: 10.0020, lon: -84.1170, fullAddress: 'Heredia, Heredia, Costa Rica', locationData: { provincia: 'Heredia', canton: 'Heredia', localidad: 'Heredia', barrio: '' } },
-  { id: '5', name: 'Puntarenas', displayName: 'Puntarenas - Puntarenas', type: 'ciudad', lat: 9.9779, lon: -84.8331, fullAddress: 'Puntarenas, Puntarenas, Costa Rica', locationData: { provincia: 'Puntarenas', canton: 'Puntarenas', localidad: 'Puntarenas', barrio: '' } },
-  { id: '6', name: 'Limón', displayName: 'Limón - Limón', type: 'ciudad', lat: 10.0015, lon: -83.0583, fullAddress: 'Limón, Limón, Costa Rica', locationData: { provincia: 'Limón', canton: 'Limón', localidad: 'Limón', barrio: '' } },
-  { id: '7', name: 'Liberia', displayName: 'Liberia - Guanacaste', type: 'ciudad', lat: 10.6324, lon: -85.4363, fullAddress: 'Liberia, Guanacaste, Costa Rica', locationData: { provincia: 'Guanacaste', canton: 'Liberia', localidad: 'Liberia', barrio: '' } },
-  { id: '8', name: 'San Pedro', displayName: 'San Pedro - Montes de Oca', type: 'localidad', lat: 9.9349, lon: -84.0520, fullAddress: 'San Pedro, Montes de Oca, San José, Costa Rica', locationData: { provincia: 'San José', canton: 'Montes de Oca', localidad: 'San Pedro', barrio: '' } },
-  { id: '9', name: 'Desamparados', displayName: 'Desamparados - Desamparados', type: 'ciudad', lat: 9.9023, lon: -84.0737, fullAddress: 'Desamparados, Desamparados, San José, Costa Rica', locationData: { provincia: 'San José', canton: 'Desamparados', localidad: 'Desamparados', barrio: '' } },
-  { id: '10', name: 'San Isidro', displayName: 'San Isidro - Pérez Zeledón', type: 'localidad', lat: 9.3768, lon: -83.6979, fullAddress: 'San Isidro, Pérez Zeledón, San José, Costa Rica', locationData: { provincia: 'San José', canton: 'Pérez Zeledón', localidad: 'San Isidro', barrio: '' } },
-  { id: '11', name: 'Ciudad Quesada', displayName: 'Ciudad Quesada - Alajuela', type: 'ciudad', lat: 10.3275, lon: -84.4372, fullAddress: 'Ciudad Quesada, San Carlos, Alajuela, Costa Rica', locationData: { provincia: 'Alajuela', canton: 'San Carlos', localidad: 'Ciudad Quesada', barrio: '' } },
-  { id: '12', name: 'Guápiles', displayName: 'Guápiles - Limón', type: 'ciudad', lat: 10.2149, lon: -83.7777, fullAddress: 'Guápiles, Pococí, Limón, Costa Rica', locationData: { provincia: 'Limón', canton: 'Pococí', localidad: 'Guápiles', barrio: '' } },
-  { id: '13', name: 'San Ramón', displayName: 'San Ramón - Alajuela', type: 'ciudad', lat: 10.0870, lon: -84.4798, fullAddress: 'San Ramón, San Ramón, Alajuela, Costa Rica', locationData: { provincia: 'Alajuela', canton: 'San Ramón', localidad: 'San Ramón', barrio: '' } },
-  { id: '14', name: 'Grecia', displayName: 'Grecia - Alajuela', type: 'ciudad', lat: 9.9554, lon: -84.3179, fullAddress: 'Grecia, Grecia, Alajuela, Costa Rica', locationData: { provincia: 'Alajuela', canton: 'Grecia', localidad: 'Grecia', barrio: '' } },
-  { id: '15', name: 'Orotina', displayName: 'Orotina - Alajuela', type: 'ciudad', lat: 9.9090, lon: -84.5242, fullAddress: 'Orotina, Orotina, Alajuela, Costa Rica', locationData: { provincia: 'Alajuela', canton: 'Orotina', localidad: 'Orotina', barrio: '' } },
-  { id: '16', name: 'Atenas', displayName: 'Atenas - Alajuela', type: 'ciudad', lat: 9.9815, lon: -84.3835, fullAddress: 'Atenas, Atenas, Alajuela, Costa Rica', locationData: { provincia: 'Alajuela', canton: 'Atenas', localidad: 'Atenas', barrio: '' } },
-  { id: '17', name: 'Puriscal', displayName: 'Puriscal - San José', type: 'ciudad', lat: 9.8511, lon: -84.3294, fullAddress: 'Santiago, Puriscal, San José, Costa Rica', locationData: { provincia: 'San José', canton: 'Puriscal', localidad: 'Santiago', barrio: '' } },
-  { id: '18', name: 'Escazú', displayName: 'Escazú - San José', type: 'ciudad', lat: 9.9280, lon: -84.1417, fullAddress: 'Escazú, Escazú, San José, Costa Rica', locationData: { provincia: 'San José', canton: 'Escazú', localidad: 'Escazú', barrio: '' } },
-  { id: '19', name: 'Santa Ana', displayName: 'Santa Ana - San José', type: 'ciudad', lat: 9.9333, lon: -84.1817, fullAddress: 'Santa Ana, Santa Ana, San José, Costa Rica', locationData: { provincia: 'San José', canton: 'Santa Ana', localidad: 'Santa Ana', barrio: '' } },
-  { id: 'sjf', name: 'San Joaquín', displayName: 'San Joaquín - Flores - Heredia', type: 'localidad', lat: 10.0031, lon: -84.1546, fullAddress: 'San Joaquín, Flores, Heredia, Costa Rica' },
-  { id: '20', name: 'Alajuelita', displayName: 'Alajuelita - San José', type: 'ciudad', lat: 9.9017, lon: -84.1028, fullAddress: 'Alajuelita, Alajuelita, San José, Costa Rica', locationData: { provincia: 'San José', canton: 'Alajuelita', localidad: 'Alajuelita', barrio: '' } },
-]
+
 
 // Mapear tipos de Nominatim a nuestros tipos
 function mapNominatimType(nominatimType: string, addr: any): 'barrio' | 'localidad' | 'ciudad' | 'lugar' {
@@ -141,16 +104,18 @@ export default function LocationAutocomplete({
       setLoading(true)
       let results: LocationSuggestion[] = []
 
-      // Primero buscar en memoria para ubicaciones comunes
-      const memoryResults = COSTA_RICA_LOCATIONS.filter(loc =>
-        foldSearch(loc.name).includes(foldSearch(query)) ||
-        foldSearch(loc.displayName).includes(foldSearch(query)) ||
-        loc.locationData?.provincia?.toLowerCase().includes(query.toLowerCase()) ||
-        loc.locationData?.canton?.toLowerCase().includes(query.toLowerCase())
-      )
-
-      results = memoryResults
-      results = results.slice(0, 6)
+      try {
+        const response = await fetch(`/api/search?q=${encodeURIComponent(query)}`, { signal: controller.signal })
+        if (!response.ok) throw new Error('Search unavailable')
+        const data = await response.json()
+        results = data.results || []
+        const saved = savedLocations.filter(item => foldSearch(item.name + ' ' + (item.label || '')).includes(foldSearch(query)))
+          .map((item, index) => ({ id: `saved-${index}`, name: item.name, lat: item.lat, lon: item.lon, displayName: item.label ? `${item.label} · ${item.name}` : item.name, fullAddress: 'Ubicación guardada', type: 'lugar' as const, resultType: 'PLACE' as const }))
+        results = [...saved, ...results].slice(0, 12)
+      } catch {
+        if (cancelled || controller.signal.aborted) return
+        setSearchError('No se pudo buscar. Intenta de nuevo.')
+      }
       // Usar setTimeout para evitar setState síncrono en effect
       setTimeout(() => {
         if (cancelled || controller.signal.aborted) return
@@ -195,6 +160,8 @@ export default function LocationAutocomplete({
 
   const getIcon = (type: string) => {
     switch (type) {
+      case 'parada':
+        return <MapPin className="w-4 h-4 text-blue-700" />
       case 'barrio':
         return <Home className="w-4 h-4 text-orange-600" />
       case 'localidad':
@@ -214,13 +181,13 @@ export default function LocationAutocomplete({
     setLoading(true)
     setSearchError('')
     try {
-      const response = await fetch(`/api/locations/search?q=${encodeURIComponent(displayValue)}`, {
+      const response = await fetch(`/api/search?places=1&q=${encodeURIComponent(displayValue)}`, {
         signal: AbortSignal.any([controller.signal, AbortSignal.timeout(10000)]),
       })
       if (!response.ok) throw new Error('Search unavailable')
       const data = await response.json()
       if (controller.signal.aborted) return
-      setSuggestions((data.locations || []).filter((item: LocationSuggestion) => isPassengerStop(item.name, item.fullAddress)).slice(0, 8))
+      setSuggestions((data.results || []).filter((item: LocationSuggestion) => isPassengerStop(item.name, item.fullAddress)).slice(0, 8))
       setShowSuggestions(true)
       setActiveIndex(-1)
     } catch {
@@ -316,7 +283,7 @@ export default function LocationAutocomplete({
               <div className="flex flex-col items-center text-center">
                 <Search className="w-6 h-6 text-[#9CA3AF] mb-2" />
                 <p className="text-xs text-[#6B7280]">
-                  No se encontraron resultados para "{displayValue}"
+                  No encontramos esa localidad o parada.
                 </p>
                 <p className="text-[10px] text-[#6B7280] mt-1">
                   Intenta con otro nombre de ciudad o localidad
@@ -345,7 +312,7 @@ export default function LocationAutocomplete({
                     {suggestion.fullAddress && <span className="text-xs text-gray-600 break-words">{suggestion.fullAddress}</span>}
                   </div>
                   <span className="text-xs text-[#9CA3AF] capitalize whitespace-nowrap">
-                    {suggestion.type}
+                    {suggestion.type === 'parada' ? 'Parada de bus' : suggestion.type === 'lugar' ? 'Lugar' : 'Localidad'}
                   </span>
                 </button>
               ))}

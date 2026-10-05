@@ -14,6 +14,7 @@ import dynamic from 'next/dynamic'
 const BusMap = dynamic(() => import('@/components/map'), { ssr: false })
 import LocationAutocomplete from '@/components/location-autocomplete'
 import { mapPlannedRoutes, type PlanatedRoute } from '@/lib/planned-route'
+import { passengerProgress, elapsedStopIndex } from '@/lib/passenger-progress'
 import { tripProgress } from '@/lib/trip-progress'
 import { TRANSIT_ESTIMATES } from '@/lib/transit-estimates'
 
@@ -34,6 +35,8 @@ interface NearestStop {
 }
 
 interface SelectedLocation {
+  resultType?: 'PLACE' | 'STOP'
+  stopId?: string
   name: string
   lat: number
   lon: number
@@ -124,6 +127,10 @@ export default function BusPlannerApp() {
 
   const [nearbyRadiusKm, setNearbyRadiusKm] = useState<number | null>(null)
   const [passedStopIndex, setPassedStopIndex] = useState(-1)
+  const [gpsRemainingMinutes, setGpsRemainingMinutes] = useState<number | null>(null)
+  const [gpsEstimateElapsed, setGpsEstimateElapsed] = useState(0)
+  const lastPassengerFix = useRef(0)
+  const restoredTrip = useRef(false)
   const [savedLocalities, setSavedLocalities] = useState<SelectedLocation[]>([])
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -157,6 +164,9 @@ export default function BusPlannerApp() {
     setTripStartTime(null)
     setElapsedTime(0)
     setPassedStopIndex(-1)
+    setGpsRemainingMinutes(null)
+    lastPassengerFix.current = 0
+    try { localStorage.removeItem('rutatica.activeTrip') } catch {}
     setShowArrivalNotification(false)
     setShowCountdown(false)
     if (countdownRef.current) clearInterval(countdownRef.current)
@@ -173,12 +183,18 @@ export default function BusPlannerApp() {
     setNearbyRadiusKm(null)
   }
   const progress = tripProgress(selectedRoute, passedStopIndex, elapsedTime)
+  const remainingSeconds = Math.max(0, Math.round(Math.min(gpsRemainingMinutes === null ? Infinity : Math.max(0, gpsRemainingMinutes - (elapsedTime - gpsEstimateElapsed)), Math.max(0, (selectedRoute?.durationMin || 0) - elapsedTime)) * 60))
+  const countdownLabel = `${Math.floor(remainingSeconds / 60)}:${String(remainingSeconds % 60).padStart(2, '0')}`
   const progressInfo = <div className="rounded-lg bg-blue-50 p-3 text-xs space-y-1" role="status">
     <p>Próxima parada: <strong>{progress.nextStop?.name || 'Caminata al destino'}</strong></p>
     <p>Paradas restantes: <strong>{progress.remainingStops}</strong></p>
-    <p>Tiempo restante estimado: <strong>{progress.remainingMinutes === null ? 'No disponible' : `${progress.remainingMinutes} min`}</strong></p>
+    <p>Tiempo restante estimado: <strong>{progress.remainingMinutes === null ? 'No disponible' : `${Math.ceil(remainingSeconds / 60)} min · ${countdownLabel}`}</strong></p>
     <p>Destino: {selectedDestination?.name || destination}</p>
     <p>Bajas en: {selectedRoute?.destinationStop?.name}</p>
+    <p>Hasta la próxima parada: {progress.nextStop ? `${Math.max(1, Math.ceil((gpsRemainingMinutes ?? progress.remainingMinutes ?? 1) / Math.max(1, progress.remainingStops)))} min estimados` : 'Fin del recorrido'}</p>
+    {progress.remainingStops === 1 && <p className="font-bold text-blue-900 text-base">BAJA EN LA PRÓXIMA PARADA</p>}
+    {selectedRoute?._stops?.length && passedStopIndex >= selectedRoute._stops.length - 1 && <p className="font-bold text-blue-900 text-base">BAJA AQUÍ</p>}
+
   </div>
 
   // Estados para control del mapa
@@ -331,12 +347,20 @@ export default function BusPlannerApp() {
     const interval = setInterval(() => {
       const elapsed = (Date.now() - tripStartTime.getTime() - totalPausedMsRef.current) / 1000 / 60 // en minutos
       setElapsedTime(elapsed)
+      if (selectedRoute && Date.now() - lastPassengerFix.current > 30000) {
+        setGpsRemainingMinutes(null)
+        setPassedStopIndex(index => Math.max(index, elapsedStopIndex(selectedRoute, elapsed)))
+      }
+      if (selectedRoute?.durationMin && elapsed >= selectedRoute.durationMin && Date.now() - lastPassengerFix.current > 30000) {
+        setIsTripPaused(true)
+        setShowArrivalNotification(true)
+      }
     }, 1000)
 
     return () => {
       clearInterval(interval)
     }
-  }, [isTracking, tripStartTime, isTripPaused])
+  }, [isTracking, tripStartTime, isTripPaused, selectedRoute])
 
   const getCurrentLocation = async () => {
     setLoadingLocation(true)
@@ -542,6 +566,7 @@ export default function BusPlannerApp() {
 
       const selected: SelectedLocation = {
         name: location.name || 'Origen desconocido',
+        resultType: location.resultType || 'PLACE', stopId: location.stopId,
         lat: lat,
         lon: lon,
         displayName: location.displayName || location.fullAddress || location.name || 'Origen desconocido',
@@ -589,6 +614,8 @@ export default function BusPlannerApp() {
         destLon: dest[1].toString(),
       })
 
+      if (!useCurrentLocation && selectedOrigin?.stopId) params.set('originStopId', selectedOrigin.stopId)
+      if (selectedDestination?.stopId) params.set('destinationStopId', selectedDestination.stopId)
       const response = await fetch(`/api/best-route?${params}`, { signal: AbortSignal.timeout(20000) })
       if (!response.ok) throw new Error('Error al buscar rutas')
 
@@ -682,6 +709,7 @@ export default function BusPlannerApp() {
 
       const selected: SelectedLocation = {
         name: location.name || 'Destino desconocido',
+        resultType: location.resultType || 'PLACE', stopId: location.stopId,
         lat: lat,
         lon: lon,
         displayName: location.displayName || location.fullAddress || location.name || 'Destino desconocido',
@@ -785,6 +813,8 @@ export default function BusPlannerApp() {
         destLon: selectedDestination.lon.toString(),
       })
 
+      if (!useCurrentLocation && selectedOrigin?.stopId) params.set('originStopId', selectedOrigin.stopId)
+      if (selectedDestination?.stopId) params.set('destinationStopId', selectedDestination.stopId)
       const response = await fetch(`/api/best-route?${params}`, { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(20000)]) })
       if (!response.ok) throw new Error('Error al buscar rutas')
 
@@ -965,7 +995,7 @@ export default function BusPlannerApp() {
   const formatDuration = (min: number | null | undefined) => {
     if (!min) return null
     const hours = Math.floor(min / 60)
-    const mins = min % 60
+    const mins = Math.round(min % 60)
     if (hours === 0) return `${mins} min`
     if (mins === 0) return `${hours} h`
     return `${hours} h ${mins} min`
@@ -990,6 +1020,8 @@ export default function BusPlannerApp() {
     pausedAtRef.current = 0
     totalPausedMsRef.current = 0
     setPassedStopIndex(-1)
+    setGpsRemainingMinutes(null)
+    lastPassengerFix.current = 0
     setTripStartTime(new Date())
     setElapsedTime(0)
     setTrackingPanelVisible(true)
@@ -1018,57 +1050,74 @@ export default function BusPlannerApp() {
     setMapCenter([startLat, startLon])
     setMapZoom(14)
 
-    if (!navigator.geolocation) {
-      setError('Este navegador no ofrece geolocalización. La ruta sigue disponible sin seguimiento.')
-      setIsTracking(false)
-      return
-    }
-
-    // Iniciar seguimiento de posición con watchPosition
-    const id = navigator.geolocation.watchPosition(
-      (position) => {
-        const { latitude, longitude } = position.coords
-        setCurrentLocation({ latitude, longitude })
-        setPassedStopIndex(index => {
-          const next = selectedRoute?._stops?.[index + 1]
-          return next && calculateDistance(latitude, longitude, next.lat, next.lon) < 0.1 ? index + 1 : index
-        })
-
-        // Calcular distancia restante
-        const trackDestCoords = selectedDestination ? { latitude: selectedDestination.lat, longitude: selectedDestination.lon } : selectedRoute?.destinationStop?.coordinates
-
-        if (trackDestCoords) {
-          const remaining = calculateDistance(
-            latitude,
-            longitude,
-            trackDestCoords.latitude,
-            trackDestCoords.longitude
-          )
-          setDistanceRemaining(remaining)
-
-          // Verificar si ha llegado al destino (dentro de 100 metros)
-          if (remaining < 0.1) {
-            handleStopTrip()
-            setShowArrivalNotification(true)
-          }
-        }
-
-        // Actualizar dirección
-        getAddressFromCoordinates(latitude, longitude).then(setCurrentAddress)
-      },
-      (error) => {
-        console.error('Error al rastrear ubicación:', error)
-        setError('Error al rastrear tu ubicación. Verifica que el GPS esté activo.')
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 5000,
-      }
-    )
-
-    setTrackingId(id)
   }
+
+  useEffect(() => {
+    if (!isTracking || isTripPaused || !selectedRoute || !navigator.geolocation) return
+    const id = navigator.geolocation.watchPosition(position => {
+      const { latitude, longitude } = position.coords
+      setCurrentLocation({ latitude, longitude })
+      const location = { lat: latitude, lon: longitude }
+      const state = passengerProgress(selectedRoute, location, -1)
+      if (state.remainingMinutes !== null) {
+        lastPassengerFix.current = Date.now()
+        setGpsRemainingMinutes(state.remainingMinutes)
+        setGpsEstimateElapsed(tripStartTime ? (Date.now() - tripStartTime.getTime() - totalPausedMsRef.current) / 60000 : 0)
+        setDistanceRemaining(state.remainingKm || 0)
+      }
+      setPassedStopIndex(index => Math.max(index, state.passedIndex))
+      const last = selectedRoute._stops?.at(-1)
+      if (last && calculateDistance(latitude, longitude, last.lat, last.lon) < .075 && state.passedIndex >= (selectedRoute._stops?.length || 0) - 2) {
+        setPassedStopIndex((selectedRoute._stops?.length || 1) - 1)
+        setIsTripPaused(true)
+        setShowArrivalNotification(true)
+      }
+    }, () => {
+      // Elapsed-time estimates remain available when GPS is denied or lost.
+      lastPassengerFix.current = 0
+      setGpsRemainingMinutes(null)
+    }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 })
+    return () => navigator.geolocation.clearWatch(id)
+  }, [isTracking, isTripPaused, selectedRoute, tripStartTime])
+
+  useEffect(() => {
+    if (restoredTrip.current) return
+    restoredTrip.current = true
+    try {
+      const saved = JSON.parse(localStorage.getItem('rutatica.activeTrip') || 'null')
+      if (!saved?.active || !saved.route?._stops?.length || !Number.isFinite(saved.startedAt) || Date.now() - saved.startedAt > 12 * 60 * 60 * 1000) return
+      const timer = setTimeout(() => {
+        setSelectedRoute(saved.route)
+        setPlannedRoutes([saved.route])
+        setSelectedDestination(saved.destination)
+        setDestination(saved.destination?.name || saved.route.destination)
+        setSelectedOrigin(saved.origin)
+        setRoutePath(saved.path)
+        routePathRef.current = saved.path
+        setTripStartTime(new Date(saved.startedAt))
+        totalPausedMsRef.current = (saved.pausedMs || 0) + (saved.paused && saved.pausedAt ? Date.now() - saved.pausedAt : 0)
+        if (saved.paused) { setIsTripPaused(true); pausedAtRef.current = Date.now() }
+        const elapsed = Math.max(0, (Date.now() - saved.startedAt - totalPausedMsRef.current) / 60000)
+        setElapsedTime(elapsed)
+        setPassedStopIndex(Math.max(saved.passedIndex ?? -1, elapsedStopIndex(saved.route, elapsed)))
+        setIsTracking(true)
+        setHasPlanned(true)
+        setTrackingPanelVisible(true)
+        setRoutePanelDismissed(true)
+        if (elapsed >= saved.route.durationMin) { setIsTripPaused(true); setShowArrivalNotification(true) }
+      }, 0)
+      return () => clearTimeout(timer)
+    } catch {}
+  }, [])
+
+  useEffect(() => {
+    if (!isTracking || !selectedRoute || !tripStartTime) return
+    try {
+      localStorage.setItem('rutatica.activeTrip', JSON.stringify({ active: !showArrivalNotification, route: selectedRoute,
+        startedAt: tripStartTime.getTime(), initialEstimate: selectedRoute.durationMin, destination: selectedDestination,
+        origin: selectedOrigin, path: routePath, pausedMs: totalPausedMsRef.current, paused: isTripPaused, pausedAt: pausedAtRef.current, passedIndex: passedStopIndex }))
+    } catch {}
+  }, [isTracking, selectedRoute, tripStartTime, selectedDestination, selectedOrigin, routePath, passedStopIndex, showArrivalNotification, isTripPaused])
 
   // Countdown effect
   useEffect(() => {
@@ -1119,56 +1168,6 @@ export default function BusPlannerApp() {
     }
     setIsTripPaused(false)
 
-    if (!navigator.geolocation) {
-      setError('Este navegador no ofrece geolocalización.')
-      setIsTripPaused(true)
-      return
-    }
-
-    // Restart geolocation watch
-    const id = navigator.geolocation.watchPosition(
-      (position) => {
-        const { latitude, longitude } = position.coords
-        setCurrentLocation({ latitude, longitude })
-        setPassedStopIndex(index => {
-          const next = selectedRoute?._stops?.[index + 1]
-          return next && calculateDistance(latitude, longitude, next.lat, next.lon) < 0.1 ? index + 1 : index
-        })
-
-        // Calcular distancia restante
-        const trackDestCoords = selectedDestination ? { latitude: selectedDestination.lat, longitude: selectedDestination.lon } : selectedRoute?.destinationStop?.coordinates
-
-        if (trackDestCoords) {
-          const remaining = calculateDistance(
-            latitude,
-            longitude,
-            trackDestCoords.latitude,
-            trackDestCoords.longitude
-          )
-          setDistanceRemaining(remaining)
-
-          // Verificar si ha llegado al destino (dentro de 100 metros)
-          if (remaining < 0.1) {
-            handleFullStopTrip()
-            setShowArrivalNotification(true)
-          }
-        }
-
-        // Actualizar dirección
-        getAddressFromCoordinates(latitude, longitude).then(setCurrentAddress)
-      },
-      (error) => {
-        console.error('Error al rastrear ubicación:', error)
-        setError('Error al rastrear tu ubicación. Verifica que el GPS esté activo.')
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 0,
-      }
-    )
-
-    setTrackingId(id)
   }
 
   const handleFullStopTrip = () => {
@@ -1240,15 +1239,17 @@ export default function BusPlannerApp() {
       {/* Notificación de llegada */}
       {showArrivalNotification && (
         <div className="absolute top-20 left-4 right-4 z-50">
-          <Card className="bg-[#10B981] border-2 border-[#059669] shadow-xl animate-bounce">
+          <Card className="bg-[#10B981] border-2 border-[#059669] shadow-xl">
             <CardContent className="p-6 text-center">
               <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center mx-auto mb-3">
                 <Navigation className="w-8 h-8 text-[#10B981]" />
               </div>
-              <h3 className="text-xl font-bold text-white mb-2">¡Has llegado a tu destino!</h3>
+              <h3 className="text-xl font-bold text-white mb-2">HAS LLEGADO</h3>
               <p className="text-white/90 mb-4">
                 {selectedRoute?.destinationStop?.name || destination}
               </p>
+              <p className="text-white mb-2">Tiempo de viaje: {Math.max(1, Math.round(elapsedTime))} min aprox.</p>
+              {((selectedRoute?._walkingDistanceKm || 0) - (selectedRoute?._boardingStopDistanceKm || 0)) > .05 && <p className="text-white mb-3">Camina {Math.round(((selectedRoute?._walkingDistanceKm || 0) - (selectedRoute?._boardingStopDistanceKm || 0)) * 1000)} m hasta tu destino.</p>}
               <div className="flex gap-2 justify-center">
                 <Button
                   onClick={() => setShowArrivalNotification(false)}

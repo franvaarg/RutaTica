@@ -1,4 +1,4 @@
-import { findVerifiedDerivedJourneys } from '@/lib/verified-derived-routes';
+import { findNormalizedJourneys } from '@/lib/normalized-transit';
 import { isPassengerStop } from '@/lib/passenger-stops';
 import type { ItineraryStop } from '@/lib/planned-route';
 import { hasStoredTransitConnection } from '@/lib/transit-coverage';
@@ -54,6 +54,8 @@ export async function GET(request: NextRequest) {
     const originLonStr = searchParams.get('originLon');
     const destLatStr = searchParams.get('destLat');
     const destLonStr = searchParams.get('destLon');
+    const originStopId = searchParams.get('originStopId') || undefined;
+    const destinationStopId = searchParams.get('destinationStopId') || undefined;
     const departAfter = searchParams.get('departAfter') || serviceDateTime().time;
 
     if (!originLatStr || !originLonStr || !destLatStr || !destLonStr) {
@@ -76,7 +78,7 @@ export async function GET(request: NextRequest) {
 
     const departAfterMinutes = timeToMinutes(departAfter);
     const derivedFallback = async () => {
-      const routes = await findVerifiedDerivedJourneys({ lat: originLat, lon: originLon }, { lat: destLat, lon: destLon });
+      const routes = await findNormalizedJourneys({ lat: originLat, lon: originLon }, { lat: destLat, lon: destLon }, originStopId, destinationStopId);
       return routes.length ? NextResponse.json({ origin: { lat: originLat, lon: originLon }, destination: { lat: destLat, lon: destLon }, routes, routingSource: 'derived-gtfs' }) : null;
     };
 
@@ -96,7 +98,7 @@ export async function GET(request: NextRequest) {
         && haversineDistance(originLat, originLon, first.from.lat, first.from.lon) <= 1
         && haversineDistance(destLat, destLon, last.to.lat, last.to.lon) <= 1;
     });
-    if (usableOtpRoutes.length) {
+    if (usableOtpRoutes.length && !originStopId && !destinationStopId) {
       const routes: RouteResult[] = usableOtpRoutes.map((itinerary) => {
         const transitLegs = itinerary.legs.filter((leg) => leg.transitLeg);
         const firstTransit = transitLegs[0] || itinerary.legs[0];
@@ -141,7 +143,7 @@ export async function GET(request: NextRequest) {
     const serviceIds = await getActiveServiceIdsToday(departure);
 
     // Step 1: Find nearest origin stops (within 1km)
-    const originStops = await findNearestStops(originLat, originLon, 1, 10);
+    const originStops = (await findNearestStops(originLat, originLon, 1, originStopId ? 100 : 10)).filter(s => !originStopId || s.stop.stop_id === originStopId);
     if (originStops.length === 0) {
       const derived = await derivedFallback(); if (derived) return derived;
       return NextResponse.json({
@@ -155,7 +157,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Step 2: Find nearest destination stops (within 1km)
-    const destStops = await findNearestStops(destLat, destLon, 1, 10);
+    const destStops = (await findNearestStops(destLat, destLon, 1, destinationStopId ? 100 : 10)).filter(s => !destinationStopId || s.stop.stop_id === destinationStopId);
     if (destStops.length === 0) {
       const derived = await derivedFallback(); if (derived) return derived;
       return NextResponse.json({

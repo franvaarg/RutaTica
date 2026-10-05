@@ -5,7 +5,7 @@ const nextConfig: NextConfig = {
   devIndicators: false,
   output: process.env.VERCEL ? undefined : "standalone",
   outputFileTracingIncludes: {
-    '/api/**': ['./db/custom.db'],
+    '/api/**': ['./db/custom.db', './db/normalized.db'],
     '/api/download': ['./Bitacora_RutaTica.docx'],
   },
   typescript: {

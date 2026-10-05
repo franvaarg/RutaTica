@@ -43,15 +43,17 @@ export function normalizeDerivedRoute(route: AresepRoute, stops: CorridorStop[],
 export type DerivedRoute = ReturnType<typeof normalizeDerivedRoute>[number]
 
 /** Only confirmed passenger membership/direction can become a usable itinerary. */
-export function planDerivedJourney(feed: DerivedRoute, origin: Coordinate, destination: Coordinate) {
-  if (!feed.directionConfirmed) return null
+export function planDerivedJourney(feed: DerivedRoute, origin: Coordinate, destination: Coordinate, options?: { allowInferred?: boolean; originStopId?: string; destinationStopId?: string }) {
+  if (!feed.directionConfirmed && !options?.allowInferred) return null
   const stops = feed.stops.map((stop, index) => ({ name: stop.stop_name, lat: stop.stop_lat, lon: stop.stop_lon, stopId: stop.stop_id, ...feed.stop_times[index] }))
-    .filter(stop => stop.association === 'VERIFIED')
+    .filter(stop => options?.allowInferred || stop.association === 'VERIFIED')
   let best: { board: number; exit: number; walking: number } | null = null
   for (let board = 0; board < stops.length; board++) {
+    if (options?.originStopId && stops[board].stopId !== options.originStopId) continue
     const start = stops[board], walkingA = haversineDistance(origin.lat, origin.lon, start.lat, start.lon)
     if (walkingA > TRANSIT_ESTIMATES.maximumWalkingKm) continue
     for (let exit = board + 1; exit < stops.length; exit++) {
+      if (options?.destinationStopId && stops[exit].stopId !== options.destinationStopId) continue
       const end = stops[exit], walkingB = haversineDistance(destination.lat, destination.lon, end.lat, end.lon)
       if (walkingB > TRANSIT_ESTIMATES.maximumWalkingKm || end.shape_dist_traveled <= start.shape_dist_traveled) continue
       const walking = walkingA + walkingB
