@@ -1880,7 +1880,7 @@ export default function BusPlannerApp() {
 
       {/* Tracking Panel - Lado derecho, full-height, slide in/out */}
       {isTracking && !isTripPaused && (
-        <div className={`absolute top-0 right-0 bottom-0 z-40 w-[280px] max-w-[75vw] bg-white/95 backdrop-blur-sm border-l border-[#E5E7EB] shadow-[-4px_0_20px_rgba(0,0,0,0.1)] transition-transform duration-300 ease-out ${trackingPanelVisible ? 'translate-x-0' : 'translate-x-full'}`} onClick={(e) => e.stopPropagation()}>
+        <div className={`absolute right-0 bottom-0 z-40 w-full max-h-[40dvh] overflow-y-auto sm:top-0 sm:max-h-none sm:w-[280px] sm:max-w-[75vw] bg-white/95 backdrop-blur-sm border-l border-[#E5E7EB] shadow-[-4px_0_20px_rgba(0,0,0,0.1)] transition-transform duration-300 ease-out ${trackingPanelVisible ? 'translate-x-0' : 'translate-x-full'}`} onClick={(e) => e.stopPropagation()}>
           <div className="p-3 space-y-3 h-full flex flex-col">
             {/* Trip info row */}
             <div className="flex items-center justify-between">
@@ -1902,7 +1902,7 @@ export default function BusPlannerApp() {
 
             {progressInfo}
             {/* Metrics */}
-            <div className="space-y-2">
+            <div className="hidden sm:block space-y-2">
               <div className="bg-blue-50 rounded-lg p-3">
                 <p className="text-[10px] text-[#6B7280]">Distancia restante</p>
                 <p className="font-bold text-[#E31837] text-lg">{distanceRemaining.toFixed(1)} km</p>
@@ -1933,7 +1933,7 @@ export default function BusPlannerApp() {
 
       {/* Paused Tracking Panel - Lado derecho */}
       {isTracking && isTripPaused && (
-        <div className={`absolute top-0 right-0 bottom-0 z-40 w-[280px] max-w-[75vw] bg-white/95 backdrop-blur-sm border-l border-[#E5E7EB] shadow-[-4px_0_20px_rgba(0,0,0,0.1)] transition-transform duration-300 ease-out ${trackingPanelVisible ? 'translate-x-0' : 'translate-x-full'}`} onClick={(e) => e.stopPropagation()}>
+        <div className={`absolute right-0 bottom-0 z-40 w-full max-h-[40dvh] overflow-y-auto sm:top-0 sm:max-h-none sm:w-[280px] sm:max-w-[75vw] bg-white/95 backdrop-blur-sm border-l border-[#E5E7EB] shadow-[-4px_0_20px_rgba(0,0,0,0.1)] transition-transform duration-300 ease-out ${trackingPanelVisible ? 'translate-x-0' : 'translate-x-full'}`} onClick={(e) => e.stopPropagation()}>
           <div className="p-3 space-y-3 h-full flex flex-col">
             {/* Trip info row */}
             <div className="flex items-center justify-between">
@@ -1955,7 +1955,7 @@ export default function BusPlannerApp() {
 
             {progressInfo}
             {/* Metrics */}
-            <div className="space-y-2">
+            <div className="hidden sm:block space-y-2">
               <div className="bg-blue-50 rounded-lg p-3">
                 <p className="text-[10px] text-[#6B7280]">Distancia restante</p>
                 <p className="font-bold text-[#E31837] text-lg">{distanceRemaining.toFixed(1)} km</p>

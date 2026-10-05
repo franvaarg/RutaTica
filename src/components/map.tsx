@@ -78,11 +78,8 @@ function RouteBoundsFitter({
   const prevRoutePathRef = useRef<string>('')
 
   useEffect(() => {
-    // No ajustar bounds durante tracking en tiempo real
-    if (isTracking) return
-
     // Serializar routePath para comparar cambios
-    const routeKey = JSON.stringify([routePath, selectedRoute?.id])
+    const routeKey = JSON.stringify([routePath, selectedRoute?.id, !!isTracking])
     if (routeKey === prevRoutePathRef.current) return
     prevRoutePathRef.current = routeKey
 
@@ -119,7 +116,7 @@ function RouteBoundsFitter({
       map.fitBounds(allPoints, {
         maxZoom: 15,    // No acercarse más de 15
         paddingTopLeft: [30, 100],
-        paddingBottomRight: map.getSize().x >= 640 ? [350, 90] : [30, Math.round(map.getSize().y * 0.5) + 20],
+        paddingBottomRight: map.getSize().x >= 640 ? [350, 90] : [30, Math.round(map.getSize().y * (isTracking ? 0.4 : 0.5)) + 20],
         animate: true,
         duration: 0.8,
       })
@@ -373,11 +370,11 @@ const BusMap = ({
 
 
   // Actualizar centro y zoom del mapa cuando cambian las props
-  // NO actualizar cuando hay una ruta dibujada Y no se está en tracking — RouteBoundsFitter se encarga
+  // RouteBoundsFitter keeps the selected journey and destination in view.
   useEffect(() => {
     if (!mapRef.current || !center || !mapReady) return
-    // Si hay ruta dibujada y NO estamos en tracking, RouteBoundsFitter controla el zoom via fitBounds
-    if ((routePath || aresepRoute) && !isTracking) return
+    // Preserve the journey overview and manual zoom while a route is selected.
+    if (routePath || aresepRoute || selectedRoute) return
 
     const map = mapRef.current
 

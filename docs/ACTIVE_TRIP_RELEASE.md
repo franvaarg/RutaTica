@@ -4,7 +4,7 @@ The initial map hides generic GTFS, CTP and nearest-stop markers until a destina
 
 Users can save a selected locality and restore it as a destination after reloading. Saved localities are stored in this browser, capped at 20, and do not require the unavailable server favorites API.
 
-Starting a trip opens its progress panel. Geolocation advances the next ordered call within 100 metres; proximity to a different call cannot skip the itinerary. The panel shows next stop, remaining calls, estimated minutes and final locality. Minutes use the selected GTFS call times and elapsed trip time, including service times after midnight. This is an estimate, not live vehicle telemetry. Pausing preserves call progress.
+Starting a trip opens its progress panel. On mobile this is a compact bottom panel; route bounds keep the final destination in view when the trip starts. Geolocation advances the next ordered call within 100 metres; proximity to a different call cannot skip the itinerary. The panel shows next stop, remaining calls, estimated minutes and final locality. Minutes use the selected GTFS call times and elapsed trip time, including service times after midnight. This is an estimate, not live vehicle telemetry. Pausing preserves call progress.
 
 ## Verification
 

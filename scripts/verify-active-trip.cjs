@@ -62,6 +62,13 @@ const base = process.env.APP_URL || 'http://127.0.0.1:3100';
    await page.waitForFunction(name=>[...document.querySelectorAll('[role="status"]')].some(node=>node.textContent.includes('Próxima parada: '+name)),route.stops[2].name);
    assert.match(await progress.innerText(),new RegExp('Paradas restantes: '+(route.stops.length-2)));
    assert.ok(await page.locator('.custom-destination-marker').count()>0);
+   await page.waitForFunction(mobile=>{
+    const marker=document.querySelector('.custom-destination-marker');
+    if (!marker) return false;
+    const box=marker.getBoundingClientRect();
+    return box.x>=0 && box.right<=(mobile?innerWidth:innerWidth-280) && box.y>=64 && box.bottom<=(mobile?innerHeight*0.6:innerHeight);
+   },mobile);
+
    await page.screenshot({path:`/tmp/rutatica-active-${mobile?'mobile':'desktop'}.png`});
    assert.deepEqual(errors,[]);
    console.log(JSON.stringify({base,mobile,initialMap:'clean',localities:'pass',origin:'current and locality',saved:'persisted',destination:'Alajuela',route:route.route.shortName,stops:route.stops.length,duration:route.totalTimeMinutes,blue:'pass',progress:await progress.innerText(),errors}));
