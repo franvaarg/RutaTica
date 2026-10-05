@@ -897,7 +897,7 @@ const BusMap = ({
           <Marker key={`selected-${index}`} position={[stop.lat, stop.lon]} title={`${label}: ${stop.name}`}
             icon={boarding ? boardingIcon : alighting ? alightingIcon : ctpIcon} zIndexOffset={boarding || alighting ? 500 : 100}>
             {(boarding || alighting) && <Tooltip permanent direction={boarding ? 'top' : 'bottom'}>{label}</Tooltip>}
-            <Popup>
+            <Popup autoPanPaddingTopLeft={[12, 88]}>
               <strong>{label}</strong><p>{stop.name}</p>
               {calls.map((call, callIndex) => <div key={callIndex} className={callIndex ? 'mt-2 border-t pt-2' : ''}>
                 {calls.length > 1 && <p>{call.role === 'boarding' ? 'Sube aquí' : call.role === 'alighting' ? 'Baja aquí' : 'Parada intermedia'}</p>}
