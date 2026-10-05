@@ -48,6 +48,12 @@ El entorno de desarrollo requiere su configuración de base de datos; no se publ
 
 `scripts/verify-active-trip.cjs` verifica el flujo de escritorio/móvil y puede ejecutarse con `APP_URL=https://ruta-tica.vercel.app` y `PLAYWRIGHT_MODULE` apuntando a una instalación externa de Playwright. Usa el planificador real con una salida matutina para probar el calendario limitado; `LIVE_CURRENT_TIME=1` conserva la hora actual de la consulta. El movimiento GPS se simula. También comprueba que finalizar limpie el recorrido, las paradas, los resultados y el destino. `tests/derived-transit.test.ts` verifica filtrado de instalaciones y el modo estricto de asociaciones confirmadas. El planificador de producción habilita explícitamente itinerarios derivados estimados.
 
+`scripts/verify-unified-journey.cjs` consulta el snapshot real y comprueba búsqueda con/sin acentos, exclusión de instalaciones, las cuatro combinaciones lugar/parada, selección de paradas en la interfaz, mapa con solo las paradas del tramo, contador, persistencia, GPS simulado, aviso de bajada y llegada en móvil/escritorio, además del modo sin GPS. Para verificar el despliegue:
+
+```bash
+APP_URL=https://ruta-tica.vercel.app PLAYWRIGHT_MODULE=/ruta/a/playwright node scripts/verify-unified-journey.cjs
+```
+
 La búsqueda pública de Nominatim se activa mediante **Buscar lugares**, no con cada pulsación; se cachea y limita a una solicitud por segundo por instancia. El proveedor puede cambiarse con `NOMINATIM_SEARCH_URL`. El uso público debe mantenerse moderado, con el límite agregado de una solicitud por segundo para la aplicación, según la [política de Nominatim](https://operations.osmfoundation.org/policies/nominatim/). Para escalar se necesita un proveedor o instancia propios. La atribución de OpenStreetMap permanece en el mapa.
 
 GitHub `main` dispara el despliegue de Vercel. Después de cada publicación se verifica la aplicación live; una compilación local no sustituye esa comprobación.
