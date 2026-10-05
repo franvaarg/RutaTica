@@ -451,7 +451,7 @@ const BusMap = ({
     if (!mapReady || !mapRef.current) return
     setDbStops([])
     setStopHint('')
-    if (selectedRoute || aresepRoute) return
+    if (!destinationCoordinates || selectedRoute || aresepRoute) return
     const map = mapRef.current
     let controller: AbortController | undefined
     let timer: ReturnType<typeof setTimeout>
@@ -480,7 +480,7 @@ const BusMap = ({
     update()
     map.on('moveend', update)
     return () => { controller?.abort(); clearTimeout(timer); map.off('moveend', update) }
-  }, [mapReady, selectedRoute, aresepRoute])
+  }, [mapReady, selectedRoute, aresepRoute, destinationCoordinates])
 
   useEffect(() => {
     aresepRequest.current?.abort()
@@ -1021,7 +1021,7 @@ const BusMap = ({
         ))}
 
         {/* Marcadores de paradas de buses de la base de datos (resaltados) */}
-        {!selectedRoute && !aresepRoute && dbStops && dbStops.length > 0 && (
+        {destinationCoordinates && !selectedRoute && !aresepRoute && dbStops && dbStops.length > 0 && (
           <>
             {dbStops.map((stop) => (
               <Marker
@@ -1105,8 +1105,8 @@ const BusMap = ({
           </Marker>
         )}
 
-        {/* Marcador de parada más cercana (solo cuando no hay ruta ni destino seleccionado) */}
-        {!selectedRoute && !aresepRoute && !destinationCoordinates && nearestStop && (
+        {/* Marcador de parada más cercana después de seleccionar destino */}
+        {!selectedRoute && !aresepRoute && destinationCoordinates && nearestStop && (
           <Marker
             position={[nearestStop.coordinates.latitude, nearestStop.coordinates.longitude]}
             icon={stopIcon}
@@ -1122,7 +1122,7 @@ const BusMap = ({
         )}
 
         {/* Marcadores de paradas de autobús de OpenStreetMap */}
-        {!selectedRoute && !aresepRoute && busStops && busStops.length > 0 && (
+        {destinationCoordinates && !selectedRoute && !aresepRoute && busStops && busStops.length > 0 && (
           <>
             {busStops.map((stop) => (
               <Marker

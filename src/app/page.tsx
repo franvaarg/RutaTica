@@ -14,6 +14,7 @@ import dynamic from 'next/dynamic'
 const BusMap = dynamic(() => import('@/components/map'), { ssr: false })
 import LocationAutocomplete from '@/components/location-autocomplete'
 import { mapPlannedRoutes, type PlanatedRoute } from '@/lib/planned-route'
+import { tripProgress } from '@/lib/trip-progress'
 
 
 interface Location {
@@ -57,6 +58,19 @@ interface PopularDestination {
   lat: number
   lon: number
   displayName: string
+}
+
+// Calcular distancia entre dos coordenadas usando Haversine
+const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+  const R = 6371 // Radio de la Tierra en km
+  const dLat = (lat2 - lat1) * Math.PI / 180
+  const dLon = (lon2 - lon1) * Math.PI / 180
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2)
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+  return R * c
 }
 
 export default function BusPlannerApp() {
@@ -103,6 +117,31 @@ export default function BusPlannerApp() {
   const [isTripPaused, setIsTripPaused] = useState(false)
   const pausedAtRef = useRef<number>(0)
   const totalPausedMsRef = useRef<number>(0)
+
+  const [passedStopIndex, setPassedStopIndex] = useState(-1)
+  const [savedLocalities, setSavedLocalities] = useState<SelectedLocation[]>([])
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      try {
+        const saved = JSON.parse(localStorage.getItem('rutatica.localities') || '[]')
+        if (Array.isArray(saved)) setSavedLocalities(saved.filter(item => item && typeof item.name === 'string' && Number.isFinite(item.lat) && Number.isFinite(item.lon)).slice(0, 20))
+      } catch { /* Storage may be disabled. */ }
+    }, 0)
+    return () => clearTimeout(timer)
+  }, [])
+  const saveLocality = () => {
+    if (!selectedDestination) return
+    const saved = [selectedDestination, ...savedLocalities.filter(item => item.lat !== selectedDestination.lat || item.lon !== selectedDestination.lon)].slice(0, 20)
+    try { localStorage.setItem('rutatica.localities', JSON.stringify(saved)); setSavedLocalities(saved) }
+    catch { setError('No se pudo guardar la localidad en este navegador.') }
+  }
+  const progress = tripProgress(selectedRoute, passedStopIndex, elapsedTime)
+  const progressInfo = <div className="rounded-lg bg-blue-50 p-3 text-xs space-y-1" role="status">
+    <p>Próxima parada: <strong>{progress.nextStop?.name || 'Destino alcanzado'}</strong></p>
+    <p>Paradas restantes: <strong>{progress.remainingStops}</strong></p>
+    <p>Tiempo restante estimado: <strong>{progress.remainingMinutes === null ? 'No disponible' : `${progress.remainingMinutes} min`}</strong></p>
+    <p>Destino: {selectedDestination?.name || destination}</p>
+  </div>
 
   // Estados para control del mapa
   // Ubicación por defecto: San José, Costa Rica
@@ -903,18 +942,7 @@ export default function BusPlannerApp() {
     return `${hours} h ${mins} min`
   }
 
-  // Calcular distancia entre dos coordenadas usando Haversine
-  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
-    const R = 6371 // Radio de la Tierra en km
-    const dLat = (lat2 - lat1) * Math.PI / 180
-    const dLon = (lon2 - lon1) * Math.PI / 180
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-      Math.sin(dLon / 2) * Math.sin(dLon / 2)
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-    return R * c
-  }
+
 
   const handleStartTrip = () => {
     if (!selectedRoute && !selectedDestination) {
@@ -940,9 +968,10 @@ export default function BusPlannerApp() {
     setIsTripPaused(false)
     pausedAtRef.current = 0
     totalPausedMsRef.current = 0
+    setPassedStopIndex(-1)
     setTripStartTime(new Date())
     setElapsedTime(0)
-    setTrackingPanelVisible(false)
+    setTrackingPanelVisible(true)
     setRoutePanelDismissed(true) // Cerrar panel de rutas al empezar viaje
 
     // Calcular distancia inicial al destino
@@ -980,6 +1009,10 @@ export default function BusPlannerApp() {
       (position) => {
         const { latitude, longitude } = position.coords
         setCurrentLocation({ latitude, longitude })
+        setPassedStopIndex(index => {
+          const next = selectedRoute?._stops?.[index + 1]
+          return next && calculateDistance(latitude, longitude, next.lat, next.lon) < 0.1 ? index + 1 : index
+        })
 
         // Calcular distancia restante
         const trackDestCoords = selectedRoute?.destinationStop?.coordinates
@@ -1080,6 +1113,10 @@ export default function BusPlannerApp() {
       (position) => {
         const { latitude, longitude } = position.coords
         setCurrentLocation({ latitude, longitude })
+        setPassedStopIndex(index => {
+          const next = selectedRoute?._stops?.[index + 1]
+          return next && calculateDistance(latitude, longitude, next.lat, next.lon) < 0.1 ? index + 1 : index
+        })
 
         // Calcular distancia restante
         const trackDestCoords = selectedRoute?.destinationStop?.coordinates
@@ -1263,6 +1300,7 @@ export default function BusPlannerApp() {
                         </Badge>
                       </div>
                       <div className="p-3">
+                        {progressInfo}
                         <div className="grid grid-cols-2 gap-3">
                           <div className="text-center">
                             <p className="text-xs text-[#6B7280]">Restante</p>
@@ -1408,6 +1446,10 @@ export default function BusPlannerApp() {
                     </Card>
                   )}
 
+                  {!!savedLocalities.length && <div className="space-y-2">
+                    <p className="text-sm font-semibold">Localidades guardadas</p>
+                    {savedLocalities.map(item => <Button key={`${item.lat},${item.lon}`} variant="outline" className="mr-2 min-h-11" onClick={() => handleDestinationSelect(item)}>Ir a {item.name}</Button>)}
+                  </div>}
                   {/* Destination Card - Debajo de origen */}
                   <Card className="shadow-md border border-[#E5E7EB]">
                     <CardContent className="p-4 space-y-4">
@@ -1428,6 +1470,7 @@ export default function BusPlannerApp() {
                         />
                       </div>
 
+                      {selectedDestination && <Button variant="outline" onClick={saveLocality}>Guardar localidad</Button>}
                       {selectedDestination && (
                         <Button
                           onClick={handlePlanRoute}
@@ -1823,6 +1866,7 @@ export default function BusPlannerApp() {
       {/* Tracking Panel Toggle Button - Pestaña en el borde derecho */}
       {isTracking && (
         <Button
+          aria-label={trackingPanelVisible ? "Ocultar seguimiento" : "Mostrar seguimiento"}
           onClick={(e) => { e.stopPropagation(); setTrackingPanelVisible(!trackingPanelVisible) }}
           className="absolute top-24 right-0 z-[41] w-7 h-12 p-0 rounded-l-lg rounded-r-none bg-white shadow-md hover:bg-gray-50 border border-[#E5E7EB] border-r-0 transition-all duration-300"
         >
@@ -1856,6 +1900,7 @@ export default function BusPlannerApp() {
               </div>
             </div>
 
+            {progressInfo}
             {/* Metrics */}
             <div className="space-y-2">
               <div className="bg-blue-50 rounded-lg p-3">
@@ -1908,6 +1953,7 @@ export default function BusPlannerApp() {
               </div>
             </div>
 
+            {progressInfo}
             {/* Metrics */}
             <div className="space-y-2">
               <div className="bg-blue-50 rounded-lg p-3">
