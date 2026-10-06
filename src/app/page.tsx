@@ -78,6 +78,10 @@ const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: numbe
   return R * c
 }
 
+const isValidPlace = (place: SelectedLocation | null): place is SelectedLocation =>
+  !!place && !!place.name.trim() && Number.isFinite(place.lat) && Number.isFinite(place.lon) &&
+  Math.abs(place.lat) <= 90 && Math.abs(place.lon) <= 180
+
 export default function BusPlannerApp() {
   const [currentLocation, setCurrentLocation] = useState<Location | null>(null)
   const [currentAddress, setCurrentAddress] = useState<string>('Ubicación pendiente')
@@ -100,6 +104,11 @@ export default function BusPlannerApp() {
   const [loadingLocation, setLoadingLocation] = useState(false)
   const [loadingAddress, setLoadingAddress] = useState(false)
   const [planning, setPlanning] = useState(false)
+  const [routePlanningMode, setRoutePlanningMode] = useState(false)
+  const validOrigin = useCurrentLocation
+    ? !!currentLocation && Number.isFinite(currentLocation.latitude) && Number.isFinite(currentLocation.longitude) && Math.abs(currentLocation.latitude) <= 90 && Math.abs(currentLocation.longitude) <= 180
+    : isValidPlace(selectedOrigin)
+  const canPlanRoute = routePlanningMode && validOrigin && isValidPlace(selectedDestination)
   const [loadingRoute, setLoadingRoute] = useState(false)
   const [loadingDirectRoute, setLoadingDirectRoute] = useState(false)
   const [loadingBusStops, setLoadingBusStops] = useState(false)
@@ -146,7 +155,7 @@ export default function BusPlannerApp() {
     catch { setError('No se pudo guardar la ubicación en este navegador.') }
   }
   const saveLocality = (place: SelectedLocation | null = selectedDestination) => {
-    if (!place) return
+    if (!isValidPlace(place)) return
     const existing = savedLocalities.find(item => item.lat === place.lat && item.lon === place.lon)
     updateSaved([{ ...existing, ...place, label: place.label || existing?.label }, ...savedLocalities.filter(item => item.lat !== place.lat || item.lon !== place.lon)].slice(0, 20))
   }
@@ -548,6 +557,7 @@ export default function BusPlannerApp() {
 
   const handleOriginSelect = (location: any) => {
     invalidateJourney()
+    setSelectedOrigin(null)
     try {
       if (!location || location.lat == null || location.lon == null) {
         console.error('Ubicación inválida:', location)
@@ -558,7 +568,7 @@ export default function BusPlannerApp() {
       const lat = Number(location.lat)
       const lon = Number(location.lon)
 
-      if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+      if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) {
         console.error('Coordenadas inválidas:', { lat, lon, location })
         setError('Las coordenadas de origen no son válidas')
         return
@@ -690,6 +700,7 @@ export default function BusPlannerApp() {
 
   const handleDestinationSelect = (location: any) => {
     invalidateJourney()
+    setSelectedDestination(null)
     try {
       // Validar que la ubicación tenga los datos necesarios
       if (!location || location.lat == null || location.lon == null) {
@@ -701,7 +712,7 @@ export default function BusPlannerApp() {
       const lat = Number(location.lat)
       const lon = Number(location.lon)
 
-      if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+      if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) {
         console.error('Coordenadas inválidas:', { lat, lon, location })
         setError('Las coordenadas seleccionadas no son válidas')
         return
@@ -714,6 +725,7 @@ export default function BusPlannerApp() {
         lon: lon,
         displayName: location.displayName || location.fullAddress || location.name || 'Destino desconocido',
       }
+      setRoutePlanningMode(true)
       setSelectedDestination(selected)
       setDestination(selected.name)
       setSuppressDestSuggestions(true)
@@ -744,8 +756,8 @@ export default function BusPlannerApp() {
   }
 
   const handlePlanRoute = async () => {
-    if (routeSubmitting.current) return
-    if (!selectedDestination) {
+    if (routeSubmitting.current || !routePlanningMode) return
+    if (!isValidPlace(selectedDestination)) {
       if (!destination.trim()) {
         setError('Por favor ingresa un destino')
       } else {
@@ -754,7 +766,7 @@ export default function BusPlannerApp() {
       return
     }
 
-    if (!useCurrentLocation && !selectedOrigin) {
+    if (!useCurrentLocation && !isValidPlace(selectedOrigin)) {
       if (!originText.trim()) {
         setError('Por favor ingresa un lugar de origen')
       } else {
@@ -763,7 +775,7 @@ export default function BusPlannerApp() {
       return
     }
 
-    if (useCurrentLocation && !currentLocation) {
+    if (useCurrentLocation && !validOrigin) {
       setError('No se pudo obtener tu ubicación. Selecciona un origen o habilita la ubicación.');
       return;
     }
@@ -961,6 +973,7 @@ export default function BusPlannerApp() {
     }
     setTrackingPanelVisible(false)
 
+    setRoutePlanningMode(false)
     setDestination('')
     setSelectedDestination(null)
     setPlannedRoutes([])
@@ -1376,8 +1389,10 @@ export default function BusPlannerApp() {
                     </div>
                   )}
 
-                                    {/* Origin Card */}
-                  {!hasPlanned && (
+                  {!routePlanningMode && !hasPlanned && <Button className="w-full min-h-11" onClick={() => setRoutePlanningMode(true)}>Planificar ruta</Button>}
+                  {routePlanningMode && !hasPlanned && <Button variant="outline" className="w-full min-h-11" onClick={() => { handleResetSearch(); setIsMenuOpen(false) }}>Volver al mapa</Button>}
+                  {/* Origin Card */}
+                  {routePlanningMode && !hasPlanned && (
                     <Card className="shadow-sm border border-[#E5E7EB]">
                       <CardContent className="p-4 space-y-3">
                         <div className="flex items-center justify-between gap-2">
@@ -1460,7 +1475,7 @@ export default function BusPlannerApp() {
                               placeholder="Escribe el lugar de origen..."
                               disabled={planning}
                             />
-                            {selectedOrigin && <Button variant="outline" onClick={() => saveLocality(selectedOrigin)}>Guardar origen</Button>}
+                            {isValidPlace(selectedOrigin) && <Button variant="outline" onClick={() => saveLocality(selectedOrigin)}>Guardar origen</Button>}
                             {selectedOrigin && (
                               <div className="flex items-center gap-2 bg-blue-50 p-2 rounded-lg border border-[#E5E7EB]">
                                 <MapPin className="w-3.5 h-3.5 text-[#0052B4] flex-shrink-0" />
@@ -1484,7 +1499,7 @@ export default function BusPlannerApp() {
                     </div>)}
                   </div>}
                   {/* Destination Card - Debajo de origen */}
-                  <Card className="shadow-md border border-[#E5E7EB]">
+                  {routePlanningMode && <Card className="shadow-md border border-[#E5E7EB]">
                     <CardContent className="p-4 space-y-4">
                       <div className="space-y-2">
                         <div className="flex items-center gap-2">
@@ -1504,8 +1519,8 @@ export default function BusPlannerApp() {
                         />
                       </div>
 
-                      {selectedDestination && <Button variant="outline" onClick={() => saveLocality()}>Guardar ubicación</Button>}
-                      {selectedDestination && (
+                      {isValidPlace(selectedDestination) && <Button variant="outline" onClick={() => saveLocality()}>Guardar ubicación</Button>}
+                      {canPlanRoute && (
                         <Button
                           onClick={handlePlanRoute}
                           disabled={planning}
@@ -1525,9 +1540,7 @@ export default function BusPlannerApp() {
                         </Button>
                       )}
                     </CardContent>
-                  </Card>
-
-
+                  </Card>}
 
                   {/* Error Message */}
                   {error && !hasPlanned && (
@@ -1541,7 +1554,7 @@ export default function BusPlannerApp() {
                   {/* Route results shown in bottom panel outside Sheet */}
 
                   {/* Popular Destinations - Solo si no hay destino seleccionado */}
-                  {!hasPlanned && !error && !selectedDestination && (
+                  {routePlanningMode && !hasPlanned && !error && !selectedDestination && (
                     <div className="space-y-3">
                       <h3 className="font-bold text-lg text-[#374151]">Destinos Populares</h3>
                       <div className="grid grid-cols-2 gap-3">
@@ -1599,6 +1612,7 @@ export default function BusPlannerApp() {
             </div>
 
             <div className="flex items-center gap-2">
+              {!hasPlanned && <Button variant="ghost" className="min-h-11 text-white hover:bg-white/20 hover:text-white" onClick={() => { setRoutePlanningMode(true); setIsMenuOpen(true) }}>Planificar ruta</Button>}
               {hasPlanned && (
                 <Button
                   variant="outline"

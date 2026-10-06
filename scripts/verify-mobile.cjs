@@ -25,6 +25,7 @@ const fs=require('node:fs');
   await page.route('https://**/*',route=>new URL(route.request().url()).origin === appOrigin ? route.continue() : route.abort());
   await page.goto(process.env.APP_URL || 'http://127.0.0.1:3100',{waitUntil:'networkidle',timeout:120000});
   await page.getByRole('button',{name:'Abrir menú'}).click();
+   if (await page.getByRole('button',{name:'Planificar ruta',exact:true}).count()) await page.getByRole('button',{name:'Planificar ruta',exact:true}).click();
   const input=page.getByRole('combobox',{name:'Escribe el destino...'});
   await input.fill('Ciudad Quesada');
   await page.getByRole('option').first().waitFor();
