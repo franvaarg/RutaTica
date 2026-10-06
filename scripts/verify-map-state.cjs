@@ -35,6 +35,7 @@ const base = process.env.APP_URL || 'http://127.0.0.1:3100';
       assert.equal(await route.isEnabled(), true);
       await origin.fill('San Pedr');
       assert.equal(await route.count(), 0);
+      await page.getByRole('option').first().waitFor();
       await origin.press('Escape');
       await page.getByRole('button', { name: 'Volver al mapa', exact: true }).click();
       await clean();
