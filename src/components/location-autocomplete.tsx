@@ -102,6 +102,7 @@ export default function LocationAutocomplete({
     // Esperar 400ms después de que el usuario deje de escribir
     searchTimeout.current = setTimeout(async () => {
       setLoading(true)
+      setSearchError('')
       let results: LocationSuggestion[] = []
 
       try {
@@ -115,6 +116,10 @@ export default function LocationAutocomplete({
       } catch {
         if (cancelled || controller.signal.aborted) return
         setSearchError('No se pudo buscar. Intenta de nuevo.')
+        setSuggestions([])
+        setShowSuggestions(true)
+        setLoading(false)
+        return
       }
       // Usar setTimeout para evitar setState síncrono en effect
       setTimeout(() => {

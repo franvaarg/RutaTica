@@ -114,6 +114,13 @@ test('SQLite migration, dry-run, atomic idempotent import, GTFS coexistence, API
     assert.deepEqual(coverage.radii.map(r => r.ctp),[1,1,1,1]);
     // Exercise actual API handlers with the disposable client through the shared singleton.
     const { db } = await import('../src/lib/db');
+    const { normalizedTransit } = await import('../src/lib/normalized-transit');
+    // Isolate the second routing catalog too: the bundled national snapshot must
+    // not supply real journeys to this synthetic, unassociated-stop fixture.
+    await client.$executeRawUnsafe('CREATE TABLE RouteFeed (route_id TEXT, payload BLOB, south REAL, north REAL, west REAL, east REAL)');
+    await client.$executeRawUnsafe('CREATE TABLE RouteStop (route_id TEXT, stop_id TEXT)');
+    const originalNormalizedQuery = normalizedTransit.$queryRaw;
+    normalizedTransit.$queryRaw = client.$queryRaw.bind(client);
     const originals = { ctpStop: db.ctpStop, gtfsStop: db.gtfsStop, gtfsCalendar: db.gtfsCalendar, gtfsCalendarDate: db.gtfsCalendarDate };
     Object.assign(db,{ctpStop:client.ctpStop,gtfsStop:client.gtfsStop,gtfsCalendar:{findMany:async()=>[]},gtfsCalendarDate:{findMany:async()=>[]}});
     const oldOtp = process.env.OPEN_TRIP_PLANNER_URL;
@@ -131,7 +138,7 @@ test('SQLite migration, dry-run, atomic idempotent import, GTFS coexistence, API
       const planned = await planner(new NextRequest('http://localhost/api/best-route?originLat=10.3275&originLon=-84.4372&destLat=10.34&destLon=-84.44'));
       assert.equal(planned.status,200);
       const body = await planned.json(); assert.deepEqual(body.routes,[]); assert.equal(body.message,CTP_ROUTING_NOTICE);
-    } finally { Object.assign(db,originals); if (oldOtp === undefined) delete process.env.OPEN_TRIP_PLANNER_URL; else process.env.OPEN_TRIP_PLANNER_URL=oldOtp; }
+    } finally { normalizedTransit.$queryRaw = originalNormalizedQuery; Object.assign(db,originals); if (oldOtp === undefined) delete process.env.OPEN_TRIP_PLANNER_URL; else process.env.OPEN_TRIP_PLANNER_URL=oldOtp; }
     // A second invalid write rolls back the first write in the transaction.
     const broken = { ...p, accepted:[{...p.accepted[0],identityKey:'new'}, {...p.accepted[0],identityKey:'bad',lat:999}] };
     await assert.rejects(importPrepared(client,broken,true)); assert.equal(await client.ctpStop.count(),1);

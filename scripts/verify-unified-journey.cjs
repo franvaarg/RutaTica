@@ -47,8 +47,9 @@ const base = process.env.APP_URL || 'http://127.0.0.1:3100';
   const stopData=await result.json();assert.ok(stopData.routes.length);await stopPage.getByRole('button',{name:'Iniciar viaje',exact:true}).waitFor();
   assert.equal(stopData.routes[0].stops[0].stopId,first.stopId);assert.equal(stopData.routes[0].stops.at(-1).stopId,last.stopId);
   console.log('STOP selection in actual UI PASS');await stopContext.close();
-  for(const mobile of [false,true]) {
-   const context=await browser.newContext({viewport:{width:mobile?390:1280,height:900},isMobile:mobile,hasTouch:mobile,geolocation:{latitude:9.9281,longitude:-84.0907},permissions:['geolocation']});
+  for(const width of [320,360,390,430,768,1280]) {
+   const mobile=width<768;
+   const context=await browser.newContext({viewport:{width,height:900},isMobile:mobile,hasTouch:mobile,geolocation:{latitude:9.9281,longitude:-84.0907},permissions:['geolocation']});
    const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));page.setDefaultTimeout(60000);
    await page.goto(base,{waitUntil:'domcontentloaded',timeout:120000});await page.locator('.leaflet-container').waitFor();
    assert.equal(await page.locator('.custom-stop-marker').count(),0);
@@ -63,6 +64,8 @@ const base = process.env.APP_URL || 'http://127.0.0.1:3100';
    await page.getByRole('option').filter({hasText:'San Joaquín - Flores - Heredia'}).first().click();
    await page.getByRole('button',{name:'Buscar Ruta',exact:true}).click();
    await page.getByRole('button',{name:'Iniciar viaje',exact:true}).waitFor({timeout:120000});
+   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'planned journey has no horizontal overflow at '+width);
+   await page.screenshot({path:`/tmp/rutatica-planned-${width}.png`});
    await page.locator('path.leaflet-interactive[stroke="#2563EB"]').first().waitFor();
    await page.getByRole('button',{name:'Iniciar viaje',exact:true}).click();
    const panel=page.getByRole('status').filter({hasText:'Tiempo restante estimado:'}).last();await panel.waitFor();
@@ -80,9 +83,10 @@ const base = process.env.APP_URL || 'http://127.0.0.1:3100';
    const exit=calls.at(-1);await context.setGeolocation({latitude:exit.lat,longitude:exit.lon});
    await page.getByRole('heading',{name:'HAS LLEGADO',exact:true}).waitFor();
    await page.getByText('BAJA AQUÍ',{exact:true}).last().waitFor();
-   await page.screenshot({path:`/tmp/rutatica-normalized-${mobile?'mobile':'desktop'}.png`});
+   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'active journey has no horizontal overflow at '+width);
+   await page.screenshot({path:`/tmp/rutatica-normalized-${width}.png`});
    assert.equal(errors.length,0,errors.join('\n'));
-   console.log(mobile?'MOBILE':'DESKTOP','countdown, persistence, GPS, next stop, alighting, arrival PASS');
+   console.log(width,'countdown, persistence, GPS, next stop, alighting, arrival PASS');
    await context.close();
   }
   // No GPS permission: the elapsed estimate must keep the active journey running.
