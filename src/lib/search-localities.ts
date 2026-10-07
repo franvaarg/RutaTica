@@ -1,6 +1,16 @@
 export interface LocationSuggestion {
  id: string | number; name: string; displayName: string; type: 'barrio' | 'localidad' | 'ciudad' | 'lugar' | 'parada'; lat: number; lon: number; fullAddress: string; resultType?: 'PLACE' | 'STOP'; stopId?: string; stopName?: string; locationData?: { barrio?: string; localidad?: string; canton?: string; provincia?: string; postcode?: string };
 }
+/** Rank passenger-facing names before matches found only in their address. */
+export function searchResultRank(result: LocationSuggestion, query: string): number {
+ const fold = (text: string) => text.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().trim();
+ const words = (text: string) => fold(text).match(/[\p{L}\p{N}]+/gu)?.filter(word => !['de','del','el','la','los','las'].includes(word)) || [];
+ const name = words(result.name), terms = words(query);
+ const exact = fold(result.name) === fold(query) || (terms.length > 0 && name.join(' ') === terms.join(' '));
+ if (exact) return result.resultType === 'STOP' ? 1 : 0;
+ if (result.resultType !== 'STOP' && terms.length > 0 && terms.every(term => name.some(word => word.startsWith(term)))) return 2;
+ return result.resultType === 'STOP' ? 3 : 4;
+}
 export const COSTA_RICA_LOCATIONS: LocationSuggestion[] = [
   { id: '1', name: 'San José', displayName: 'San José - San José', type: 'ciudad', lat: 9.9281, lon: -84.0907, fullAddress: 'San José, San José, Costa Rica', locationData: { provincia: 'San José', canton: 'San José', localidad: 'San José', barrio: '' } },
   { id: '2', name: 'Alajuela', displayName: 'Alajuela - Alajuela', type: 'ciudad', lat: 10.0163, lon: -84.2169, fullAddress: 'Alajuela, Alajuela, Costa Rica', locationData: { provincia: 'Alajuela', canton: 'Alajuela', localidad: 'Alajuela', barrio: '' } },

@@ -4,6 +4,17 @@ import { isPassengerStop } from '../src/lib/passenger-stops'
 import { normalizeDerivedRoute, planDerivedJourney } from '../src/lib/derived-transit'
 import { estimateBusMinutes } from '../src/lib/transit-estimates'
 import type { CorridorStop } from '../src/lib/aresep-types'
+import { searchResultRank, type LocationSuggestion } from '../src/lib/search-localities'
+
+test('search prioritizes the named place over stop substrings and unrelated address matches', () => {
+  const result = (name: string, resultType: 'PLACE' | 'STOP'): LocationSuggestion => ({id:name,name,displayName:name,type:resultType==='PLACE'?'lugar':'parada',resultType,lat:10,lon:-84,fullAddress:'San José'});
+  const candidates=[result('Frente al Parque Central','STOP'),result('Parque Central de Escazú','PLACE'),result('Parque Central de San José','PLACE')];
+  candidates.sort((a,b)=>searchResultRank(a,'parque central san jose')-searchResultRank(b,'parque central san jose'));
+  assert.equal(candidates[0].name,'Parque Central de San José');
+  assert.ok(searchResultRank(result('San Joaquín','PLACE'),'san joaquin')<searchResultRank(result('San Joaquín','STOP'),'san joaquin'));
+  assert.ok(searchResultRank(result('Parque Central de San José','PLACE'),'parque central')<searchResultRank(result('Frente al Parque Central','STOP'),'parque central'));
+  assert.ok(searchResultRank(result('Parque Central','STOP'),'parque central')<searchResultRank(result('Parque Central de San José','PLACE'),'parque central'));
+});
 
 test('facilities are excluded unless passenger use is explicit', () => {
   for (const name of ['Plantel de buses', 'Depósito', 'Garaje de autobuses', 'Taller de la empresa']) assert.equal(isPassengerStop(name), false)

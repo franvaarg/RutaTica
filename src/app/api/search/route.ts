@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { invalidQuery, badQuery } from '@/lib/api-validation'
-import { COSTA_RICA_LOCATIONS, type LocationSuggestion } from '@/lib/search-localities'
+import { COSTA_RICA_LOCATIONS, searchResultRank, type LocationSuggestion } from '@/lib/search-localities'
 import { foldSearch, searchNormalizedStops } from '@/lib/normalized-transit'
 import { GET as searchPlaces } from '../locations/search/route'
 
@@ -15,9 +15,8 @@ export async function GET(request: NextRequest) {
     request.nextUrl.searchParams.get('places') === '1' ? searchPlaces(request).then(r => r.json()).then(d => (d.locations || []).map((p: LocationSuggestion) => ({ ...p, resultType: 'PLACE' as const }))).catch(() => []) : [],
   ])
   const places: LocationSuggestion[] = [...localities, ...external]
-  const rank = (p: LocationSuggestion) => foldSearch(p.name) === folded ? p.resultType === 'PLACE' ? 0 : 1 : p.resultType === 'PLACE' && p.type !== 'lugar' ? 2 : p.resultType === 'STOP' ? 3 : 4
   const unique = new Map<string, LocationSuggestion>()
-  for (const p of [...places,...stops].sort((a,b) => rank(a)-rank(b))) {
+  for (const p of [...places,...stops].sort((a,b) => searchResultRank(a,q)-searchResultRank(b,q))) {
     const key = `${p.resultType}:${foldSearch(p.name)}:${p.lat.toFixed(5)}:${p.lon.toFixed(5)}`
     if (!unique.has(key)) unique.set(key,p)
   }
